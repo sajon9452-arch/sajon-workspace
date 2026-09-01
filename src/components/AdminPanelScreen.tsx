@@ -38,7 +38,12 @@ import {
   LifeBuoy,
   MessageSquare,
   HelpCircle,
-  Inbox
+  Inbox,
+  Cloud,
+  Database,
+  Server,
+  Code,
+  ExternalLink
 } from 'lucide-react';
 import { ExpenseModal } from './ExpenseModal';
 import {
@@ -72,6 +77,13 @@ import {
   loadSupportReports,
   saveSupportReports
 } from '../utils/storage';
+import {
+  fetchSupabaseStatus,
+  saveSupabaseConfig,
+  syncAllToSupabaseCloud,
+  syncAllFromSupabaseCloud,
+  SupabaseStatusResponse
+} from '../utils/serverApi';
 
 interface AdminPanelScreenProps {
   profile: OrganizationProfile;
@@ -239,6 +251,16 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     () => initialPaymentConfig || loadPaymentSettings()
   );
 
+  // Supabase Cloud Storage States
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState('');
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState('');
+  const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatusResponse | null>(null);
+  const [isCheckingSupabase, setIsCheckingSupabase] = useState(false);
+  const [isSavingSupabase, setIsSavingSupabase] = useState(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [showSqlModal, setShowSqlModal] = useState(false);
+
   useEffect(() => {
     setEditProfileData(profile);
   }, [profile]);
@@ -248,6 +270,106 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       setPaymentConfig(initialPaymentConfig);
     }
   }, [initialPaymentConfig]);
+
+  // Check Supabase Cloud Connection
+  const checkSupabaseLiveStatus = async () => {
+    setIsCheckingSupabase(true);
+    try {
+      const status = await fetchSupabaseStatus();
+      setSupabaseStatus(status);
+      if (status.url && !supabaseUrlInput) {
+        setSupabaseUrlInput(status.url);
+      }
+    } catch (e) {
+      console.warn('Error fetching Supabase status:', e);
+    } finally {
+      setIsCheckingSupabase(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      checkSupabaseLiveStatus();
+    }
+  }, [activeTab]);
+
+  const handleSaveSupabase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabaseUrlInput.trim() || !supabaseKeyInput.trim()) {
+      notifyError('সুপাবেজ প্রজেক্ট URL এবং Anon Key উভয় ফিল্ড পূরণ করুন');
+      return;
+    }
+    setIsSavingSupabase(true);
+    try {
+      const res = await saveSupabaseConfig(supabaseUrlInput.trim(), supabaseKeyInput.trim());
+      if (res.success) {
+        notifySuccess(res.message || 'Supabase ক্লাউড ডাটাবেজ কনফিগারেশন সফলভাবে সংরক্ষিত হয়েছে!');
+        await checkSupabaseLiveStatus();
+      } else {
+        notifyError(res.message || 'সুপাবেজ সেভ বা টেস্ট ব্যর্থ হয়েছে');
+      }
+    } catch (err: any) {
+      notifyError(`ত্রুটি: ${err.message || err}`);
+    } finally {
+      setIsSavingSupabase(false);
+    }
+  };
+
+  const handlePushAllToCloud = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const res = await syncAllToSupabaseCloud();
+      if (res.success) {
+        notifySuccess(res.message || 'সকল তথ্য Supabase ক্লাউডে সফলভাবে সংরক্ষিত হয়েছে!');
+        await checkSupabaseLiveStatus();
+      } else {
+        notifyError(res.message || 'ক্লাউড সিঙ্ক ব্যর্থ হয়েছে।');
+      }
+    } catch (err: any) {
+      notifyError(`সিঙ্ক ত্রুটি: ${err.message || err}`);
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handlePullAllFromCloud = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const res = await syncAllFromSupabaseCloud();
+      if (res.success) {
+        notifySuccess('Supabase ক্লাউড থেকে সর্বশেষ ডাটা সফলভাবে ফেচ ও রিলোড করা হয়েছে!');
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        notifyError(res.message || 'ক্লাউড থেকে ফেচ করা সম্ভব হয়নি।');
+      }
+    } catch (err: any) {
+      notifyError(`ফেচ ত্রুটি: ${err.message || err}`);
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handleCopySqlScript = () => {
+    const sql = `-- Supabase SQL Editor এ পেস্ট করে এক ক্লিকে Run করুন
+CREATE TABLE IF NOT EXISTS organization_data (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RLS ও Public Read-Write পারমিশন
+ALTER TABLE organization_data ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Full Access" ON organization_data;
+CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WITH CHECK (true);`;
+
+    navigator.clipboard.writeText(sql).then(() => {
+      setCopiedSql(true);
+      setTimeout(() => setCopiedSql(false), 3000);
+      notifySuccess('SQL কোড কপি হয়েছে! Supabase ড্যাশবোর্ডের SQL Editor-এ পেস্ট করে Run চাপুন।');
+    }).catch(() => {
+      notifyError('কপি করা সম্ভব হয়নি। অনুগ্রহ করে ম্যানুয়ালি সিলেক্ট করে কপি করুন।');
+    });
+  };
 
   // Helper trigger for notifications
   const notifySuccess = (msg: string) => {
@@ -3051,6 +3173,207 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* SUPABASE CLOUD DATABASE & PERSISTENT STORAGE */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <Cloud className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    Supabase ক্লাউড ডাটাবেজ ও পারমানেন্ট ব্যাকআপ
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    ব্রাউজার Clear Data করলেও ক্লাউড ডাটাবেজ থেকে তথ্য কখনো মুছে যাবে না
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Badge */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={checkSupabaseLiveStatus}
+                  disabled={isCheckingSupabase}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                  title="স্ট্যাটাস রিফ্রেশ করুন"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCheckingSupabase ? 'animate-spin text-emerald-600' : ''}`} />
+                  <span>রিফ্রেশ</span>
+                </button>
+
+                {supabaseStatus?.connected && supabaseStatus?.tableExists ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                    ক্লাউড সক্রিয় ও সংযুক্ত
+                  </span>
+                ) : supabaseStatus?.connected && !supabaseStatus?.tableExists ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                    টেবিল তৈরি প্রয়োজন
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                    <Server className="w-3.5 h-3.5 text-slate-500" />
+                    লোকাল সার্ভার সক্রিয়
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Status explanation alert */}
+            {supabaseStatus && (
+              <div
+                className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${
+                  supabaseStatus.connected && supabaseStatus.tableExists
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-900'
+                    : supabaseStatus.connected && !supabaseStatus.tableExists
+                    ? 'bg-amber-50 border border-amber-200 text-amber-900'
+                    : 'bg-slate-50 border border-slate-200 text-slate-700'
+                }`}
+              >
+                {supabaseStatus.connected && supabaseStatus.tableExists ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : supabaseStatus.connected ? (
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                ) : (
+                  <Database className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <span className="font-semibold">{supabaseStatus.message}</span>
+                  {supabaseStatus.connected && supabaseStatus.tableExists && (
+                    <div className="mt-1 text-[11px] text-emerald-700">
+                      ✅ এডমিন প্যানেল থেকে যেকোনো তথ্য অ্যাড, এডিট বা ডিলিট করলে তা সরাসরি এবং স্থায়ীভাবে Supabase এ সেভ হচ্ছে।
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Config Form */}
+            <form onSubmit={handleSaveSupabase} className="space-y-3 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Supabase Project URL *
+                  </label>
+                  <input
+                    type="url"
+                    value={supabaseUrlInput}
+                    onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                    placeholder="https://xyzabcdef.supabase.co"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono bg-white focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
+                    required
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Supabase Dashboard {'>'} Project Settings {'>'} API থেকে URL কপি করুন
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Supabase API Key (Anon / Service Key) *
+                  </label>
+                  <input
+                    type="password"
+                    value={supabaseKeyInput}
+                    onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono bg-white focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
+                    required
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Project Settings {'>'} API {'>'} anon public বা service_role কী
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="submit"
+                    disabled={isSavingSupabase}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{isSavingSupabase ? 'যাচাই ও সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ ও কানেক্ট করুন'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowSqlModal(!showSqlModal)}
+                    className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl border border-purple-200 transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Code className="w-3.5 h-3.5" />
+                    <span>{showSqlModal ? 'SQL কোড লুকান' : 'SQL টেবিল স্ক্রিপ্ট দেখুন'}</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePushAllToCloud}
+                    disabled={isSyncingCloud}
+                    className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition flex items-center gap-1.5 cursor-pointer"
+                    title="বর্তমান সকল মেম্বার, ডোনার ও নোটিশ ক্লাউডে আপলোড করুন"
+                  >
+                    <Cloud className="w-3.5 h-3.5" />
+                    <span>{isSyncingCloud ? 'সিঙ্ক হচ্ছে...' : 'ক্লাউডে ডেটা সিঙ্ক করুন'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePullAllFromCloud}
+                    disabled={isSyncingCloud}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center gap-1.5 cursor-pointer"
+                    title="সুপাবেজ থেকে রিয়েল-টাইম ডেটা ফেচ করে অ্যাপ রিফ্রেশ করুন"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>ক্লাউড থেকে ফেচ করুন</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* SQL Table Creation Accordion / Helper */}
+            {showSqlModal && (
+              <div className="mt-3 p-4 bg-slate-900 rounded-xl text-slate-100 text-xs font-mono space-y-2 border border-slate-700">
+                <div className="flex items-center justify-between text-slate-300 pb-2 border-b border-slate-800">
+                  <span className="font-sans font-bold text-xs text-emerald-400 flex items-center gap-1.5">
+                    <Database className="w-4 h-4" />
+                    Supabase SQL Editor এ রান করার স্ক্রিপ্ট (১ ক্লিকে টেবিল তৈরি)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopySqlScript}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-[11px] font-sans font-bold flex items-center gap-1 transition cursor-pointer"
+                  >
+                    {copiedSql ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedSql ? 'কপি হয়েছে!' : 'SQL কোড কপি করুন'}</span>
+                  </button>
+                </div>
+
+                <pre className="text-[11px] leading-relaxed text-emerald-200 overflow-x-auto p-2 bg-slate-950/60 rounded-lg">
+{`CREATE TABLE IF NOT EXISTS organization_data (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE organization_data ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Full Access" ON organization_data;
+CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WITH CHECK (true);`}
+                </pre>
+
+                <p className="text-[11px] text-slate-400 font-sans pt-1">
+                  💡 <strong>সহজ ধাপ:</strong> Supabase ড্যাশবোর্ডে গিয়ে বামের <strong>SQL Editor</strong> মেনুতে ক্লিক করুন, &quot;New Query&quot; এ উপরের কোডটি পেস্ট করে &quot;Run&quot; চাপুন।
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

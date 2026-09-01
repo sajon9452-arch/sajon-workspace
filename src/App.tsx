@@ -87,21 +87,21 @@ export default function App() {
       setPaymentConfig(loadPaymentSettings());
     };
 
-    // Hydrate from local Express server if available
+    // Hydrate from server / Supabase Cloud database
     fetchServerDatabase().then((serverData) => {
       if (serverData && isMounted) {
         if (serverData.profile) setProfile(serverData.profile);
-        if (Array.isArray(serverData.members) && serverData.members.length > 0) setMembers(serverData.members);
-        if (Array.isArray(serverData.donors) && serverData.donors.length > 0) setDonors(serverData.donors);
-        if (Array.isArray(serverData.notices) && serverData.notices.length > 0) setNotices(serverData.notices);
-        if (Array.isArray(serverData.funds) && serverData.funds.length > 0) setFunds(serverData.funds);
-        if (Array.isArray(serverData.supportReports) && serverData.supportReports.length > 0) setSupportReports(serverData.supportReports);
+        if (Array.isArray(serverData.members)) setMembers(serverData.members);
+        if (Array.isArray(serverData.donors)) setDonors(serverData.donors);
+        if (Array.isArray(serverData.notices)) setNotices(serverData.notices);
+        if (Array.isArray(serverData.funds)) setFunds(serverData.funds);
+        if (Array.isArray(serverData.supportReports)) setSupportReports(serverData.supportReports);
         if (serverData.manualTotalBalance !== undefined) setManualTotalBalance(serverData.manualTotalBalance);
         if (serverData.paymentConfig) setPaymentConfig(serverData.paymentConfig);
-        populateLocalStorageFromServer(serverData, false);
+        populateLocalStorageFromServer(serverData, true);
       }
     }).catch(() => {
-      // Fallback seamlessly to local storage
+      // Fallback seamlessly to local storage cache
     });
 
     // Cross-tab and in-app synchronization listeners

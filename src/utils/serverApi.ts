@@ -1,4 +1,4 @@
-// Server API client for local container storage & sync
+// Server API client for local container storage & Supabase Cloud sync
 import {
   Member,
   BloodDonor,
@@ -22,8 +22,17 @@ export interface ServerDatabasePayload {
   updatedAt?: string;
 }
 
+export interface SupabaseStatusResponse {
+  isConfigured: boolean;
+  url?: string;
+  connected: boolean;
+  tableExists: boolean;
+  count?: number;
+  message: string;
+}
+
 /**
- * Fetch full persisted database state from Express backend / local storage
+ * Fetch full persisted database state from Express backend / Supabase Cloud
  */
 export async function fetchServerDatabase(): Promise<ServerDatabasePayload | null> {
   try {
@@ -54,7 +63,7 @@ export async function fetchServerDatabase(): Promise<ServerDatabasePayload | nul
 }
 
 /**
- * Push specific key update to local server in background
+ * Push specific key update to server and Supabase in background
  */
 export async function syncKeyToServer(
   key:
@@ -87,6 +96,112 @@ export async function syncKeyToServer(
   } catch (error) {
     // Non-blocking catch for offline/client-only modes
     return false;
+  }
+}
+
+/**
+ * Fetch Supabase cloud database status and connectivity
+ */
+export async function fetchSupabaseStatus(): Promise<SupabaseStatusResponse> {
+  try {
+    const response = await fetch('/api/supabase/status', {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    if (response.ok) {
+      return await response.json();
+    }
+    return {
+      isConfigured: false,
+      connected: false,
+      tableExists: false,
+      message: 'সার্ভারের সাথে সংযোগ স্থাপন করা সম্ভব হয়নি।'
+    };
+  } catch (e: any) {
+    return {
+      isConfigured: false,
+      connected: false,
+      tableExists: false,
+      message: `সংযোগ ত্রুটি: ${e.message || e}`
+    };
+  }
+}
+
+/**
+ * Save Supabase configuration URL & Key
+ */
+export async function saveSupabaseConfig(url: string, key: string): Promise<{
+  success: boolean;
+  message: string;
+  test?: any;
+}> {
+  try {
+    const response = await fetch('/api/supabase/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, key })
+    });
+    const result = await response.json();
+    return {
+      success: Boolean(result.success),
+      message: result.message || (result.success ? 'সফলভাবে সংরক্ষিত!' : 'সংরক্ষণ ব্যর্থ হয়েছে।'),
+      test: result.test
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      message: `রিকোয়েস্ট ত্রুটি: ${e.message || e}`
+    };
+  }
+}
+
+/**
+ * Manually trigger complete sync from server database to Supabase cloud
+ */
+export async function syncAllToSupabaseCloud(): Promise<{ success: boolean; message: string; count?: number }> {
+  try {
+    const response = await fetch('/api/supabase/sync-to-cloud', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const result = await response.json();
+    return {
+      success: Boolean(result.success),
+      message: result.message || '',
+      count: result.count
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      message: `ক্লাউড সিঙ্ক ত্রুটি: ${e.message || e}`
+    };
+  }
+}
+
+/**
+ * Manually trigger complete sync from Supabase cloud into app/server
+ */
+export async function syncAllFromSupabaseCloud(): Promise<{
+  success: boolean;
+  message: string;
+  data?: ServerDatabasePayload;
+}> {
+  try {
+    const response = await fetch('/api/supabase/sync-from-cloud', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const result = await response.json();
+    return {
+      success: Boolean(result.success),
+      message: result.message || '',
+      data: result.data
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      message: `ক্লাউড ফেচ ত্রুটি: ${e.message || e}`
+    };
   }
 }
 
