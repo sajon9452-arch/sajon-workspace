@@ -9,7 +9,10 @@ import {
   OrganizationProfile, 
   PaymentStatus, 
   PaymentGatewayConfig,
-  SupportReportItem
+  SupportReportItem,
+  HomeSlide,
+  HumanitarianActivity,
+  OrganizationRule
 } from './types';
 import { 
   loadMembers, 
@@ -28,6 +31,12 @@ import {
   savePaymentSettings,
   loadSupportReports,
   saveSupportReports,
+  loadHomeSlides,
+  saveHomeSlides,
+  loadHumanitarianActivities,
+  saveHumanitarianActivities,
+  loadOrganizationRules,
+  saveOrganizationRules,
   populateLocalStorageFromServer, 
   resetAllData, 
   clearAllData,
@@ -62,6 +71,10 @@ export default function App() {
   const [notices, setNotices] = useState<Notice[]>(() => loadNotices());
   const [funds, setFunds] = useState<FundRecord[]>(() => loadFunds());
   const [supportReports, setSupportReports] = useState<SupportReportItem[]>(() => loadSupportReports());
+  const [homeSlides, setHomeSlides] = useState<HomeSlide[]>(() => loadHomeSlides());
+  const [humanitarianActivities, setHumanitarianActivities] = useState<HumanitarianActivity[]>(() => loadHumanitarianActivities());
+  const [organizationRules, setOrganizationRules] = useState<OrganizationRule[]>(() => loadOrganizationRules());
+  const [adminActiveTab, setAdminActiveTab] = useState<'overview' | 'homepage' | 'members' | 'donors' | 'funds' | 'notices' | 'payments' | 'reports' | 'settings'>('overview');
   const [manualTotalBalance, setManualTotalBalance] = useState<number | null>(() => loadManualTotalBalance());
   const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(() => loadPaymentSettings());
   const [selectedBloodGroupFilter, setSelectedBloodGroupFilter] = useState<string>('all');
@@ -83,6 +96,9 @@ export default function App() {
       setNotices(loadNotices());
       setFunds(loadFunds());
       setSupportReports(loadSupportReports());
+      setHomeSlides(loadHomeSlides());
+      setHumanitarianActivities(loadHumanitarianActivities());
+      setOrganizationRules(loadOrganizationRules());
       setManualTotalBalance(loadManualTotalBalance());
       setPaymentConfig(loadPaymentSettings());
     };
@@ -96,6 +112,9 @@ export default function App() {
         if (Array.isArray(serverData.notices)) setNotices(serverData.notices);
         if (Array.isArray(serverData.funds)) setFunds(serverData.funds);
         if (Array.isArray(serverData.supportReports)) setSupportReports(serverData.supportReports);
+        if (Array.isArray(serverData.homeSlides)) setHomeSlides(serverData.homeSlides);
+        if (Array.isArray(serverData.humanitarianActivities)) setHumanitarianActivities(serverData.humanitarianActivities);
+        if (Array.isArray(serverData.organizationRules)) setOrganizationRules(serverData.organizationRules);
         if (serverData.manualTotalBalance !== undefined) setManualTotalBalance(serverData.manualTotalBalance);
         if (serverData.paymentConfig) setPaymentConfig(serverData.paymentConfig);
         populateLocalStorageFromServer(serverData, true);
@@ -337,6 +356,25 @@ export default function App() {
     syncKeyToServer('manualTotalBalance', val).catch(() => {});
   };
 
+  // Home Page Dynamic Section Handlers
+  const handleUpdateHomeSlides = (updated: HomeSlide[]) => {
+    setHomeSlides(updated);
+    saveHomeSlides(updated);
+    syncKeyToServer('homeSlides', updated).catch(() => {});
+  };
+
+  const handleUpdateHumanitarianActivities = (updated: HumanitarianActivity[]) => {
+    setHumanitarianActivities(updated);
+    saveHumanitarianActivities(updated);
+    syncKeyToServer('humanitarianActivities', updated).catch(() => {});
+  };
+
+  const handleUpdateOrganizationRules = (updated: OrganizationRule[]) => {
+    setOrganizationRules(updated);
+    saveOrganizationRules(updated);
+    syncKeyToServer('organizationRules', updated).catch(() => {});
+  };
+
   const handleResetData = () => {
     if (confirm('আপনি কি সকল ডাটা রিসেট করে ডিফল্ট অবস্থায় ফিরিয়ে নিতে চান?')) {
       resetAllData();
@@ -405,6 +443,14 @@ export default function App() {
             isAdmin={isAdmin}
             openAdminModal={() => setIsAdminModalOpen(true)}
             openEmergencyModal={() => setIsEmergencyModalOpen(true)}
+            homeSlides={homeSlides}
+            humanitarianActivities={humanitarianActivities}
+            organizationRules={organizationRules}
+            onNavigateAdminTab={(tab) => {
+              setAdminActiveTab(tab);
+              setActiveScreen('admin');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
         )}
 
@@ -509,6 +555,13 @@ export default function App() {
             isAdmin={isAdmin}
             setIsAdmin={setIsAdmin}
             onBack={() => setActiveScreen('home')}
+            homeSlides={homeSlides}
+            onUpdateHomeSlides={handleUpdateHomeSlides}
+            humanitarianActivities={humanitarianActivities}
+            onUpdateHumanitarianActivities={handleUpdateHumanitarianActivities}
+            organizationRules={organizationRules}
+            onUpdateOrganizationRules={handleUpdateOrganizationRules}
+            initialActiveTab={adminActiveTab}
           />
         )}
       </main>

@@ -6,7 +6,10 @@ import {
   FundRecord,
   OrganizationProfile,
   PaymentGatewayConfig,
-  SupportReportItem
+  SupportReportItem,
+  HomeSlide,
+  HumanitarianActivity,
+  OrganizationRule
 } from '../types';
 
 export interface ServerDatabasePayload {
@@ -18,6 +21,9 @@ export interface ServerDatabasePayload {
   manualTotalBalance?: number | null;
   paymentConfig?: PaymentGatewayConfig;
   supportReports?: SupportReportItem[];
+  homeSlides?: HomeSlide[];
+  humanitarianActivities?: HumanitarianActivity[];
+  organizationRules?: OrganizationRule[];
   adminPin?: string;
   updatedAt?: string;
 }
@@ -75,6 +81,9 @@ export async function syncKeyToServer(
     | 'manualTotalBalance'
     | 'paymentConfig'
     | 'supportReports'
+    | 'homeSlides'
+    | 'humanitarianActivities'
+    | 'organizationRules'
     | 'adminPin',
   value: any
 ): Promise<boolean> {

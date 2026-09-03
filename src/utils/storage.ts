@@ -1,5 +1,5 @@
-import { Member, BloodDonor, Notice, FundRecord, OrganizationProfile, PaymentGatewayConfig, SupportReportItem } from '../types';
-import { INITIAL_MEMBERS, INITIAL_DONORS, INITIAL_NOTICES, INITIAL_FUNDS, INITIAL_ORG_PROFILE, INITIAL_SUPPORT_REPORTS } from '../data/initialData';
+import { Member, BloodDonor, Notice, FundRecord, OrganizationProfile, PaymentGatewayConfig, SupportReportItem, HomeSlide, HumanitarianActivity, OrganizationRule } from '../types';
+import { INITIAL_MEMBERS, INITIAL_DONORS, INITIAL_NOTICES, INITIAL_FUNDS, INITIAL_ORG_PROFILE, INITIAL_SUPPORT_REPORTS, INITIAL_HOME_SLIDES, INITIAL_HUMANITARIAN_ACTIVITIES, INITIAL_ORGANIZATION_RULES } from '../data/initialData';
 import { syncKeyToServer, resetServerDatabase, clearServerDatabase, ServerDatabasePayload } from './serverApi';
 
 export const STORAGE_KEYS = {
@@ -12,6 +12,9 @@ export const STORAGE_KEYS = {
   ADMIN_PIN: 'pms_admin_pin_v2',
   PAYMENT_SETTINGS: 'pms_payment_settings_v2',
   SUPPORT_REPORTS: 'pms_support_reports_v2',
+  HOME_SLIDES: 'pms_home_slides_v2',
+  HUMANITARIAN_ACTIVITIES: 'pms_humanitarian_activities_v2',
+  ORGANIZATION_RULES: 'pms_organization_rules_v2',
 };
 
 export const PMS_SYNC_CHANNEL_NAME = 'pms_realtime_sync_channel';
@@ -122,6 +125,36 @@ export function populateLocalStorageFromServer(
       if (serverDb.supportReports.length > 0 || allowEmptyOverride || !current) {
         if (current !== incoming) {
           localStorage.setItem(STORAGE_KEYS.SUPPORT_REPORTS, incoming);
+          hasChanged = true;
+        }
+      }
+    }
+    if (Array.isArray(serverDb.homeSlides)) {
+      const current = localStorage.getItem(STORAGE_KEYS.HOME_SLIDES);
+      const incoming = JSON.stringify(serverDb.homeSlides);
+      if (serverDb.homeSlides.length > 0 || allowEmptyOverride || !current) {
+        if (current !== incoming) {
+          localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, incoming);
+          hasChanged = true;
+        }
+      }
+    }
+    if (Array.isArray(serverDb.humanitarianActivities)) {
+      const current = localStorage.getItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES);
+      const incoming = JSON.stringify(serverDb.humanitarianActivities);
+      if (serverDb.humanitarianActivities.length > 0 || allowEmptyOverride || !current) {
+        if (current !== incoming) {
+          localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, incoming);
+          hasChanged = true;
+        }
+      }
+    }
+    if (Array.isArray(serverDb.organizationRules)) {
+      const current = localStorage.getItem(STORAGE_KEYS.ORGANIZATION_RULES);
+      const incoming = JSON.stringify(serverDb.organizationRules);
+      if (serverDb.organizationRules.length > 0 || allowEmptyOverride || !current) {
+        if (current !== incoming) {
+          localStorage.setItem(STORAGE_KEYS.ORGANIZATION_RULES, incoming);
           hasChanged = true;
         }
       }
@@ -417,6 +450,84 @@ export function saveSupportReports(reports: SupportReportItem[]): void {
   }
 }
 
+// Home Slides Storage
+export function loadHomeSlides(): HomeSlide[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.HOME_SLIDES);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Error loading home slides', e);
+  }
+  return INITIAL_HOME_SLIDES;
+}
+
+export function saveHomeSlides(slides: HomeSlide[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, JSON.stringify(slides));
+    notifyDataChange(STORAGE_KEYS.HOME_SLIDES, slides);
+    syncKeyToServer('homeSlides', slides);
+  } catch (e) {
+    console.error('Error saving home slides', e);
+  }
+}
+
+// Humanitarian Activities Storage
+export function loadHumanitarianActivities(): HumanitarianActivity[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Error loading humanitarian activities', e);
+  }
+  return INITIAL_HUMANITARIAN_ACTIVITIES;
+}
+
+export function saveHumanitarianActivities(activities: HumanitarianActivity[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, JSON.stringify(activities));
+    notifyDataChange(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, activities);
+    syncKeyToServer('humanitarianActivities', activities);
+  } catch (e) {
+    console.error('Error saving humanitarian activities', e);
+  }
+}
+
+// Organization Rules Storage
+export function loadOrganizationRules(): OrganizationRule[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.ORGANIZATION_RULES);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Error loading organization rules', e);
+  }
+  return INITIAL_ORGANIZATION_RULES;
+}
+
+export function saveOrganizationRules(rules: OrganizationRule[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.ORGANIZATION_RULES, JSON.stringify(rules));
+    notifyDataChange(STORAGE_KEYS.ORGANIZATION_RULES, rules);
+    syncKeyToServer('organizationRules', rules);
+  } catch (e) {
+    console.error('Error saving organization rules', e);
+  }
+}
+
 // Reset all data to default initial state
 export function resetAllData(): void {
   localStorage.removeItem(STORAGE_KEYS.PROFILE);
@@ -425,6 +536,9 @@ export function resetAllData(): void {
   localStorage.removeItem(STORAGE_KEYS.NOTICES);
   localStorage.removeItem(STORAGE_KEYS.FUNDS);
   localStorage.removeItem(STORAGE_KEYS.SUPPORT_REPORTS);
+  localStorage.removeItem(STORAGE_KEYS.HOME_SLIDES);
+  localStorage.removeItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES);
+  localStorage.removeItem(STORAGE_KEYS.ORGANIZATION_RULES);
   localStorage.removeItem(STORAGE_KEYS.TOTAL_ORG_BALANCE);
   notifyDataChange('RESET_ALL');
   resetServerDatabase();
@@ -437,6 +551,9 @@ export function clearAllData(): void {
   localStorage.setItem(STORAGE_KEYS.NOTICES, JSON.stringify([]));
   localStorage.setItem(STORAGE_KEYS.FUNDS, JSON.stringify([]));
   localStorage.setItem(STORAGE_KEYS.SUPPORT_REPORTS, JSON.stringify([]));
+  localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, JSON.stringify([]));
+  localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, JSON.stringify([]));
+  localStorage.setItem(STORAGE_KEYS.ORGANIZATION_RULES, JSON.stringify([]));
   localStorage.removeItem(STORAGE_KEYS.TOTAL_ORG_BALANCE);
   notifyDataChange('CLEAR_ALL');
   clearServerDatabase();

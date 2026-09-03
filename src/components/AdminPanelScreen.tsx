@@ -55,8 +55,12 @@ import {
   BloodGroup,
   PaymentGatewayConfig,
   PaymentStatus,
-  SupportReportItem
+  SupportReportItem,
+  HomeSlide,
+  HumanitarianActivity,
+  OrganizationRule
 } from '../types';
+import { AdminHomePageManager } from './AdminHomePageManager';
 import {
   toBengaliNumber,
   formatTaka,
@@ -122,6 +126,13 @@ interface AdminPanelScreenProps {
   setIsAdmin?: (val: boolean) => void;
   onBack: () => void;
   activeScreen?: string;
+  homeSlides?: HomeSlide[];
+  onUpdateHomeSlides?: (slides: HomeSlide[]) => void;
+  humanitarianActivities?: HumanitarianActivity[];
+  onUpdateHumanitarianActivities?: (activities: HumanitarianActivity[]) => void;
+  organizationRules?: OrganizationRule[];
+  onUpdateOrganizationRules?: (rules: OrganizationRule[]) => void;
+  initialActiveTab?: 'overview' | 'homepage' | 'members' | 'donors' | 'funds' | 'notices' | 'payments' | 'reports' | 'settings';
 }
 
 export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
@@ -160,8 +171,21 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   isAdmin,
   setIsAdmin,
   onBack,
+  homeSlides = [],
+  onUpdateHomeSlides,
+  humanitarianActivities = [],
+  onUpdateHumanitarianActivities,
+  organizationRules = [],
+  onUpdateOrganizationRules,
+  initialActiveTab
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'donors' | 'funds' | 'notices' | 'payments' | 'reports' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'homepage' | 'members' | 'donors' | 'funds' | 'notices' | 'payments' | 'reports' | 'settings'>(initialActiveTab || 'overview');
+
+  useEffect(() => {
+    if (initialActiveTab) {
+      setActiveTab(initialActiveTab);
+    }
+  }, [initialActiveTab]);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [paymentPreviewTab, setPaymentPreviewTab] = useState<'bkash' | 'nagad' | 'rocket'>('bkash');
@@ -1207,6 +1231,20 @@ CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WIT
         >
           <TrendingUp className="w-4 h-4" />
           <span>ওভারভিউ</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('homepage')}
+          id="admin-tab-homepage"
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+            activeTab === 'homepage'
+              ? 'bg-emerald-700 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-amber-300" />
+          <span>হোম পেজ সেটিংস</span>
+          <span className="text-[10px] bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded-full font-bold">নতুন</span>
         </button>
 
         <button
@@ -3376,6 +3414,22 @@ CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WIT
             )}
           </div>
         </div>
+      )}
+
+      {/* TAB: HOMEPAGE SETTINGS */}
+      {activeTab === 'homepage' && (
+        <AdminHomePageManager
+          slides={homeSlides}
+          onUpdateSlides={onUpdateHomeSlides || (() => {})}
+          activities={humanitarianActivities}
+          onUpdateActivities={onUpdateHumanitarianActivities || (() => {})}
+          rules={organizationRules}
+          onUpdateRules={onUpdateOrganizationRules || (() => {})}
+          profile={profile}
+          onUpdateProfile={onUpdateProfile || (() => {})}
+          notifySuccess={notifySuccess}
+          notifyError={notifyError}
+        />
       )}
 
       {/* MEMBER MODAL (Add / Edit) */}

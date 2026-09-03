@@ -105,6 +105,41 @@ export interface OrganizationProfile {
   regNumber?: string;
   email?: string;
   logoUrl?: string;
+  facebookUrl?: string;
+  youtubeUrl?: string;
+}
+
+export interface HomeSlide {
+  id: string;
+  imageUrl: string;
+  title: string;
+  description?: string;
+  category?: string;
+  date?: string;
+  location?: string;
+  isActive?: boolean;
+}
+
+export interface HumanitarianActivity {
+  id: string;
+  title: string;
+  description: string;
+  itemsGiven?: string;
+  cost: number;
+  handledBy: string;
+  recipientName?: string;
+  recipientPhotoUrl?: string;
+  date?: string;
+  location?: string;
+  isFeatured?: boolean;
+}
+
+export interface OrganizationRule {
+  id: string;
+  pointNumber?: number | string;
+  ruleText: string;
+  category?: string;
+  isActive?: boolean;
 }
 
 export interface OrganizationStats {
