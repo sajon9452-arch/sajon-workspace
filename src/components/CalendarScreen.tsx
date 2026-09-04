@@ -25,8 +25,7 @@ import {
   ExternalLink,
   X,
   Share2,
-  Gift,
-  Droplet
+  ArrowRight
 } from 'lucide-react';
 import { 
   BANGLADESH_HOLIDAYS_2026, 
@@ -72,8 +71,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     return Math.min(11, Math.max(0, m));
   });
 
-  // Active View Tab: 'calendar' | 'orgEvents' | 'holidays'
-  const [activeViewTab, setActiveViewTab] = useState<'calendar' | 'orgEvents' | 'holidays'>('calendar');
+  // Active View Tab: 'calendar' | 'holidays'
+  const [activeViewTab, setActiveViewTab] = useState<'calendar' | 'holidays'>('calendar');
 
   // Selected Day for Detail Modal
   const [selectedDayInfo, setSelectedDayInfo] = useState<DayCalendarInfo | null>(null);
@@ -84,10 +83,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   // Holiday Tab Filter: 'all' | 'general' | 'executive' | 'upcoming'
   const [holidayFilter, setHolidayFilter] = useState<'all' | 'general' | 'executive' | 'upcoming'>('all');
 
-  // Org Event Category Filter
-  const [orgEventCategoryFilter, setOrgEventCategoryFilter] = useState<string>('all');
-
-  // Search keyword for events/holidays
+  // Search keyword for holidays & dates
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Month filter for holiday/events list
@@ -153,40 +149,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const handleGoToCurrentMonth = () => {
     setSelectedMonth(realDate.getMonth());
   };
-
-  // Filtered Org Events
-  const filteredOrgEvents = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    const todayStr = `${realDate.getFullYear()}-${String(realDate.getMonth() + 1).padStart(2, '0')}-${String(realDate.getDate()).padStart(2, '0')}`;
-
-    return allOrgEvents.filter((ev) => {
-      // Month filter
-      if (selectedListMonth !== 'all') {
-        const evMonth = parseInt(ev.dateStr.split('-')[1], 10) - 1;
-        if (evMonth !== selectedListMonth) return false;
-      }
-
-      // Category filter
-      if (orgEventCategoryFilter !== 'all') {
-        if (orgEventCategoryFilter === 'upcoming') {
-          if (ev.dateStr < todayStr) return false;
-        } else if (ev.category !== orgEventCategoryFilter) {
-          return false;
-        }
-      }
-
-      // Query filter
-      if (query) {
-        const matchTitle = ev.title.toLowerCase().includes(query);
-        const matchDesc = ev.description.toLowerCase().includes(query);
-        const matchLoc = ev.location ? ev.location.toLowerCase().includes(query) : false;
-        const matchOrg = ev.organizer ? ev.organizer.toLowerCase().includes(query) : false;
-        if (!matchTitle && !matchDesc && !matchLoc && !matchOrg) return false;
-      }
-
-      return true;
-    });
-  }, [allOrgEvents, selectedListMonth, orgEventCategoryFilter, searchQuery, realDate]);
 
   // Filtered Holidays
   const filteredHolidays = useMemo(() => {
@@ -278,10 +240,23 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       {/* =========================================================================
           SECTION 1: BRANDING HEADER (সিলট মানব সেবা সংগঠন Official Calendar Header)
       ========================================================================== */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-950 text-white rounded-3xl p-5 sm:p-7 shadow-lg border border-emerald-700/60">
+      <div className="relative overflow-hidden text-white rounded-3xl p-5 sm:p-7 shadow-xl border border-emerald-700/60 bg-emerald-950">
+        {/* Humanitarian Activity Photographic Background */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-transform duration-700 scale-105"
+          style={{
+            backgroundImage: `url('https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=1920&q=85')`,
+            backgroundPosition: 'center 40%'
+          }}
+          aria-hidden="true"
+        />
+
+        {/* Semi-transparent Emerald / Teal Protective Gradient Overlay (guarantees crystal-clear legibility of all white and yellow/amber text) */}
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/92 via-emerald-900/88 to-teal-950/94 backdrop-blur-[1.5px]" />
+
         {/* Soft Background Accents */}
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-1/3 -mb-10 w-48 h-48 rounded-full bg-amber-400/10 blur-2xl pointer-events-none" />
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-72 h-72 rounded-full bg-emerald-500/15 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 -mb-10 w-56 h-56 rounded-full bg-amber-400/10 blur-2xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           {/* Organization Identity & Title */}
@@ -401,24 +376,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveViewTab('orgEvents')}
-            id="tab-view-org-events"
-            className={`px-4 py-2 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-              activeViewTab === 'orgEvents'
-                ? 'bg-emerald-700 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>২. সংগঠনের কর্মসূচি ও সভা</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-              activeViewTab === 'orgEvents' ? 'bg-amber-400 text-slate-950' : 'bg-slate-200 text-slate-700'
-            }`}>
-              {toBengaliNumber(allOrgEvents.length)}
-            </span>
-          </button>
-
-          <button
             onClick={() => setActiveViewTab('holidays')}
             id="tab-view-holidays"
             className={`px-4 py-2 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
@@ -428,7 +385,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             }`}
           >
             <Flame className="w-4 h-4 text-rose-500" />
-            <span>৩. সরকারি ছুটির গেজেট</span>
+            <span>২. সরকারি ছুটির গেজেট</span>
             <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
               activeViewTab === 'holidays' ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-700'
             }`}>
@@ -444,20 +401,39 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="কর্মসূচি, সভা বা ছুটি খুঁজুন..."
+            placeholder="ছুটি বা বিশেষ দিন খুঁজুন..."
             id="calendar-search-input"
             className="w-full pl-9.5 pr-8 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white transition"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
       </div>
+
+      {/* Clean Search Results Feedback (when searching in calendar view) */}
+      {searchQuery.trim() && activeViewTab === 'calendar' && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+            <span className="text-xs text-emerald-900 font-bold">
+              "{searchQuery}" অনুসন্ধান: {toBengaliNumber(filteredHolidays.length)} টি সরকারি ছুটি ও দিবস পাওয়া গেছে
+            </span>
+          </div>
+          <button
+            onClick={() => setActiveViewTab('holidays')}
+            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer self-start sm:self-auto shadow-2xs"
+          >
+            <span>ছুটির তালিকায় দেখুন</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* =========================================================================
           VIEW TAB 1: CALENDAR GRID DISPLAY (Redesigned & Mobile Friendly)
@@ -764,263 +740,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       )}
 
       {/* =========================================================================
-          VIEW TAB 2: ORGANIZATIONAL EVENTS & SCHEDULES (সাংগঠনিক কর্মসূচি ও সভার সময়সূচি)
-      ========================================================================== */}
-      {activeViewTab === 'orgEvents' && (
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-5">
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-slate-100">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
-                <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
-                  <span>সাংগঠনিক কার্যক্রম ও সভার সময়সূচি ২০২৬</span>
-                  <span className="text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                    মোট {toBengaliNumber(allOrgEvents.length)} টি নির্ধারিত কর্মসূচি
-                  </span>
-                </h3>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                ত্রাণ বিতরণ, জরুরি সভা, ফ্রি রক্তদান ক্যাম্প ও মানবকল্যাণমূলক কর্মসূচির বার্ষিক সূচি
-              </p>
-            </div>
-
-            {/* Spotlight Banner */}
-            {nextOrgEvent && (
-              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-3 flex items-center gap-3 self-start md:self-auto shadow-2xs">
-                <div className="w-10 h-10 rounded-xl bg-emerald-700 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
-                  <CalendarCheck className="w-5 h-5 text-amber-300" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wide block">
-                    পরবর্তী আসন্ন কর্মসূচি
-                  </span>
-                  <span className="text-xs font-bold text-slate-900 block truncate max-w-[220px]">
-                    {nextOrgEvent.title}
-                  </span>
-                  <span className="text-[10px] text-emerald-700 font-semibold">
-                    {nextOrgEvent.dateStr} • {nextOrgEvent.time || 'নির্ধারিত সময়ে'}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Filter Bar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            {/* Category Filter Pills */}
-            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-2xl">
-              <button
-                onClick={() => setOrgEventCategoryFilter('all')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  orgEventCategoryFilter === 'all'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                সকল ({toBengaliNumber(allOrgEvents.length)})
-              </button>
-
-              <button
-                onClick={() => setOrgEventCategoryFilter('upcoming')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  orgEventCategoryFilter === 'upcoming'
-                    ? 'bg-emerald-700 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                আসন্ন সূচি
-              </button>
-
-              <button
-                onClick={() => setOrgEventCategoryFilter('relief')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  orgEventCategoryFilter === 'relief'
-                    ? 'bg-emerald-700 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                ত্রাণ ও বিতরণ
-              </button>
-
-              <button
-                onClick={() => setOrgEventCategoryFilter('meeting')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  orgEventCategoryFilter === 'meeting'
-                    ? 'bg-emerald-700 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                কার্যনির্বাহী সভা
-              </button>
-
-              <button
-                onClick={() => setOrgEventCategoryFilter('blood')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  orgEventCategoryFilter === 'blood'
-                    ? 'bg-rose-700 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                রক্তদান ক্যাম্প
-              </button>
-            </div>
-
-            {/* Month Filter Dropdown */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-medium whitespace-nowrap">মাস অনুযায়ী:</span>
-              <select
-                value={selectedListMonth}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedListMonth(val === 'all' ? 'all' : parseInt(val, 10));
-                }}
-                className="text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-              >
-                <option value="all">পুরো বছর (সব মাস)</option>
-                {MONTH_NAMES_BN.map((name, idx) => (
-                  <option key={idx} value={idx}>
-                    {name} ২০২৬
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Events Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredOrgEvents.map((event) => {
-              const eventDate = new Date(event.dateStr);
-              const countdown = getDaysRemainingText(event.dateStr);
-              const bangla = getBanglaDate(eventDate);
-
-              return (
-                <div
-                  key={event.id}
-                  id={`org-event-card-${event.id}`}
-                  className="bg-slate-50/80 hover:bg-white rounded-3xl p-5 border border-slate-200 hover:border-emerald-400 transition-all shadow-2xs hover:shadow-md flex flex-col justify-between gap-3 group"
-                >
-                  <div>
-                    {/* Header Row: Category Badge & Countdown */}
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border flex items-center gap-1.5 ${
-                        event.category === 'relief'
-                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                          : event.category === 'blood'
-                          ? 'bg-rose-100 text-rose-900 border-rose-300'
-                          : event.category === 'meeting'
-                          ? 'bg-blue-100 text-blue-900 border-blue-300'
-                          : 'bg-amber-100 text-amber-900 border-amber-300'
-                      }`}>
-                        {event.category === 'relief' && <Gift className="w-3 h-3 text-emerald-700" />}
-                        {event.category === 'blood' && <Droplet className="w-3 h-3 text-rose-600 fill-current" />}
-                        {event.category === 'meeting' && <Users className="w-3 h-3 text-blue-700" />}
-                        {event.categoryLabelBn}
-                      </span>
-
-                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
-                        countdown.status === 'today'
-                          ? 'bg-emerald-600 text-white animate-pulse'
-                          : countdown.status === 'tomorrow'
-                          ? 'bg-amber-500 text-white'
-                          : countdown.status === 'future'
-                          ? 'bg-slate-200 text-slate-800'
-                          : 'bg-slate-100 text-slate-400'
-                      }`}>
-                        {countdown.text}
-                      </span>
-                    </div>
-
-                    {/* Title */}
-                    <h4 className="text-base sm:text-lg font-bold text-slate-900 leading-snug group-hover:text-emerald-800 transition-colors">
-                      {event.title}
-                    </h4>
-
-                    {/* Description */}
-                    <p className="text-xs text-slate-600 mt-2 leading-relaxed bg-white/80 p-2.5 rounded-2xl border border-slate-100">
-                      {event.description}
-                    </p>
-
-                    {/* Key Info Points */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-xs text-slate-600">
-                      {event.location && (
-                        <div className="flex items-start gap-1.5">
-                          <MapPin className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                          <span className="truncate">{event.location}</span>
-                        </div>
-                      )}
-                      {event.time && (
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                          <span>{event.time}</span>
-                        </div>
-                      )}
-                      {event.organizer && (
-                        <div className="flex items-center gap-1.5">
-                          <ShieldCheck className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
-                          <span className="truncate">{event.organizer}</span>
-                        </div>
-                      )}
-                      {event.targetBeneficiaries && (
-                        <div className="flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-                          <span className="truncate">{event.targetBeneficiaries}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Footer Row: Date & Action */}
-                  <div className="pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-1.5 text-slate-900 font-bold">
-                      <CalendarDays className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span>
-                        {toBengaliNumber(eventDate.getDate())} {MONTH_NAMES_BN[eventDate.getMonth()]}, ২০২৬
-                      </span>
-                      <span className="text-[11px] text-slate-400 font-normal">
-                        ({toBengaliNumber(bangla.day)} {bangla.monthNameBn})
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        const day = monthDays.find(d => d.dateStr === event.dateStr) || {
-                          date: eventDate,
-                          dateStr: event.dateStr,
-                          dayOfMonth: eventDate.getDate(),
-                          dayOfWeek: eventDate.getDay(),
-                          dayNameBn: DAY_NAMES_BN[eventDate.getDay()],
-                          dayNameShortBn: DAY_NAMES_SHORT_BN[eventDate.getDay()],
-                          isWeekend: eventDate.getDay() === 5 || eventDate.getDay() === 6,
-                          bangla,
-                          hijri: { day: 1, monthNameBn: '', year: 1447 },
-                          holidays: [],
-                          isToday: false,
-                        };
-                        setSelectedDayInfo(day);
-                      }}
-                      className="px-3 py-1 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 text-xs font-bold rounded-xl border border-emerald-200 transition cursor-pointer"
-                    >
-                      ক্যালেন্ডারে দেখুন
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {filteredOrgEvents.length === 0 && (
-            <div className="text-center py-12 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-              <Users className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-              <h4 className="text-sm font-bold text-slate-700">কোনো কর্মসূচি পাওয়া যায়নি</h4>
-              <p className="text-xs text-slate-500 mt-1">ফিল্টার পরিবর্তন করে বা অন্য কিওয়ার্ড দিয়ে অনুসন্ধান করুন।</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* =========================================================================
-          VIEW TAB 3: GOVERNMENT PUBLIC HOLIDAYS (সরকারি ছুটি ২০২৬)
+          VIEW TAB 2: GOVERNMENT PUBLIC HOLIDAYS (সরকারি ছুটি ২০২৬)
       ========================================================================== */}
       {activeViewTab === 'holidays' && (
         <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-5">

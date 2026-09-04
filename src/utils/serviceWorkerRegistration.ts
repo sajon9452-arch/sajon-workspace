@@ -8,6 +8,26 @@ export interface ServiceWorkerConfig {
 export function registerServiceWorker(config?: ServiceWorkerConfig): void {
   if (typeof window === 'undefined') return;
 
+  // In development mode, unregister any active service worker and purge caches
+  // to avoid caching stale Vite modules or duplicating React runtime instances.
+  if (import.meta.env.DEV) {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const reg of registrations) {
+          reg.unregister().then(() => {
+            console.log('[SW] Unregistered development service worker:', reg.scope);
+          });
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then((keys) => {
+        keys.forEach((key) => caches.delete(key));
+      });
+    }
+    return;
+  }
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       const swUrl = '/sw.js';

@@ -1,7 +1,7 @@
 // Service Worker for সিলেট মানব সেবা সংগঠন PWA
 // Provides offline caching for static assets, Google Fonts, Calendar, Holidays, and App Shell
 
-const CACHE_NAME = 'pms-app-cache-v1';
+const CACHE_NAME = 'pms-app-cache-v3';
 
 // Core assets to pre-cache on install
 const PRECACHE_ASSETS = [
@@ -43,11 +43,17 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests, chrome extensions, or backend API sync endpoints
+  // Skip non-GET requests, chrome extensions, dev server endpoints, and backend API sync endpoints
   if (
     request.method !== 'GET' ||
     url.protocol.startsWith('chrome-extension') ||
-    url.pathname.startsWith('/api/')
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.includes('/node_modules/') ||
+    url.pathname.includes('hot-update') ||
+    url.search.includes('v=') ||
+    url.search.includes('t=')
   ) {
     return;
   }
@@ -159,5 +165,10 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  if (event.data && event.data.type === 'CLEAR_CACHE') {
+    caches.keys().then((names) => {
+      return Promise.all(names.map((n) => caches.delete(n)));
+    });
   }
 });
