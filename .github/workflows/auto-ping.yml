@@ -1,0 +1,52 @@
+name: Keep Alive Auto-Ping (Supabase & Vercel)
+
+on:
+  schedule:
+    # Run every 10 minutes (cron: */10 * * * *)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  ping:
+    name: Ping Live Web URL & Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Send keep-alive HTTP requests
+        env:
+          # Priority: GitHub Secret APP_URL -> GitHub Variable APP_URL -> Vercel/Live fallback URL
+          TARGET_URL: ${{ secrets.APP_URL || vars.APP_URL || secrets.VERCEL_URL || vars.VERCEL_URL || 'https://ais-pre-tr4vvlrrs4yxe5vwlqspwz-398319441981.asia-southeast1.run.app' }}
+        run: |
+          echo "=================================================="
+          echo "Starting Auto-Ping keep-alive at $(date -u)"
+          echo "Target base URL: ${TARGET_URL}"
+          echo "=================================================="
+
+          # Strip trailing slash if present
+          CLEAN_URL="${TARGET_URL%/}"
+
+          # 1. Ping the main frontend / homepage
+          echo "Pinging Homepage: ${CLEAN_URL}"
+          curl -s -S -L --retry 2 --max-time 25 \
+            -H "User-Agent: GitHub-Actions-AutoPing/1.0" \
+            -o /dev/null -w " -> Response Code: %{http_code} (in %{time_total}s)\n" \
+            "${CLEAN_URL}" || echo "Warning: Homepage ping returned non-zero exit code"
+
+          # 2. Ping /api/health to keep the serverless/web instance warm
+          echo "Pinging Health Endpoint: ${CLEAN_URL}/api/health"
+          curl -s -S -L --retry 2 --max-time 25 \
+            -H "User-Agent: GitHub-Actions-AutoPing/1.0" \
+            -o /dev/null -w " -> Response Code: %{http_code} (in %{time_total}s)\n" \
+            "${CLEAN_URL}/api/health" || echo "Warning: Health endpoint ping returned non-zero exit code"
+
+          # 3. Ping /api/data to query and keep the Supabase database instance active
+          echo "Pinging Data Endpoint (keeps Supabase active): ${CLEAN_URL}/api/data"
+          curl -s -S -L --retry 2 --max-time 25 \
+            -H "User-Agent: GitHub-Actions-AutoPing/1.0" \
+            -o /dev/null -w " -> Response Code: %{http_code} (in %{time_total}s)\n" \
+            "${CLEAN_URL}/api/data" || echo "Warning: Data endpoint ping returned non-zero exit code"
+
+          echo "=================================================="
+          echo "Auto-Ping completed successfully at $(date -u)"
+          echo "=================================================="
