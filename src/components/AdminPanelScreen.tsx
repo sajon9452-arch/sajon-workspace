@@ -68,7 +68,8 @@ import {
   isDonorEligible,
   formatBengaliDate,
   sanitizePhone,
-  getBloodGroupBadge
+  getBloodGroupBadge,
+  sortMembersOldestFirst
 } from '../utils/helpers';
 import {
   resetAllData,
@@ -578,11 +579,13 @@ CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WIT
       if (onAddMember) {
         await onAddMember(memberData);
       } else if (setMembers) {
+        const timestamp = Date.now();
         const newMember: Member = {
           ...memberData,
-          id: `m-${Date.now()}`
+          id: `m-${timestamp}`,
+          createdAt: new Date(timestamp).toISOString()
         };
-        setMembers(prev => [newMember, ...prev]);
+        setMembers(prev => [...prev.filter(m => m.id !== newMember.id), newMember]);
       }
       setIsAddMemberOpen(false);
       setMemberNameInput('');
@@ -1494,6 +1497,7 @@ CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WIT
               <table className="w-full text-left text-xs text-slate-700">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
                   <tr>
+                    <th className="p-3.5 w-20 text-center">ক্রমিক (#)</th>
                     <th className="p-3.5">নাম ও পদবি</th>
                     <th className="p-3.5">মোবাইল নম্বর</th>
                     <th className="p-3.5">এলাকা</th>
@@ -1503,15 +1507,24 @@ CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WIT
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {members
+                  {sortMembersOldestFirst(members)
                     .filter(m =>
                       m.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
                       m.designation.toLowerCase().includes(memberSearch.toLowerCase()) ||
                       m.phone.includes(memberSearch) ||
                       (m.area && m.area.toLowerCase().includes(memberSearch.toLowerCase()))
                     )
-                    .map((m) => (
+                    .map((m, idx) => {
+                      const allSorted = sortMembersOldestFirst(members);
+                      const serialIndex = allSorted.findIndex(item => item.id === m.id);
+                      const serialNo = serialIndex !== -1 ? serialIndex + 1 : idx + 1;
+                      return (
                       <tr key={m.id} className="hover:bg-slate-50/80 transition">
+                        <td className="p-3.5 text-center">
+                          <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200">
+                            #{toBengaliNumber(serialNo)}
+                          </span>
+                        </td>
                         <td className="p-3.5">
                           <div className="flex items-center gap-2.5">
                             <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-800 flex items-center justify-center font-bold text-xs flex-shrink-0 overflow-hidden shadow-2xs">
@@ -1563,7 +1576,8 @@ CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WIT
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

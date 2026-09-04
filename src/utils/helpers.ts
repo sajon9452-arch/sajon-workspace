@@ -1,4 +1,4 @@
-import { BloodDonor, BloodGroup } from '../types';
+import { BloodDonor, BloodGroup, Member } from '../types';
 
 // Convert English numerals to Bengali
 export function toBengaliNumber(num: number | string): string {
@@ -106,3 +106,72 @@ export function sanitizePhone(phone: string): string {
   }
   return cleaned;
 }
+
+/**
+ * Extracts addition/registration timestamp or serial order for seniority-based sorting.
+ * Ensures ascending (oldest-first) ordering so earlier members stay at the top (#1, #2...)
+ * and newly added members append at the very bottom.
+ */
+export function getMemberSortKey(member: Member, originalIndex: number = 0): number {
+  // 1. Explicit serial property
+  if (typeof member.serial === 'number' && !isNaN(member.serial)) {
+    return member.serial;
+  }
+  // 2. Explicit createdAt timestamp
+  if (member.createdAt) {
+    const time = new Date(member.createdAt).getTime();
+    if (!isNaN(time) && time > 0) return time;
+  }
+  // 3. Timestamp embedded in ID (e.g. m-1788313942545-xxxx or 1788313942545)
+  if (member.id) {
+    const tsMatch = member.id.match(/(\d{10,14})/);
+    if (tsMatch) {
+      const parsed = parseInt(tsMatch[1], 10);
+      if (!isNaN(parsed) && parsed > 1500000000) {
+        return parsed < 10000000000 ? parsed * 1000 : parsed;
+      }
+    }
+    // Sequential ID like m-1, m-2, member-1
+    const seqMatch = member.id.match(/^[a-zA-Z_-]*(\d+)$/);
+    if (seqMatch) {
+      const num = parseInt(seqMatch[1], 10);
+      if (!isNaN(num)) return num;
+    }
+  }
+  // 4. Join date if formatted YYYY-MM-DD
+  if (member.joinDate && /^\d{4}-\d{2}-\d{2}$/.test(member.joinDate)) {
+    const joinTime = new Date(member.joinDate).getTime();
+    if (!isNaN(joinTime)) return joinTime;
+  }
+  // 5. Array order index fallback
+  return originalIndex;
+}
+
+/**
+ * Sorts members in ascending (oldest-first / seniority) order:
+ * - Members who registered / were added first stay at the top of the list (starting from #1).
+ * - Newly added members are automatically appended to the very bottom.
+ * - Prevents LIFO (Last-In, First-Out) disorder to strictly maintain seniority hierarchy.
+ */
+export function sortMembersOldestFirst(members: Member[]): Member[] {
+  return [...members].sort((a, b) => {
+    // 1. Serial comparison if both have numerical serials
+    if (typeof a.serial === 'number' && typeof b.serial === 'number') {
+      return a.serial - b.serial;
+    }
+
+    // 2. Addition timestamp or ID timestamp comparison (Ascending: Oldest first)
+    const keyA = getMemberSortKey(a);
+    const keyB = getMemberSortKey(b);
+    if (keyA !== keyB) {
+      return keyA - keyB;
+    }
+
+    // 3. Fallback: joinDate or ID comparison
+    if (a.joinDate && b.joinDate && a.joinDate !== b.joinDate) {
+      return a.joinDate.localeCompare(b.joinDate);
+    }
+    return (a.id || '').localeCompare(b.id || '');
+  });
+}
+

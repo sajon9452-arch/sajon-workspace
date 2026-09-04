@@ -31,6 +31,8 @@ export interface Member {
   joinDate?: string;
   email?: string;
   status?: 'সক্রিয়' | 'স্থগিত';
+  createdAt?: string;
+  serial?: number;
 }
 
 export interface PaymentGatewayConfig {

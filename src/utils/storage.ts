@@ -1,6 +1,7 @@
 import { Member, BloodDonor, Notice, FundRecord, OrganizationProfile, PaymentGatewayConfig, SupportReportItem, HomeSlide, HumanitarianActivity, OrganizationRule } from '../types';
 import { INITIAL_MEMBERS, INITIAL_DONORS, INITIAL_NOTICES, INITIAL_FUNDS, INITIAL_ORG_PROFILE, INITIAL_SUPPORT_REPORTS, INITIAL_HOME_SLIDES, INITIAL_HUMANITARIAN_ACTIVITIES, INITIAL_ORGANIZATION_RULES } from '../data/initialData';
 import { syncKeyToServer, resetServerDatabase, clearServerDatabase, ServerDatabasePayload } from './serverApi';
+import { sortMembersOldestFirst } from './helpers';
 
 export const STORAGE_KEYS = {
   PROFILE: 'pms_profile_v2',
@@ -277,18 +278,24 @@ export function saveOrgProfile(profile: OrganizationProfile): void {
 export function loadMembers(): Member[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.MEMBERS);
-    if (saved !== null) return JSON.parse(saved);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return sortMembersOldestFirst(parsed);
+      }
+    }
   } catch (e) {
     console.error('Error loading members', e);
   }
-  return INITIAL_MEMBERS;
+  return sortMembersOldestFirst(INITIAL_MEMBERS);
 }
 
 export function saveMembers(members: Member[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
-    notifyDataChange(STORAGE_KEYS.MEMBERS, members);
-    syncKeyToServer('members', members);
+    const sorted = sortMembersOldestFirst(members);
+    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(sorted));
+    notifyDataChange(STORAGE_KEYS.MEMBERS, sorted);
+    syncKeyToServer('members', sorted);
   } catch (e) {
     console.error('Error saving members', e);
   }
@@ -566,9 +573,9 @@ export function exportSheetCSV(type: 'members' | 'donors' | 'notices' | 'fund' |
   let filename = '';
 
   if (type === 'members') {
-    headers = 'Name,Designation,Phone,BloodGroup,Area';
-    const members = loadMembers();
-    rows = members.map(m => `"${m.name}","${m.designation}","${m.phone}","${m.bloodGroup || ''}","${m.area || ''}"`);
+    headers = 'Serial_No,Name,Designation,Phone,BloodGroup,Area,JoinDate';
+    const members = sortMembersOldestFirst(loadMembers());
+    rows = members.map((m, idx) => `"${idx + 1}","${m.name}","${m.designation}","${m.phone}","${m.bloodGroup || ''}","${m.area || ''}","${m.joinDate || ''}"`);
     filename = 'Members_Sylhet_Manob_Seba.csv';
   } else if (type === 'donors') {
     headers = 'Name,Phone,BloodGroup,LastDonationDate,NextEligibleDate,Area';

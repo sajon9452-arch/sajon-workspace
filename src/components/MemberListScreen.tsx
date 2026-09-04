@@ -16,10 +16,11 @@ import {
   X,
   Upload,
   Camera,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ShieldCheck
 } from 'lucide-react';
 import { Member } from '../types';
-import { toBengaliNumber, sanitizePhone } from '../utils/helpers';
+import { toBengaliNumber, sanitizePhone, sortMembersOldestFirst } from '../utils/helpers';
 
 interface MemberListScreenProps {
   members: Member[];
@@ -68,15 +69,30 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
     }
   };
 
-  // Extract unique designations for filter
-  const designations = useMemo(() => {
-    const set = new Set(members.map(m => m.designation));
-    return Array.from(set);
+  // Strictly sort members in ascending (oldest-first) order by registration/addition time
+  // Earliest added members stay at the top (starting from #1) and new members append to the bottom
+  const sortedMembers = useMemo(() => {
+    return sortMembersOldestFirst(members);
   }, [members]);
 
-  // Filtered members list
+  // Master serial number lookup for each member respecting registration order / seniority
+  const memberSerialMap = useMemo(() => {
+    const map = new Map<string, number>();
+    sortedMembers.forEach((m, idx) => {
+      map.set(m.id, idx + 1);
+    });
+    return map;
+  }, [sortedMembers]);
+
+  // Extract unique designations for filter from sorted members
+  const designations = useMemo(() => {
+    const set = new Set(sortedMembers.map(m => m.designation));
+    return Array.from(set);
+  }, [sortedMembers]);
+
+  // Filtered members list strictly maintaining ascending / oldest-first seniority hierarchy
   const filteredMembers = useMemo(() => {
-    return members.filter(m => {
+    return sortedMembers.filter(m => {
       const matchesSearch = 
         m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         m.phone.includes(searchTerm) ||
@@ -87,7 +103,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
 
       return matchesSearch && matchesDesignation;
     });
-  }, [members, searchTerm, selectedDesignation]);
+  }, [sortedMembers, searchTerm, selectedDesignation]);
 
   const handleCopyPhone = (phoneNumber: string) => {
     navigator.clipboard.writeText(phoneNumber);
@@ -249,8 +265,15 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
 
       {/* Member Cards Grid */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between px-1 text-xs text-slate-500">
-          <span>মোট সদস্য: <strong className="text-slate-800 font-bold">{toBengaliNumber(filteredMembers.length)}</strong> জন</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 px-1 text-xs text-slate-500">
+          <div className="flex flex-wrap items-center gap-2">
+            <span>মোট সদস্য: <strong className="text-slate-800 font-bold">{toBengaliNumber(filteredMembers.length)}</strong> জন</span>
+            <span className="hidden sm:inline text-slate-300">•</span>
+            <span className="inline-flex items-center gap-1.5 text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full font-semibold border border-emerald-200/70">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              জ্যেষ্ঠতা ক্রম অনুসারে সজ্জিত (#১ থেকে শুরু)
+            </span>
+          </div>
           <span>ঠিকানা: পতেঙ্গা, চট্টগ্রাম</span>
         </div>
 
@@ -281,6 +304,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredMembers.map((member, idx) => {
               const cleanPhone = sanitizePhone(member.phone);
+              const serialNo = memberSerialMap.get(member.id) || (idx + 1);
 
               return (
                 <div
@@ -292,9 +316,26 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                   <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600"></div>
 
                   <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
+                    {/* Seniority Hierarchy & Serial Header */}
+                    <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-100">
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white text-xs font-bold shadow-2xs">
+                          <span>ক্রমিক #{toBengaliNumber(serialNo)}</span>
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-medium">
+                          (জ্যেষ্ঠতা ক্রম)
+                        </span>
+                      </div>
+                      {member.joinDate && (
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          যোগদান: {toBengaliNumber(member.joinDate)}
+                        </span>
+                      )}
+                    </div>
+
                     {/* Professional ID Card Body */}
                     <div className="flex items-start gap-4">
-                      {/* Large ID Card Portrait Photo */}
+                      {/* Large ID Card Portrait Photo with Seniority Badge */}
                       <div className="w-20 h-24 sm:w-24 sm:h-28 rounded-xl bg-gradient-to-b from-slate-50 to-slate-100 border-2 border-emerald-500/30 text-emerald-800 flex flex-col items-center justify-center font-bold flex-shrink-0 overflow-hidden shadow-xs relative">
                         {member.photoUrl ? (
                           <img
@@ -313,6 +354,9 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                             <span className="text-[10px] font-bold text-slate-400">সদস্য</span>
                           </div>
                         )}
+                        <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/65 backdrop-blur-xs text-white text-[9px] font-bold rounded-md">
+                          #{toBengaliNumber(serialNo)}
+                        </div>
                       </div>
                       
                       {/* Member Info Column */}
@@ -565,6 +609,18 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                   </button>
                 )}
               </div>
+
+              {!editingMember && (
+                <div className="p-3 bg-emerald-50/80 border border-emerald-200/80 rounded-xl text-xs text-emerald-900 flex items-start gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-emerald-950">জ্যেষ্ঠতা রক্ষা ও সিরিয়াল নীতি:</p>
+                    <p className="text-[11px] text-emerald-800 leading-relaxed">
+                      নতুন সদস্যের তথ্য তালিকার সবার শেষে (ক্রমিক #{toBengaliNumber(members.length + 1)}) যুক্ত হবে। আগের সদস্যদের জ্যেষ্ঠতা ও ক্রমিক নম্বর সম্পূর্ণ অক্ষুণ্ণ থাকবে।
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button

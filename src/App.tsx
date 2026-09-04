@@ -43,7 +43,7 @@ import {
   PMS_SYNC_EVENT_NAME
 } from './utils/storage';
 import { fetchServerDatabase, syncKeyToServer } from './utils/serverApi';
-import { isDonorEligible } from './utils/helpers';
+import { isDonorEligible, sortMembersOldestFirst } from './utils/helpers';
 import { Header } from './components/Header';
 import { HomeScreen } from './components/HomeScreen';
 import { MemberListScreen } from './components/MemberListScreen';
@@ -66,7 +66,7 @@ export default function App() {
   
   // Data States initialized from localStorage
   const [profile, setProfile] = useState<OrganizationProfile>(() => loadOrgProfile());
-  const [members, setMembers] = useState<Member[]>(() => loadMembers());
+  const [members, setMembers] = useState<Member[]>(() => sortMembersOldestFirst(loadMembers()));
   const [donors, setDonors] = useState<BloodDonor[]>(() => loadDonors());
   const [notices, setNotices] = useState<Notice[]>(() => loadNotices());
   const [funds, setFunds] = useState<FundRecord[]>(() => loadFunds());
@@ -91,7 +91,7 @@ export default function App() {
     const syncAllFromStorage = () => {
       if (!isMounted) return;
       setProfile(loadOrgProfile());
-      setMembers(loadMembers());
+      setMembers(sortMembersOldestFirst(loadMembers()));
       setDonors(loadDonors());
       setNotices(loadNotices());
       setFunds(loadFunds());
@@ -107,7 +107,7 @@ export default function App() {
     fetchServerDatabase().then((serverData) => {
       if (serverData && isMounted) {
         if (serverData.profile) setProfile(serverData.profile);
-        if (Array.isArray(serverData.members)) setMembers(serverData.members);
+        if (Array.isArray(serverData.members)) setMembers(sortMembersOldestFirst(serverData.members));
         if (Array.isArray(serverData.donors)) setDonors(serverData.donors);
         if (Array.isArray(serverData.notices)) setNotices(serverData.notices);
         if (Array.isArray(serverData.funds)) setFunds(serverData.funds);
@@ -148,16 +148,21 @@ export default function App() {
     syncKeyToServer('paymentConfig', newConfig).catch(() => {});
   };
 
-  // Member Handlers
+  // Member Handlers (Ascending / Oldest-First Seniority Ordering)
   const handleAddMember = async (newMember: Omit<Member, 'id'>): Promise<Member> => {
-    const memberId = `m-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const timestamp = Date.now();
+    const memberId = `m-${timestamp}-${Math.random().toString(36).substring(2, 6)}`;
     const member: Member = {
       ...newMember,
-      id: memberId
+      id: memberId,
+      createdAt: (newMember as any).createdAt || new Date(timestamp).toISOString(),
     };
     
     setMembers(prev => {
-      const updated = [member, ...prev.filter(m => m.id !== member.id)];
+      // Strict Seniority Maintenance:
+      // Filter out duplicate if updating and append the newly registered member at the very bottom
+      const existing = prev.filter(m => m.id !== member.id);
+      const updated = [...existing, member];
       saveMembers(updated);
       syncKeyToServer('members', updated).catch(() => {});
       return updated;
