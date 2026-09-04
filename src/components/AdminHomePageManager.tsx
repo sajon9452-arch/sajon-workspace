@@ -63,16 +63,12 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
 }) => {
   const [activeSection, setActiveSection] = useState<'slides' | 'activities' | 'rules' | 'social'>('slides');
 
-  // Slide Form State
+  // Slide Form State (Simplified: Image, Date, Location)
   const [isSlideModalOpen, setIsSlideModalOpen] = useState(false);
   const [editingSlide, setEditingSlide] = useState<HomeSlide | null>(null);
   const [slideImageUrl, setSlideImageUrl] = useState('');
-  const [slideTitle, setSlideTitle] = useState('');
-  const [slideDescription, setSlideDescription] = useState('');
-  const [slideCategory, setSlideCategory] = useState('ত্রাণ বিতরণ');
   const [slideDate, setSlideDate] = useState('');
   const [slideLocation, setSlideLocation] = useState('');
-  const [slideIsActive, setSlideIsActive] = useState(true);
 
   // Activity Form State
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
@@ -125,28 +121,20 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // --- SLIDE CRUD ---
+  // --- SLIDE CRUD (Simplified: Image, Date, Location) ---
   const openAddSlideModal = () => {
     setEditingSlide(null);
     setSlideImageUrl('');
-    setSlideTitle('');
-    setSlideDescription('');
-    setSlideCategory('ত্রাণ বিতরণ');
     setSlideDate(new Date().toISOString().split('T')[0]);
     setSlideLocation('সিলেট');
-    setSlideIsActive(true);
     setIsSlideModalOpen(true);
   };
 
   const openEditSlideModal = (slide: HomeSlide) => {
     setEditingSlide(slide);
     setSlideImageUrl(slide.imageUrl || '');
-    setSlideTitle(slide.title);
-    setSlideDescription(slide.description || '');
-    setSlideCategory(slide.category || 'ত্রাণ বিতরণ');
     setSlideDate(slide.date || '');
     setSlideLocation(slide.location || '');
-    setSlideIsActive(slide.isActive !== false);
     setIsSlideModalOpen(true);
   };
 
@@ -156,20 +144,16 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
       notifyError('অনুগ্রহ করে স্লাইডের ছবি ইউআরএল বা ফাইল দিন');
       return;
     }
-    if (!slideTitle.trim()) {
-      notifyError('স্লাইডের শিরোনাম লিখুন');
-      return;
-    }
 
     const slideData: HomeSlide = {
       id: editingSlide ? editingSlide.id : `slide-${Date.now()}`,
       imageUrl: slideImageUrl.trim(),
-      title: slideTitle.trim(),
-      description: slideDescription.trim(),
-      category: slideCategory.trim(),
+      title: editingSlide?.title || (slideLocation.trim() ? `${slideLocation.trim()} কার্যক্রম` : 'মানবিক কার্যক্রম'),
+      description: editingSlide?.description || '',
+      category: editingSlide?.category || 'কার্যক্রম',
       date: slideDate.trim(),
       location: slideLocation.trim(),
-      isActive: slideIsActive
+      isActive: editingSlide ? (editingSlide.isActive !== false) : true
     };
 
     let updatedSlides: HomeSlide[];
@@ -185,8 +169,9 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
     setIsSlideModalOpen(false);
   };
 
-  const handleDeleteSlide = (id: string, title: string) => {
-    if (window.confirm(`আপনি কি "${title}" স্লাইডটি মুছে ফেলতে চান?`)) {
+  const handleDeleteSlide = (id: string, title?: string) => {
+    const displayLabel = title ? `"${title}" ` : '';
+    if (window.confirm(`আপনি কি এই ${displayLabel}স্লাইডটি মুছে ফেলতে চান?`)) {
       const updated = slides.filter(s => s.id !== id);
       onUpdateSlides(updated);
       notifySuccess('স্লাইড মুছে ফেলা হয়েছে');
@@ -487,7 +472,7 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
                 <div className="p-4 flex-1 flex flex-col justify-between">
                   <div>
                     <h4 className="font-bold text-slate-900 text-sm leading-snug">
-                      {slide.title}
+                      {slide.title || slide.location || 'স্লাইড ছবি'}
                     </h4>
                     {slide.description && (
                       <p className="text-xs text-slate-600 mt-1 line-clamp-2">
@@ -879,7 +864,7 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
         </div>
       )}
 
-      {/* --- MODAL: ADD / EDIT SLIDE --- */}
+      {/* --- MODAL: ADD / EDIT SLIDE (Simplified: Image, Date, Location, Actions) --- */}
       {isSlideModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4">
@@ -890,7 +875,7 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
               </h3>
               <button
                 onClick={() => setIsSlideModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -899,7 +884,7 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
             <form onSubmit={handleSaveSlide} className="space-y-4 text-left">
               {/* Image Preview */}
               {slideImageUrl && (
-                <div className="relative h-40 rounded-2xl overflow-hidden bg-slate-900 border border-slate-200">
+                <div className="relative h-44 rounded-2xl overflow-hidden bg-slate-900 border border-slate-200">
                   <img
                     src={slideImageUrl}
                     alt="প্রিভিউ"
@@ -908,7 +893,7 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
                 </div>
               )}
 
-              {/* Image URL & Upload */}
+              {/* 1. Image Input (URL + Local File Upload) */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">
                   ছবির লিংক (Image URL):
@@ -918,13 +903,13 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
                   value={slideImageUrl}
                   onChange={(e) => setSlideImageUrl(e.target.value)}
                   placeholder="https://images.unsplash.com/..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                 />
 
                 <div className="flex items-center gap-2 pt-1">
-                  <span className="text-[11px] text-slate-400">অথবা ডিভাইস থেকে ফটো সিলেক্ট করুন:</span>
-                  <label className="cursor-pointer px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1 transition">
-                    <Upload className="w-3.5 h-3.5" />
+                  <span className="text-[11px] text-slate-500">অথবা ডিভাইস থেকে ফটো সিলেক্ট করুন:</span>
+                  <label className="cursor-pointer px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition border border-emerald-200 shadow-2xs">
+                    <Upload className="w-3.5 h-3.5 text-emerald-600" />
                     <span>ফাইল বাছাই</span>
                     <input
                       type="file"
@@ -936,102 +921,45 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
                 </div>
               </div>
 
-              {/* Title */}
+              {/* 2. Date Input */}
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-slate-700">
-                  স্লাইডের শিরোনাম (Title) *
+                  তারিখ:
                 </label>
                 <input
-                  type="text"
-                  required
-                  value={slideTitle}
-                  onChange={(e) => setSlideTitle(e.target.value)}
-                  placeholder="যেমন: বন্যার্তদের মাঝে জরুরি ত্রাণ বিতরণ"
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  type="date"
+                  value={slideDate}
+                  onChange={(e) => setSlideDate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                 />
               </div>
 
-              {/* Description */}
+              {/* 3. Location Input */}
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-slate-700">
-                  সংক্ষিপ্ত বিবরণ (Description)
+                  স্থান / এলাকা:
                 </label>
-                <textarea
-                  rows={2}
-                  value={slideDescription}
-                  onChange={(e) => setSlideDescription(e.target.value)}
-                  placeholder="কার্যক্রম সম্পর্কে ২-৩ বাক্যে বিবরণ লিখুন..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {/* Category */}
-                <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-700">ক্যাটাগরি</label>
-                  <select
-                    value={slideCategory}
-                    onChange={(e) => setSlideCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
-                  >
-                    <option value="ত্রাণ বিতরণ">ত্রাণ বিতরণ</option>
-                    <option value="রক্তদান">রক্তদান সেবা</option>
-                    <option value="বৃক্ষরোপণ">বৃক্ষরোপণ</option>
-                    <option value="অসহায় সেবা">অসহায় সেবা</option>
-                    <option value="চিকিৎসা সহায়তা">চিকিৎসা সহায়তা</option>
-                    <option value="শিক্ষা সহায়তা">শিক্ষা সহায়তা</option>
-                  </select>
-                </div>
-
-                {/* Date */}
-                <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-700">তারিখ</label>
-                  <input
-                    type="date"
-                    value={slideDate}
-                    onChange={(e) => setSlideDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white"
-                  />
-                </div>
-              </div>
-
-              {/* Location */}
-              <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-700">স্থান / এলাকা</label>
                 <input
                   type="text"
                   value={slideLocation}
                   onChange={(e) => setSlideLocation(e.target.value)}
-                  placeholder="যেমন: কোম্পানীগঞ্জ, সিলেট"
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs"
+                  placeholder="যেমন: সিলেট সদর, সিলেট"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                 />
               </div>
 
-              {/* Active Toggle */}
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="slide-active-toggle"
-                  checked={slideIsActive}
-                  onChange={(e) => setSlideIsActive(e.target.checked)}
-                  className="w-4 h-4 text-emerald-600 rounded"
-                />
-                <label htmlFor="slide-active-toggle" className="text-xs font-bold text-slate-700 cursor-pointer">
-                  হোম পেজের স্লাইডারে সক্রিয়ভাবে প্রদর্শন করুন
-                </label>
-              </div>
-
+              {/* 4. Actions: Cancel and Save Buttons */}
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsSlideModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
                 >
                   বাতিল
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white shadow-xs"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white shadow-xs transition cursor-pointer"
                 >
                   সংরক্ষণ করুন
                 </button>

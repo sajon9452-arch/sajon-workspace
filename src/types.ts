@@ -112,7 +112,7 @@ export interface OrganizationProfile {
 export interface HomeSlide {
   id: string;
   imageUrl: string;
-  title: string;
+  title?: string;
   description?: string;
   category?: string;
   date?: string;

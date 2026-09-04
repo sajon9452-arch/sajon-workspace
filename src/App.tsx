@@ -508,7 +508,11 @@ export default function App() {
 
         {activeScreen === 'calendar' && (
           <CalendarScreen
+            profile={profile}
+            notices={notices}
+            humanitarianActivities={humanitarianActivities}
             onBack={() => setActiveScreen('home')}
+            onNavigate={(screen) => setActiveScreen(screen)}
           />
         )}
 

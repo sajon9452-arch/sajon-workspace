@@ -234,9 +234,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 )}
               </div>
 
-              <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white leading-tight drop-shadow-md">
-                {currentSlide.title}
-              </h2>
+              {(currentSlide.title || currentSlide.location) && (
+                <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white leading-tight drop-shadow-md">
+                  {currentSlide.title || currentSlide.location}
+                </h2>
+              )}
 
               {currentSlide.description && (
                 <p className="text-xs sm:text-sm text-slate-200 mt-1.5 line-clamp-2 sm:line-clamp-3 leading-relaxed drop-shadow-sm max-w-2xl">
