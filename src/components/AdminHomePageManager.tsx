@@ -221,17 +221,13 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
       notifyError('কার্যক্রমের শিরোনাম অবশ্যই লিখুন');
       return;
     }
-    if (!activityDescription.trim()) {
-      notifyError('কার্যক্রমের বিবরণ লিখুন');
-      return;
-    }
 
     const costNum = Number(activityCost) || 0;
     const activityData: HumanitarianActivity = {
       id: editingActivity ? editingActivity.id : `act-${Date.now()}`,
       title: activityTitle.trim(),
-      description: activityDescription.trim(),
-      itemsGiven: activityItemsGiven.trim(),
+      description: activityDescription.trim() || editingActivity?.description || '',
+      itemsGiven: activityItemsGiven.trim() || editingActivity?.itemsGiven || '',
       cost: costNum,
       handledBy: activityHandledBy.trim() || 'সংগঠনের ভলান্টিয়ার টিম',
       recipientName: activityRecipientName.trim(),
@@ -1002,35 +998,6 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
                 />
               </div>
 
-              {/* Description */}
-              <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-700">
-                  বিস্তারিত বিবরণ (Activity Description) *
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  value={activityDescription}
-                  onChange={(e) => setActivityDescription(e.target.value)}
-                  placeholder="কিভাবে ও কাদের মাঝে কার্যক্রম পরিচালনা করা হয়েছে বিস্তারিত লিখুন..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
-                />
-              </div>
-
-              {/* Items Given */}
-              <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-700">
-                  বিতরণকৃত সামগ্রী (Items Given - e.g. চাল, ডাল ইত্যাদি):
-                </label>
-                <input
-                  type="text"
-                  value={activityItemsGiven}
-                  onChange={(e) => setActivityItemsGiven(e.target.value)}
-                  placeholder="যেমন: চাল ১০ কেজি, ডাল ২ কেজি, তেল ১ লিটার, আলু ৩ কেজি"
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs"
-                />
-              </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Cost */}
                 <div className="space-y-1">
@@ -1103,7 +1070,7 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
                 </div>
 
                 <div className="flex items-center gap-3 pt-1">
-                  <div className="w-14 h-14 rounded-full bg-slate-200 overflow-hidden border-2 border-teal-300 flex-shrink-0">
+                  <div className="w-16 h-16 rounded-xl bg-slate-200 overflow-hidden border-2 border-teal-300 flex-shrink-0">
                     {activityRecipientPhotoUrl ? (
                       <img
                         src={activityRecipientPhotoUrl}

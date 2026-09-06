@@ -458,50 +458,59 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </div>
 
             {/* Right Side: Recipient Portrait Photo & Beneficiary Profile (Cols 4) */}
-            <div className="lg:col-span-4 bg-gradient-to-b from-slate-50 to-teal-50/40 rounded-2xl p-5 border border-slate-200 flex flex-col items-center text-center">
-              <span className="text-[11px] font-bold text-teal-800 uppercase tracking-wider mb-3">
-                উপকারভোগী / সাহায্যপ্রাপ্ত ব্যক্তি
-              </span>
+            <div className="lg:col-span-4 bg-gradient-to-b from-slate-50 to-teal-50/40 rounded-3xl p-5 sm:p-6 border border-slate-200 flex flex-col items-center text-center shadow-xs">
+              <div className="w-full flex items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-200/80">
+                <span className="text-xs font-bold text-teal-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-teal-600" />
+                  <span>উপকারভোগীর ছবি</span>
+                </span>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-200 px-2 py-0.5 rounded-md">
+                  যাচাইকৃত
+                </span>
+              </div>
 
-              {/* Recipient Photo (Circular portrait) */}
-              <div className="relative group">
-                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden border-4 border-white shadow-md ring-4 ring-teal-200 bg-slate-200">
+              {/* Recipient Photo (Prominent rectangular/square portrait with clean balanced edges) */}
+              <div className="w-full relative group">
+                <div className="w-full aspect-square max-w-[280px] mx-auto rounded-2xl overflow-hidden border-2 border-teal-200/80 shadow-md bg-slate-100 relative">
                   {activeActivity.recipientPhotoUrl ? (
                     <img
                       src={activeActivity.recipientPhotoUrl}
                       alt={activeActivity.recipientName || 'উপকারভোগী'}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      className="w-full h-full object-cover group-hover:scale-103 transition duration-300"
                     />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
-                      <User className="w-12 h-12 text-slate-400" />
-                      <span className="text-[10px] mt-1">ছবি সংরক্ষিত</span>
+                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-4">
+                      <User className="w-16 h-16 text-slate-300 stroke-1" />
+                      <span className="text-xs font-medium mt-2 text-slate-400">ছবি সংরক্ষিত</span>
                     </div>
                   )}
-                </div>
 
-                {activeActivity.recipientPhotoUrl && (
-                  <button
-                    onClick={() => setZoomedPhotoUrl(activeActivity.recipientPhotoUrl || null)}
-                    className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-teal-600 text-white flex items-center justify-center shadow-md hover:bg-teal-700 transition cursor-pointer"
-                    title="বড় করে দেখুন"
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                  </button>
-                )}
+                  {activeActivity.recipientPhotoUrl && (
+                    <button
+                      onClick={() => setZoomedPhotoUrl(activeActivity.recipientPhotoUrl || null)}
+                      className="absolute bottom-2.5 right-2.5 px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-white backdrop-blur-md flex items-center gap-1.5 text-xs font-bold shadow-lg transition active:scale-95 cursor-pointer"
+                      title="ছবি বড় করে দেখুন"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      <span>বড় করে দেখুন</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="mt-3.5 space-y-1">
-                <h5 className="font-bold text-slate-900 text-base">
+              <div className="mt-4 w-full space-y-1.5">
+                <h5 className="font-bold text-slate-900 text-base sm:text-lg">
                   {activeActivity.recipientName || 'অসহায় উপকারভোগী'}
                 </h5>
                 <span className="text-xs text-slate-500 block">
                   {activeActivity.location ? `স্থান: ${activeActivity.location}` : 'যথাযথ যাচাইকৃত সুবিধাপ্রাপ্ত পরিবার'}
                 </span>
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full mt-1">
-                  <Heart className="w-3 h-3 text-emerald-600 fill-current" />
-                  সহায়তা সফলভাবে পৌঁছে দেওয়া হয়েছে
-                </span>
+                <div className="pt-1">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-200 px-3 py-1 rounded-xl">
+                    <Heart className="w-3.5 h-3.5 text-emerald-600 fill-current" />
+                    সহায়তা সফলভাবে পৌঁছে দেওয়া হয়েছে
+                  </span>
+                </div>
               </div>
             </div>
           </div>

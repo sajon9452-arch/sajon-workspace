@@ -8,3 +8,7 @@
 ## 2. Member List Rules
 - **Ascending / Seniority Sorting**: Members must always be displayed in ascending order by their serial number / registration order (oldest first).
 - **No Joining Date**: The joining date field ('যোগদান: [তারিখ]') must remain removed from member cards.
+
+## 3. Humanitarian Activity Rules
+- **Clean Activity Admin Form**: In the Activity Details Admin Form modal ('কার্যক্রম বিবরণী সম্পাদনা'), the 'বিস্তারিত বিবরণ (Activity Description)' and 'বিতরণকৃত সামগ্রী (Items Given)' input fields must remain removed.
+- **Prominent Beneficiary Photo**: In the member-facing activity detail view, beneficiary portrait photos must be rendered as a prominent square or rectangular card with clean, balanced rounded edges (not a small circular shape), ensuring clear visibility and presence.
