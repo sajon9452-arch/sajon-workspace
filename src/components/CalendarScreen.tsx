@@ -25,7 +25,11 @@ import {
   ExternalLink,
   X,
   Share2,
-  ArrowRight
+  ArrowRight,
+  Camera,
+  Landmark,
+  Compass,
+  Mountain
 } from 'lucide-react';
 import { 
   BANGLADESH_HOLIDAYS_2026, 
@@ -37,7 +41,10 @@ import {
   getFullDateSummary, 
   getBanglaDate, 
   PublicHoliday, 
-  DayCalendarInfo 
+  DayCalendarInfo,
+  SYLHET_MONTHLY_SCENIC_LANDSCAPES,
+  getMonthHolidays,
+  SylhetMonthlyLandscape
 } from '../utils/calendarData';
 import { 
   OrganizationEvent, 
@@ -128,6 +135,16 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const todaySummary = useMemo(() => {
     return getFullDateSummary(realDate);
   }, [realDate]);
+
+  // Featured Sylhet scenic landscape for the selected month
+  const currentMonthLandscape = useMemo<SylhetMonthlyLandscape>(() => {
+    return SYLHET_MONTHLY_SCENIC_LANDSCAPES[selectedMonth] || SYLHET_MONTHLY_SCENIC_LANDSCAPES[0];
+  }, [selectedMonth]);
+
+  // Public government holidays specifically for the selected month
+  const currentMonthHolidays = useMemo<PublicHoliday[]>(() => {
+    return getMonthHolidays(selectedMonth);
+  }, [selectedMonth]);
 
   // Month navigation
   const handlePrevMonth = () => {
@@ -436,305 +453,529 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       )}
 
       {/* =========================================================================
-          VIEW TAB 1: CALENDAR GRID DISPLAY (Redesigned & Mobile Friendly)
+          VIEW TAB 1: CALENDAR GRID DISPLAY (Traditional Desk/Wall Calendar Layout)
       ========================================================================== */}
       {activeViewTab === 'calendar' && (
-        <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-xs space-y-5">
-          {/* Calendar Controller Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
-                <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
-                  <span>মাসিক ক্যালেন্ডার ও ইভেন্ট ড্যাশবোর্ড</span>
-                  <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full hidden sm:inline">
-                    ইংরেজি • বাংলা • হিজরি
-                  </span>
-                </h3>
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-0">
+          {/* Traditional Desk/Wall Calendar Spiral/Binding Header */}
+          <div className="bg-slate-900/95 py-2 px-4 sm:px-6 flex items-center justify-between border-b border-slate-800 text-[11px] text-slate-400">
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Desk calendar binding rings simulation */}
+              <div className="flex items-center gap-1.5">
+                {[...Array(6)].map((_, i) => (
+                  <span key={i} className="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-600 shadow-inner" />
+                ))}
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                সংগঠনের সভা, ত্রাণ বিতরণ কর্মসূচি ও সরকারি ছুটি চিহ্নিত রয়েছে
-              </p>
+              <span className="font-bold text-amber-300">সিলেট মানব সেবা সংগঠন</span>
+              <span className="text-slate-600 hidden sm:inline">•</span>
+              <span className="hidden sm:inline text-slate-300">স্মারক দেয়াল ও টেবিল ক্যালেন্ডার ২০২৬</span>
             </div>
 
-            {/* Month Navigator Controls */}
-            <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-200 self-start sm:self-auto">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-md bg-emerald-950 text-emerald-300 border border-emerald-800/80 font-semibold text-[10px] flex items-center gap-1">
+                <MapPin className="w-3 h-3 text-emerald-400" />
+                <span>{currentMonthLandscape.locationBn}</span>
+              </span>
+              <div className="hidden sm:flex items-center gap-1.5">
+                {[...Array(6)].map((_, i) => (
+                  <span key={i} className="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-600 shadow-inner" />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Monthly Scenic Header Image (Sylhet, Bangladesh) */}
+          <div className="relative w-full h-56 sm:h-72 md:h-84 lg:h-96 overflow-hidden group bg-slate-950">
+            <img
+              key={`scenic-img-${selectedMonth}`}
+              src={currentMonthLandscape.imageUrl}
+              alt={currentMonthLandscape.titleBn}
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                if (!target.src.includes('sylhet_tea_garden')) {
+                  target.src = '/src/assets/images/sylhet_tea_garden_1788671827287.jpg';
+                }
+              }}
+            />
+
+            {/* Vignette Overlay Gradients */}
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-black/30 pointer-events-none" />
+
+            {/* Top Navigation & Month Controls Overlaid on Image */}
+            <div className="absolute top-3 inset-x-3 sm:top-4 sm:inset-x-5 flex items-center justify-between pointer-events-auto">
               <button
                 onClick={handlePrevMonth}
-                id="calendar-prev-month-btn"
-                className="p-2 rounded-xl bg-white hover:bg-slate-200/80 text-slate-700 shadow-2xs border border-slate-200 transition cursor-pointer active:scale-95"
+                id="calendar-scenic-prev-btn"
+                className="p-2 sm:p-2.5 rounded-2xl bg-black/60 hover:bg-black/85 backdrop-blur-md text-white border border-white/25 shadow-lg transition cursor-pointer active:scale-95 flex items-center gap-1"
                 title="পূর্ববর্তী মাস"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-5 h-5" />
+                <span className="text-xs font-bold hidden md:inline pr-1">আগের মাস</span>
               </button>
 
-              <div className="px-3 text-center min-w-[140px]">
-                <span className="block text-sm sm:text-base font-black text-slate-900">
-                  {MONTH_NAMES_BN[selectedMonth]} {toBengaliNumber(selectedYear)}
-                </span>
-                <span className="block text-[10px] text-slate-500 font-medium">
-                  {MONTH_NAMES_EN[selectedMonth]} {selectedYear}
-                </span>
+              {/* Month / Year Center Badge */}
+              <div className="bg-slate-900/90 backdrop-blur-md px-4 py-2 sm:px-6 sm:py-2.5 rounded-2xl border border-white/20 shadow-xl text-center">
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-base sm:text-2xl font-black text-amber-300 tracking-wide">
+                    {currentMonthLandscape.monthNameBn} ২০২৬
+                  </span>
+                  <span className="text-xs sm:text-sm text-slate-300 font-medium">
+                    ({currentMonthLandscape.monthNameEn})
+                  </span>
+                </div>
+                <p className="text-[10px] sm:text-xs text-emerald-300 font-semibold tracking-wide mt-0.5">
+                  বাংলা: {currentMonthLandscape.banglaPeriodBn} • হিজরি: {currentMonthLandscape.hijriPeriodBn}
+                </p>
               </div>
 
               <button
                 onClick={handleNextMonth}
-                id="calendar-next-month-btn"
-                className="p-2 rounded-xl bg-white hover:bg-slate-200/80 text-slate-700 shadow-2xs border border-slate-200 transition cursor-pointer active:scale-95"
+                id="calendar-scenic-next-btn"
+                className="p-2 sm:p-2.5 rounded-2xl bg-black/60 hover:bg-black/85 backdrop-blur-md text-white border border-white/25 shadow-lg transition cursor-pointer active:scale-95 flex items-center gap-1"
                 title="পরবর্তী মাস"
               >
-                <ChevronRight className="w-4 h-4" />
+                <span className="text-xs font-bold hidden md:inline pl-1">পরের মাস</span>
+                <ChevronRight className="w-5 h-5" />
               </button>
+            </div>
 
-              <button
-                onClick={handleGoToCurrentMonth}
-                id="calendar-current-month-btn"
-                className="ml-1 px-3 py-1.5 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl transition cursor-pointer shadow-2xs active:scale-95"
-                title="বর্তমান মাসে যান"
-              >
-                চলতি মাস
-              </button>
+            {/* Bottom Caption: Landmark Name & Scenic Description */}
+            <div className="absolute bottom-3 inset-x-3 sm:bottom-4 sm:inset-x-6 text-white pointer-events-none">
+              <div className="max-w-3xl">
+                <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-600/90 text-white text-[10px] sm:text-xs font-bold backdrop-blur-xs border border-emerald-400/40 shadow-xs">
+                    <Camera className="w-3 h-3" />
+                    সিলেটের নৈসর্গিক রূপ ও ঐতিহ্য
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500 text-slate-950 text-[10px] sm:text-xs font-black backdrop-blur-xs">
+                    <MapPin className="w-3 h-3 text-slate-950" />
+                    {currentMonthLandscape.locationBn}
+                  </span>
+                  <span className="text-[10px] sm:text-xs text-slate-300 font-semibold hidden md:inline">
+                    ঋতু: {currentMonthLandscape.featuredSeasonBn}
+                  </span>
+                </div>
+
+                <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white drop-shadow-md leading-tight">
+                  {currentMonthLandscape.titleBn}
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-200 font-medium mt-1 line-clamp-2 drop-shadow-xs">
+                  {currentMonthLandscape.descriptionBn}
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Quick Month Bar Pill Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none text-xs">
-            {MONTH_NAMES_BN.map((name, idx) => {
-              const isSelected = selectedMonth === idx;
-              // Check if month has org events
-              const monthPrefix = `2026-${String(idx + 1).padStart(2, '0')}`;
-              const hasEvents = allOrgEvents.some(e => e.dateStr.startsWith(monthPrefix));
-
-              return (
+          {/* Calendar Body: Navigation Tabs, Controls, Grid & Holidays */}
+          <div className="p-4 sm:p-6 space-y-5">
+            {/* Quick Month Bar Pill Tabs */}
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-bold text-slate-700">মাস নির্বাচন করুন (জানুয়ারি – ডিসেম্বর ২০২৬):</span>
                 <button
-                  key={idx}
-                  onClick={() => setSelectedMonth(idx)}
-                  id={`calendar-month-pill-${idx}`}
-                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer relative ${
-                    isSelected
-                      ? 'bg-emerald-700 text-white shadow-xs scale-102 ring-2 ring-emerald-600/30'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  onClick={handleGoToCurrentMonth}
+                  id="calendar-current-month-btn"
+                  className="px-3 py-1 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl transition cursor-pointer shadow-2xs active:scale-95"
+                  title="চলতি মাসে যান"
+                >
+                  চলতি মাস ({MONTH_NAMES_BN[realDate.getMonth()]})
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none text-xs">
+                {MONTH_NAMES_BN.map((name, idx) => {
+                  const isSelected = selectedMonth === idx;
+                  const monthPrefix = `2026-${String(idx + 1).padStart(2, '0')}`;
+                  const hasEvents = allOrgEvents.some(e => e.dateStr.startsWith(monthPrefix));
+                  const mHolidays = getMonthHolidays(idx);
+
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedMonth(idx)}
+                      id={`calendar-month-pill-${idx}`}
+                      className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer relative ${
+                        isSelected
+                          ? 'bg-emerald-700 text-white shadow-xs scale-102 ring-2 ring-emerald-600/30'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      <span>{name}</span>
+                      {mHolidays.length > 0 && !isSelected && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-600 absolute top-1 right-1" title={`${toBengaliNumber(mHolidays.length)} টি ছুটি`} />
+                      )}
+                      {hasEvents && !isSelected && mHolidays.length === 0 && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 absolute top-1 right-1" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Calendar Grid Filter Badges */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-slate-500 font-medium">ফিল্টার:</span>
+                <button
+                  onClick={() => setCalendarGridFilter('all')}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    calendarGridFilter === 'all'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  <span>{name}</span>
-                  {hasEvents && !isSelected && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 absolute top-1 right-1" />
-                  )}
+                  সকল দিন
                 </button>
-              );
-            })}
-          </div>
+                <button
+                  onClick={() => setCalendarGridFilter('orgEvents')}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                    calendarGridFilter === 'orgEvents'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                  }`}
+                >
+                  <Users className="w-3 h-3" />
+                  <span>সাংগঠনিক কর্মসূচি</span>
+                </button>
+                <button
+                  onClick={() => setCalendarGridFilter('holidays')}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                    calendarGridFilter === 'holidays'
+                      ? 'bg-rose-700 text-white shadow-xs'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100'
+                  }`}
+                >
+                  <Flame className="w-3 h-3" />
+                  <span>সরকারি ছুটি</span>
+                </button>
+              </div>
 
-          {/* Calendar Grid Filter Badges */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-500 font-medium">ফিল্টার:</span>
-              <button
-                onClick={() => setCalendarGridFilter('all')}
-                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
-                  calendarGridFilter === 'all'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                সকল দিন
-              </button>
-              <button
-                onClick={() => setCalendarGridFilter('orgEvents')}
-                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                  calendarGridFilter === 'orgEvents'
-                    ? 'bg-emerald-700 text-white shadow-xs'
-                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
-                }`}
-              >
-                <Users className="w-3 h-3" />
-                <span>সাংগঠনিক কর্মসূচি</span>
-              </button>
-              <button
-                onClick={() => setCalendarGridFilter('holidays')}
-                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                  calendarGridFilter === 'holidays'
-                    ? 'bg-rose-700 text-white shadow-xs'
-                    : 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100'
-                }`}
-              >
-                <Flame className="w-3 h-3" />
-                <span>সরকারি ছুটি</span>
-              </button>
+              <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                <Info className="w-3.5 h-3.5 text-emerald-600" />
+                <span>যেকোনো তারিখে ট্যাপ করে ইংরেজি, বাংলা ও হিজরি ক্যালেন্ডার বিবরণ দেখুন</span>
+              </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 flex items-center gap-1">
-              <Info className="w-3.5 h-3.5 text-emerald-600" />
-              <span>যেকোনো তারিখে ট্যাপ করে বিস্তারিত কর্মসূচি ও ছুটির বিবরণ দেখুন</span>
-            </div>
-          </div>
+            {/* Calendar Grid Container */}
+            <div className="bg-slate-50/80 border border-slate-200 rounded-3xl p-2 sm:p-4 overflow-hidden shadow-2xs">
+              {/* Day of Week Headers */}
+              <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
+                {DAY_NAMES_SHORT_BN.map((dayName, idx) => {
+                  const isWeekendHeader = idx === 5 || idx === 6; // Friday or Saturday
+                  return (
+                    <div
+                      key={idx}
+                      className={`py-2 text-xs sm:text-sm font-black rounded-xl select-none ${
+                        isWeekendHeader
+                          ? 'bg-rose-100/90 text-rose-700 border border-rose-200/70'
+                          : 'bg-white text-slate-700 border border-slate-200/60 shadow-2xs'
+                      }`}
+                    >
+                      <span className="hidden sm:inline">{DAY_NAMES_BN[idx]}</span>
+                      <span className="sm:hidden">{dayName}</span>
+                    </div>
+                  );
+                })}
+              </div>
 
-          {/* Calendar Grid Container */}
-          <div className="bg-slate-50/70 border border-slate-200 rounded-3xl p-2 sm:p-4 overflow-hidden shadow-2xs">
-            {/* Day of Week Headers */}
-            <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
-              {DAY_NAMES_SHORT_BN.map((dayName, idx) => {
-                const isWeekendHeader = idx === 5 || idx === 6; // Fri or Sat
-                return (
+              {/* Days Grid */}
+              <div className="grid grid-cols-7 gap-1 sm:gap-2">
+                {/* Empty offset spaces before 1st of the month */}
+                {Array.from({ length: firstDayOffset }).map((_, i) => (
                   <div
-                    key={idx}
-                    className={`py-2 text-xs sm:text-sm font-black rounded-xl select-none ${
-                      isWeekendHeader
-                        ? 'bg-rose-100/90 text-rose-700 border border-rose-200/70'
-                        : 'bg-white text-slate-700 border border-slate-200/60 shadow-2xs'
-                    }`}
-                  >
-                    <span className="hidden sm:inline">{DAY_NAMES_BN[idx]}</span>
-                    <span className="sm:hidden">{dayName}</span>
-                  </div>
-                );
-              })}
-            </div>
+                    key={`empty-${i}`}
+                    className="min-h-[75px] sm:min-h-[96px] rounded-2xl bg-slate-100/40 border border-dashed border-slate-200/50 opacity-40"
+                  />
+                ))}
 
-            {/* Days Grid */}
-            <div className="grid grid-cols-7 gap-1 sm:gap-2">
-              {/* Empty offset spaces before 1st of the month */}
-              {Array.from({ length: firstDayOffset }).map((_, i) => (
-                <div
-                  key={`empty-${i}`}
-                  className="min-h-[75px] sm:min-h-[96px] rounded-2xl bg-slate-100/40 border border-dashed border-slate-200/50 opacity-40"
-                />
-              ))}
+                {/* Month Days */}
+                {monthDays.map((dayInfo) => {
+                  const dayEvents = orgEventsByDate.get(dayInfo.dateStr) || [];
+                  const hasOrgEvent = dayEvents.length > 0;
+                  const hasHoliday = dayInfo.holidays.length > 0;
+                  const isSelected = selectedDayInfo?.dateStr === dayInfo.dateStr;
 
-              {/* Month Days */}
-              {monthDays.map((dayInfo) => {
-                const dayEvents = orgEventsByDate.get(dayInfo.dateStr) || [];
-                const hasOrgEvent = dayEvents.length > 0;
-                const hasHoliday = dayInfo.holidays.length > 0;
-                const isSelected = selectedDayInfo?.dateStr === dayInfo.dateStr;
+                  // Filter logic
+                  let isDimmed = false;
+                  if (calendarGridFilter === 'orgEvents' && !hasOrgEvent) isDimmed = true;
+                  if (calendarGridFilter === 'holidays' && !hasHoliday) isDimmed = true;
+                  if (calendarGridFilter === 'weekends' && !dayInfo.isWeekend) isDimmed = true;
 
-                // Filter logic
-                let isDimmed = false;
-                if (calendarGridFilter === 'orgEvents' && !hasOrgEvent) isDimmed = true;
-                if (calendarGridFilter === 'holidays' && !hasHoliday) isDimmed = true;
-                if (calendarGridFilter === 'weekends' && !dayInfo.isWeekend) isDimmed = true;
+                  return (
+                    <div
+                      key={dayInfo.dateStr}
+                      onClick={() => setSelectedDayInfo(dayInfo)}
+                      id={`calendar-day-${dayInfo.dateStr}`}
+                      className={`group relative min-h-[75px] sm:min-h-[102px] p-1.5 sm:p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between select-none ${
+                        isDimmed ? 'opacity-30' : 'opacity-100'
+                      } ${
+                        isSelected
+                          ? 'ring-2 ring-emerald-600 bg-emerald-50/90 border-emerald-400 shadow-md scale-102 z-10'
+                          : dayInfo.isToday
+                          ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400/80 shadow-xs'
+                          : hasOrgEvent
+                          ? 'bg-emerald-50/70 border-emerald-300 hover:bg-emerald-100/70 shadow-2xs'
+                          : hasHoliday
+                          ? 'bg-rose-50/80 border-rose-200 hover:bg-rose-100/80'
+                          : dayInfo.isWeekend
+                          ? 'bg-slate-100/80 border-slate-200 hover:bg-slate-200/70'
+                          : 'bg-white border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 shadow-2xs'
+                      }`}
+                    >
+                      {/* Cell Top Header: Date Number & Badges */}
+                      <div className="flex items-start justify-between w-full">
+                        <span
+                          className={`text-sm sm:text-base font-black leading-none ${
+                            dayInfo.isToday
+                              ? 'text-amber-950 bg-amber-300/80 px-1.5 py-0.5 rounded-md shadow-2xs'
+                              : hasOrgEvent
+                              ? 'text-emerald-900 font-black'
+                              : hasHoliday
+                              ? 'text-rose-700'
+                              : dayInfo.isWeekend
+                              ? 'text-rose-600'
+                              : 'text-slate-800'
+                          }`}
+                        >
+                          {toBengaliNumber(dayInfo.dayOfMonth)}
+                        </span>
 
-                return (
-                  <div
-                    key={dayInfo.dateStr}
-                    onClick={() => setSelectedDayInfo(dayInfo)}
-                    id={`calendar-day-${dayInfo.dateStr}`}
-                    className={`group relative min-h-[75px] sm:min-h-[102px] p-1.5 sm:p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between select-none ${
-                      isDimmed ? 'opacity-30' : 'opacity-100'
-                    } ${
-                      isSelected
-                        ? 'ring-2 ring-emerald-600 bg-emerald-50/90 border-emerald-400 shadow-md scale-102 z-10'
-                        : dayInfo.isToday
-                        ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400/80 shadow-xs'
-                        : hasOrgEvent
-                        ? 'bg-emerald-50/70 border-emerald-300 hover:bg-emerald-100/70 shadow-2xs'
-                        : hasHoliday
-                        ? 'bg-rose-50/80 border-rose-200 hover:bg-rose-100/80'
-                        : dayInfo.isWeekend
-                        ? 'bg-slate-100/80 border-slate-200 hover:bg-slate-200/70'
-                        : 'bg-white border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 shadow-2xs'
-                    }`}
-                  >
-                    {/* Cell Top Header: Date Number & Badges */}
-                    <div className="flex items-start justify-between w-full">
-                      <span
-                        className={`text-sm sm:text-base font-black leading-none ${
-                          dayInfo.isToday
-                            ? 'text-amber-950 bg-amber-300/80 px-1.5 py-0.5 rounded-md shadow-2xs'
-                            : hasOrgEvent
-                            ? 'text-emerald-900 font-black'
-                            : hasHoliday
-                            ? 'text-rose-700'
-                            : dayInfo.isWeekend
-                            ? 'text-rose-600'
-                            : 'text-slate-800'
-                        }`}
-                      >
-                        {toBengaliNumber(dayInfo.dayOfMonth)}
-                      </span>
+                        {/* Top Right Dot or Marker */}
+                        <div className="flex items-center gap-1">
+                          {dayInfo.isToday && (
+                            <span className="text-[9px] font-bold bg-amber-500 text-slate-950 px-1 rounded-sm leading-tight shadow-2xs">
+                              আজ
+                            </span>
+                          )}
+                          {hasOrgEvent && (
+                            <span
+                              className="w-2.5 h-2.5 rounded-full bg-emerald-600 border border-white shadow-xs animate-pulse"
+                              title={dayEvents[0].title}
+                            />
+                          )}
+                          {hasHoliday && !hasOrgEvent && (
+                            <span
+                              className="w-2.5 h-2.5 rounded-full bg-rose-600 border border-white shadow-xs"
+                              title={dayInfo.holidays[0].nameBn}
+                            />
+                          )}
+                        </div>
+                      </div>
 
-                      {/* Top Right Dot or Marker */}
-                      <div className="flex items-center gap-1">
-                        {dayInfo.isToday && (
-                          <span className="text-[9px] font-bold bg-amber-500 text-slate-950 px-1 rounded-sm leading-tight shadow-2xs">
-                            আজ
-                          </span>
-                        )}
+                      {/* Middle Content: Organization Event / Holiday Title Pill */}
+                      <div className="my-1 space-y-1">
                         {hasOrgEvent && (
-                          <span
-                            className="w-2.5 h-2.5 rounded-full bg-emerald-600 border border-white shadow-xs animate-pulse"
-                            title={dayEvents[0].title}
-                          />
+                          <div className="truncate">
+                            <span className="text-[9px] sm:text-[10px] font-bold text-emerald-900 bg-emerald-100/90 border border-emerald-300 px-1 sm:px-1.5 py-0.5 rounded-md flex items-center gap-1 truncate shadow-2xs">
+                              <Users className="w-2.5 h-2.5 text-emerald-700 flex-shrink-0" />
+                              <span className="truncate">{dayEvents[0].categoryLabelBn}</span>
+                            </span>
+                          </div>
                         )}
-                        {hasHoliday && !hasOrgEvent && (
-                          <span
-                            className="w-2.5 h-2.5 rounded-full bg-rose-600 border border-white shadow-xs"
-                            title={dayInfo.holidays[0].nameBn}
-                          />
+
+                        {hasHoliday && (
+                          <div className="truncate">
+                            <span className="text-[9px] sm:text-[10px] font-bold text-rose-800 bg-rose-100/90 border border-rose-200 px-1 sm:px-1.5 py-0.5 rounded-md flex items-center gap-1 truncate">
+                              <Flame className="w-2.5 h-2.5 text-rose-600 flex-shrink-0" />
+                              <span className="truncate">{dayInfo.holidays[0].nameBn}</span>
+                            </span>
+                          </div>
                         )}
                       </div>
-                    </div>
 
-                    {/* Middle Content: Organization Event / Holiday Title Pill */}
-                    <div className="my-1 space-y-1">
-                      {hasOrgEvent && (
-                        <div className="truncate">
-                          <span className="text-[9px] sm:text-[10px] font-bold text-emerald-900 bg-emerald-100/90 border border-emerald-300 px-1 sm:px-1.5 py-0.5 rounded-md flex items-center gap-1 truncate shadow-2xs">
-                            <Users className="w-2.5 h-2.5 text-emerald-700 flex-shrink-0" />
-                            <span className="truncate">{dayEvents[0].categoryLabelBn}</span>
-                          </span>
-                        </div>
-                      )}
-
-                      {hasHoliday && (
-                        <div className="truncate">
-                          <span className="text-[9px] sm:text-[10px] font-bold text-rose-800 bg-rose-100/90 border border-rose-200 px-1 sm:px-1.5 py-0.5 rounded-md flex items-center gap-1 truncate">
-                            <Flame className="w-2.5 h-2.5 text-rose-600 flex-shrink-0" />
-                            <span className="truncate">{dayInfo.holidays[0].nameBn}</span>
-                          </span>
-                        </div>
-                      )}
+                      {/* Cell Bottom Footer: Bangla & Hijri Date */}
+                      <div className="mt-auto pt-1 border-t border-slate-200/60 flex items-center justify-between text-[9px] sm:text-[10px] text-slate-500 font-medium">
+                        <span className="text-emerald-800 font-bold truncate">
+                          {toBengaliNumber(dayInfo.bangla.day)} {dayInfo.bangla.monthNameBn}
+                        </span>
+                        <span className="text-teal-700 hidden sm:inline truncate">
+                          {toBengaliNumber(dayInfo.hijri.day)} {dayInfo.hijri.monthNameBn}
+                        </span>
+                      </div>
                     </div>
+                  );
+                })}
+              </div>
+            </div>
 
-                    {/* Cell Bottom Footer: Bangla & Hijri Date */}
-                    <div className="mt-auto pt-1 border-t border-slate-200/60 flex items-center justify-between text-[9px] sm:text-[10px] text-slate-500 font-medium">
-                      <span className="text-emerald-800 font-bold truncate">
-                        {toBengaliNumber(dayInfo.bangla.day)} {dayInfo.bangla.monthNameBn}
-                      </span>
-                      <span className="text-teal-700 hidden sm:inline truncate">
-                        {toBengaliNumber(dayInfo.hijri.day)} {dayInfo.hijri.monthNameBn}
-                      </span>
-                    </div>
+            {/* Grid Legend */}
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 pt-1">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-md bg-amber-100 border-2 border-amber-400 shadow-2xs" />
+                  <span className="font-bold text-amber-900">আজকের দিন</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-md bg-emerald-100 border-2 border-emerald-500 shadow-2xs" />
+                  <span className="font-bold text-emerald-900">সাংগঠনিক কর্মসূচি ও সভা</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-md bg-rose-100 border border-rose-300" />
+                  <span className="font-bold text-rose-800">সরকারি ছুটি</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-md bg-slate-100 border border-slate-300" />
+                  <span className="font-medium text-slate-700">সাপ্তাহিক ছুটি (শুক্র ও শনি)</span>
+                </div>
+              </div>
+
+              <span className="text-[11px] text-slate-400">
+                * সিলেট মানব সেবা সংগঠন অফিশিয়াল শিডিউল ২০২৬
+              </span>
+            </div>
+
+            {/* =========================================================================
+                DEDICATED 'সরকারি ছুটি' (GOVERNMENT HOLIDAYS) SECTION FOR THIS MONTH
+            ========================================================================== */}
+            <div className="pt-6 border-t border-slate-200/90 mt-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center flex-shrink-0 shadow-2xs">
+                    <Landmark className="w-5 h-5" />
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-black text-slate-900">
+                        সরকারি ছুটি (Government Holidays)
+                      </h3>
+                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                        {MONTH_NAMES_BN[selectedMonth]} ২০২৬
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {MONTH_NAMES_BN[selectedMonth]} মাসে নির্ধারিত জাতীয় ও সরকারি ছুটির পূর্ণ বিবরণ
+                    </p>
+                  </div>
+                </div>
 
-          {/* Grid Legend */}
-          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 pt-1">
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded-md bg-amber-100 border-2 border-amber-400 shadow-2xs" />
-                <span className="font-bold text-amber-900">আজকের দিন</span>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <span className="text-xs font-bold px-3 py-1 rounded-xl bg-slate-100 text-slate-700 border border-slate-200/80">
+                    মোট {toBengaliNumber(currentMonthHolidays.length)} টি ছুটি
+                  </span>
+                  <button
+                    onClick={() => setActiveViewTab('holidays')}
+                    className="text-xs text-emerald-700 hover:text-emerald-800 font-bold px-2.5 py-1 rounded-xl hover:bg-emerald-50 transition cursor-pointer flex items-center gap-1"
+                  >
+                    <span>সম্পূর্ণ বছরের ছুটি</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded-md bg-emerald-100 border-2 border-emerald-500 shadow-2xs" />
-                <span className="font-bold text-emerald-900">সাংগঠনিক কর্মসূচি ও সভা</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded-md bg-rose-100 border border-rose-300" />
-                <span className="font-bold text-rose-800">সরকারি ছুটি</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 rounded-md bg-slate-100 border border-slate-300" />
-                <span className="font-medium text-slate-700">সাপ্তাহিক ছুটি (শুক্র ও শনি)</span>
-              </div>
-            </div>
 
-            <span className="text-[11px] text-slate-400">
-              * সিলেট মানব সেবা সংগঠন অফিশিয়াল শিডিউল ২০২৬
-            </span>
+              {/* Holidays List Cards for this specific month */}
+              {currentMonthHolidays.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                  {currentMonthHolidays.map((holiday) => {
+                    const hDate = new Date(holiday.dateStr);
+                    const bangla = getBanglaDate(hDate);
+                    const countdown = getDaysRemainingText(holiday.dateStr, holiday.endDateStr);
+
+                    return (
+                      <div
+                        key={holiday.id}
+                        id={`month-holiday-${holiday.id}`}
+                        className="bg-slate-50/90 hover:bg-white rounded-2xl p-4 border border-slate-200 hover:border-rose-300 transition-all shadow-2xs hover:shadow-xs flex flex-col justify-between gap-3 group"
+                      >
+                        <div className="space-y-2">
+                          {/* Badges */}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border ${
+                              holiday.type === 'general'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : holiday.type === 'executive'
+                                ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}>
+                              {holiday.typeLabelBn}
+                            </span>
+
+                            <div className="flex items-center gap-1.5">
+                              {holiday.isMoonDependent && (
+                                <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1">
+                                  <Moon className="w-3 h-3 text-amber-700" />
+                                  চাঁদ দেখার ওপর
+                                </span>
+                              )}
+                              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                                countdown.status === 'today'
+                                  ? 'bg-emerald-600 text-white animate-pulse'
+                                  : countdown.status === 'tomorrow'
+                                  ? 'bg-amber-500 text-white font-bold'
+                                  : 'bg-slate-200/80 text-slate-700'
+                              }`}>
+                                {countdown.text}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Holiday Date Number & Names */}
+                          <div className="flex items-start gap-3 pt-1">
+                            <div className="w-12 h-12 rounded-xl bg-rose-50 border border-rose-200/80 flex flex-col items-center justify-center flex-shrink-0 text-rose-700 group-hover:bg-rose-100 transition-colors">
+                              <span className="text-[10px] font-bold uppercase leading-none text-rose-600">
+                                {holiday.dayNameBn.slice(0, 3)}
+                              </span>
+                              <span className="text-lg font-black leading-none mt-0.5">
+                                {toBengaliNumber(hDate.getDate())}
+                              </span>
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                                {holiday.nameBn}
+                                {holiday.isMoonDependent && '*'}
+                              </h4>
+                              <p className="text-[11px] text-slate-500 font-medium">
+                                {holiday.nameEn}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Description */}
+                          <p className="text-xs text-slate-600 leading-relaxed bg-white p-2.5 rounded-xl border border-slate-100">
+                            {holiday.description}
+                          </p>
+                        </div>
+
+                        {/* Card Footer: Date info */}
+                        <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                            <CalendarDays className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                            <span>
+                              {toBengaliNumber(hDate.getDate())} {MONTH_NAMES_BN[hDate.getMonth()]}, ২০২৬ ({holiday.dayNameBn})
+                            </span>
+                          </div>
+
+                          <div className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200/60">
+                            {toBengaliNumber(bangla.day)} {bangla.monthNameBn}, {toBengaliNumber(bangla.year)} বঙ্গাব্দ
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8 px-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <CalendarCheck className="w-9 h-9 text-slate-400 mx-auto mb-2" />
+                  <h4 className="text-sm font-bold text-slate-700">
+                    {MONTH_NAMES_BN[selectedMonth]} ২০২৬-এ কোনো গেজেটেড সাধারণ সরকারি ছুটি নেই
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                    সংগঠনের সমাজকল্যাণমূলক কর্মকাণ্ড ও নিয়মিত কার্যক্রম এই মাসে সক্রিয়ভাবে পরিচালিত হবে।
+                  </p>
+                  <div className="mt-3 flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => setActiveViewTab('holidays')}
+                      className="text-xs font-bold px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer shadow-2xs"
+                    >
+                      ২০২৬-এর সম্পূর্ণ ছুটি তালিকা দেখুন
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

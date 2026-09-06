@@ -46,6 +46,32 @@ export interface DayCalendarInfo {
 // 2026 Official Government Holidays in Bangladesh
 export const BANGLADESH_HOLIDAYS_2026: PublicHoliday[] = [
   {
+    id: 'h-0',
+    nameBn: 'ইংরেজি নববর্ষ',
+    nameEn: 'New Year’s Day',
+    dateStr: '2026-01-01',
+    dayNameBn: 'বৃহস্পতিবার',
+    daysCount: 1,
+    type: 'optional',
+    typeLabelBn: 'ঐচ্ছিক ছুটি ও পালনীয় দিবস',
+    category: 'national',
+    categoryLabelBn: 'আন্তর্জাতিক দিবস',
+    description: 'আন্তর্জাতিক গ্রেগরিয়ান ক্যালেন্ডারের শুভ সূচনা ও নববর্ষের শুভেচ্ছা।',
+  },
+  {
+    id: 'h-01',
+    nameBn: 'শ্রী শ্রী সরস্বতী পূজা (শ্রী পঞ্চমী)',
+    nameEn: 'Saraswati Puja',
+    dateStr: '2026-01-23',
+    dayNameBn: 'শুক্রবার',
+    daysCount: 1,
+    type: 'optional',
+    typeLabelBn: 'ঐচ্ছিক ছুটি',
+    category: 'hindu',
+    categoryLabelBn: 'হিন্দু পর্ব',
+    description: 'বিদ্যা ও সঙ্গীতের দেবী সরস্বতীর আরাধনা তিথি উপলক্ষে সরকারি ঐচ্ছিক ছুটি।',
+  },
+  {
     id: 'h-1',
     nameBn: 'পবিত্র শবে বরাত',
     nameEn: 'Shab-e-Barat',
@@ -198,6 +224,19 @@ export const BANGLADESH_HOLIDAYS_2026: PublicHoliday[] = [
     description: 'পবিত্র ১০ই মহররম কারবালার শোকাবহ স্মৃতি ও আশুরা উপলক্ষে সরকারি ছুটি।',
   },
   {
+    id: 'h-11b',
+    nameBn: 'ব্যাংক হলিডে (অর্ধবার্ষিক)',
+    nameEn: 'Bank Holiday (Half-yearly)',
+    dateStr: '2026-07-01',
+    dayNameBn: 'বুধবার',
+    daysCount: 1,
+    type: 'executive',
+    typeLabelBn: 'ব্যাংক ও আর্থিক প্রতিষ্ঠান ছুটি',
+    category: 'national',
+    categoryLabelBn: 'প্রাতিষ্ঠানিক ছুটি',
+    description: 'বাণিজ্যিক ব্যাংক ও আর্থিক প্রতিষ্ঠানের অর্ধবার্ষিক হিসাব বিবরণী প্রস্তুতের ছুটি।',
+  },
+  {
     id: 'h-12',
     nameBn: 'পবিত্র ঈদে মিলাদুন্নবী (সা.)',
     nameEn: 'Eid-e-Miladunnabi (PBUH)',
@@ -225,6 +264,19 @@ export const BANGLADESH_HOLIDAYS_2026: PublicHoliday[] = [
     description: 'ভগবান শ্রীকৃষ্ণের শুভ আবির্ভাব তিথি জন্মাষ্টমী উপলক্ষে সাধারণ ছুটি।',
   },
   {
+    id: 'h-14a',
+    nameBn: 'শ্রী শ্রী দুর্গাপূজা (মহা নবমী)',
+    nameEn: 'Durga Puja (Maha Nabami)',
+    dateStr: '2026-10-20',
+    dayNameBn: 'মঙ্গলবার',
+    daysCount: 1,
+    type: 'executive',
+    typeLabelBn: 'নির্বাহী আদেশে ছুটি',
+    category: 'hindu',
+    categoryLabelBn: 'হিন্দু পর্ব',
+    description: 'শারদীয় দুর্গোৎসবের মহা নবমী উপলক্ষে সরকারি ছুটি।',
+  },
+  {
     id: 'h-14',
     nameBn: 'শ্রী শ্রী দুর্গাপূজা (বিজয়া দশমী)',
     nameEn: 'Durga Puja (Bijoya Dashami)',
@@ -236,6 +288,32 @@ export const BANGLADESH_HOLIDAYS_2026: PublicHoliday[] = [
     category: 'hindu',
     categoryLabelBn: 'হিন্দু পর্ব',
     description: 'সনাতন ধর্মাবলম্বীদের প্রধান ধর্মীয় উৎসব শারদীয় দুর্গাপূজার বিজয়া দশমী উপলক্ষে ছুটি।',
+  },
+  {
+    id: 'h-14b',
+    nameBn: 'জাতীয় বিপ্লব ও সংহতি দিবস',
+    nameEn: 'National Revolution & Solidarity Day',
+    dateStr: '2026-11-07',
+    dayNameBn: 'শনিবার',
+    daysCount: 1,
+    type: 'optional',
+    typeLabelBn: 'ঐচ্ছিক ছুটি ও বিশেষ দিবস',
+    category: 'national',
+    categoryLabelBn: 'জাতীয় দিবস',
+    description: '১৯৭৫ সালের ঐতিহাসিক জাতীয় বিপ্লব ও সংহতি স্মরণে বিশেষ জাতীয় দিবস।',
+  },
+  {
+    id: 'h-15a',
+    nameBn: 'শহীদ বুদ্ধিজীবী দিবস',
+    nameEn: 'Martyred Intellectuals Day',
+    dateStr: '2026-12-14',
+    dayNameBn: 'সোমবার',
+    daysCount: 1,
+    type: 'optional',
+    typeLabelBn: 'জাতীয় শোক ও পালনীয় দিবস',
+    category: 'national',
+    categoryLabelBn: 'জাতীয় দিবস',
+    description: '১৯৭১ সালে বিজয়ের প্রাক্কালে শহীদ শ্রেষ্ঠ বুদ্ধিজীবীদের স্মরণে বিনম্র শ্রদ্ধা।',
   },
   {
     id: 'h-15',
@@ -263,7 +341,206 @@ export const BANGLADESH_HOLIDAYS_2026: PublicHoliday[] = [
     categoryLabelBn: 'খ্রিস্টান পর্ব',
     description: 'খ্রিস্টধর্মাবলম্বীদের সর্বপ্রধান ধর্মীয় উৎসব শুভ বড়দিন উপলক্ষে সাধারণ ছুটি।',
   },
+  {
+    id: 'h-17',
+    nameBn: 'ব্যাংক হলিডে (বার্ষিক হিসাব সমাপনী)',
+    nameEn: 'Bank Holiday (Year-end)',
+    dateStr: '2026-12-31',
+    dayNameBn: 'বৃহস্পতিবার',
+    daysCount: 1,
+    type: 'executive',
+    typeLabelBn: 'ব্যাংক ও আর্থিক প্রতিষ্ঠান ছুটি',
+    category: 'national',
+    categoryLabelBn: 'প্রাতিষ্ঠানিক ছুটি',
+    description: 'ব্যাংক ও আর্থিক প্রতিষ্ঠানের বাৎসরিক হিসাব চূড়ান্তকরণের জন্য নির্ধারিত ছুটি।',
+  },
 ];
+
+export interface SylhetMonthlyLandscape {
+  monthIndex: number; // 0 to 11
+  monthNameBn: string;
+  monthNameEn: string;
+  titleBn: string;
+  locationBn: string;
+  taglineBn: string;
+  descriptionBn: string;
+  imageUrl: string;
+  featuredSeasonBn: string;
+  banglaPeriodBn: string;
+  hijriPeriodBn: string;
+}
+
+export const SYLHET_MONTHLY_SCENIC_LANDSCAPES: SylhetMonthlyLandscape[] = [
+  {
+    monthIndex: 0,
+    monthNameBn: 'জানুয়ারি',
+    monthNameEn: 'January',
+    titleBn: 'মালনীছড়া চা বাগান, সিলেট',
+    locationBn: 'সিলেট সদর',
+    taglineBn: 'উপমহাদেশের প্রাচীনতম সুরম্য চা বাগান ও সবুজের গালিচা',
+    descriptionBn: '১৮৫৪ সালে প্রতিষ্ঠিত উপমহাদেশের প্রথম চা বাগান। শীতের সকালে শিশিরভেজা সবুজ টিলা ও মিষ্টি কুয়াশার অপরূপ মেলবন্ধন।',
+    imageUrl: '/src/assets/images/sylhet_tea_garden_1788671827287.jpg',
+    featuredSeasonBn: 'শীতকাল',
+    banglaPeriodBn: 'পৌষ – মাঘ ১৪৩২',
+    hijriPeriodBn: 'রজব – শা’বান ১৪৪৭',
+  },
+  {
+    monthIndex: 1,
+    monthNameBn: 'ফেব্রুয়ারি',
+    monthNameEn: 'February',
+    titleBn: 'রাতারগুল সোয়াম্প ফরেস্ট, সিলেট',
+    locationBn: 'গোয়াইনঘাট, সিলেট',
+    taglineBn: 'বাংলার আমাজন ও মিষ্টি জলের চিরসবুজ জলমগ্ন অরণ্য',
+    descriptionBn: 'বাংলাদেশের একমাত্র স্বীকৃত মিষ্টি জলের সোয়াম্প ফরেস্ট। করচ আর হিজল গাছের জলমগ্ন শাখাপ্রশাখার মাঝে ডিঙ্গি নৌকায় ভেসে বেড়ানোর অপূর্ব রোমাঞ্চ।',
+    imageUrl: '/src/assets/images/sylhet_ratargul_swamp_1788671805674.jpg',
+    featuredSeasonBn: 'বসন্তকাল ও শীতের বিদায়',
+    banglaPeriodBn: 'মাঘ – ফাল্গুন ১৪৩২',
+    hijriPeriodBn: 'শা’বান – রমজান ১৪৪৭',
+  },
+  {
+    monthIndex: 2,
+    monthNameBn: 'মার্চ',
+    monthNameEn: 'March',
+    titleBn: 'জাফলং জিরো পয়েন্ট ও পিয়াইন নদী, সিলেট',
+    locationBn: 'গোয়াইনঘাট, সিলেট',
+    taglineBn: 'মেঘালয়ের আকাশছোঁয়া পাহাড়, ডাউকি ঝুলন্ত সেতু ও স্বচ্ছ নদী',
+    descriptionBn: 'সীমান্ত নদী পিয়াইনের স্বচ্ছ জলধারা, রঙিন নুড়ি পাথর এবং সীমান্তের ওপারে ভারতের ডাউকি ঝুলন্ত সেতুর মোহনীয় প্রাকৃতিক ক্যানভাস।',
+    imageUrl: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1400&q=80',
+    featuredSeasonBn: 'বসন্তকাল',
+    banglaPeriodBn: 'ফাল্গুন – চৈত্র ১৪৩২',
+    hijriPeriodBn: 'রমজান – শাওয়াল ১৪৪৭',
+  },
+  {
+    monthIndex: 3,
+    monthNameBn: 'এপ্রিল',
+    monthNameEn: 'April',
+    titleBn: 'লালাখাল ও পান্না সবুজ জলধারা, সিলেট',
+    locationBn: 'জৈন্তাপুর, সিলেট',
+    taglineBn: 'পান্না-সবুজ ও নীল জলের মায়াবী নদী ও চা বাগানঘেরা পাহাড়ি রূপ',
+    descriptionBn: 'প্রাকৃতিক খনিজের প্রভাবে লালাখালের নদীজল ঋতুভেদে অপার্থিব পান্না সবুজ রূপ ধারণ করে। দুই তীরের সবুজ টিলা আর নীরব নিসর্গ ভ্রমণপিপাসুদের মুগ্ধ করে।',
+    imageUrl: 'https://images.unsplash.com/photo-1439066615861-d1af74d74000?auto=format&fit=crop&w=1400&q=80',
+    featuredSeasonBn: 'গ্রীষ্মকাল (বৈশাখী আবহ)',
+    banglaPeriodBn: 'চৈত্র ১৪৩২ – বৈশাখ ১৪৩৩',
+    hijriPeriodBn: 'শাওয়াল – জিলকদ ১৪৪৭',
+  },
+  {
+    monthIndex: 4,
+    monthNameBn: 'মে',
+    monthNameEn: 'May',
+    titleBn: 'বিছানাকান্দি পাথুরে নদী ও পাহাড়ি ঝরনা, সিলেট',
+    locationBn: 'গোয়াইনঘাট, সিলেট',
+    taglineBn: 'মেঘের কোলে মেঘালয় পাহাড় ও স্বচ্ছ পাথুরে নদীর অপূর্ব মিলন',
+    descriptionBn: 'উঁচু খাসিয়া পাহাড়ের কোল বেয়ে নেমে আসা দুধসাদা জলপ্রপাত ও নদীর বুকে ছড়িয়ে থাকা হাজারো পাথরের ওপর দিয়ে বয়ে চলা শীতল জলের কলতান।',
+    imageUrl: 'https://images.unsplash.com/photo-1433086966358-54859d0ed716?auto=format&fit=crop&w=1400&q=80',
+    featuredSeasonBn: 'গ্রীষ্মকাল (জ্যৈষ্ঠ)',
+    banglaPeriodBn: 'বৈশাখ – জ্যৈষ্ঠ ১৪৩৩',
+    hijriPeriodBn: 'জিলকদ – জিলহজ ১৪৪৭',
+  },
+  {
+    monthIndex: 5,
+    monthNameBn: 'জুন',
+    monthNameEn: 'June',
+    titleBn: 'ভোলাগঞ্জ ‘সাদা পাথর’, সিলেট',
+    locationBn: 'কোম্পানীগঞ্জ, সিলেট',
+    taglineBn: 'ধলাই নদীর হিমশীতল স্রোতধারা ও দুধ-সাদা পাথরের রূপকথা',
+    descriptionBn: 'সিলেটের কাশ্মীরখ্যাত ভোলাগঞ্জ জিরো পয়েন্ট। পাহাড়ি ঝরনাধারা ও ধলাই নদীর মোহনায় দুধ-সাদা পাথরের স্বর্গীয় সৌন্দর্য পর্যটকদের বিমোহিত করে।',
+    imageUrl: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=1400&q=80',
+    featuredSeasonBn: 'বর্ষাকাল (আষাঢ়)',
+    banglaPeriodBn: 'জ্যৈষ্ঠ – আষাঢ় ১৪৩৩',
+    hijriPeriodBn: 'জিলহজ ১৪৪৭ – মহররম ১৪৪৮',
+  },
+  {
+    monthIndex: 6,
+    monthNameBn: 'জুলাই',
+    monthNameEn: 'July',
+    titleBn: 'হাকালুকি হাওর ও বর্ষার দিগন্তজোড়া জলরাশি, সিলেট',
+    locationBn: 'মৌলভীবাজার ও সিলেট অঞ্চল',
+    taglineBn: 'এশিয়ার অন্যতম বৃহত্তম মিষ্টি পানির সুবিশাল উন্মুক্ত হাওর',
+    descriptionBn: 'বর্ষার পূর্ণ মৌসুমে হাকালুকি হয়ে ওঠে যেন এক মহাসমুদ্র। ঢেউয়ের কলতান, ভাসমান জলজ গাছপালা ও সূর্যাস্তের রঙে রাঙানো প্রকৃতির অপার রূপ।',
+    imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1400&q=80',
+    featuredSeasonBn: 'বর্ষাকাল (শ্রাবণ)',
+    banglaPeriodBn: 'আষাঢ় – শ্রাবণ ১৪৩৩',
+    hijriPeriodBn: 'মহররম – সফর ১৪৪৮',
+  },
+  {
+    monthIndex: 7,
+    monthNameBn: 'আগস্ট',
+    monthNameEn: 'August',
+    titleBn: 'মাধবকুণ্ড জলপ্রপাত ও বনানী, সিলেট বিভাগ',
+    locationBn: 'বড়লেখা, সিলেট অঞ্চল',
+    taglineBn: 'প্রায় ২০০ ফুট সুউচ্চ পাহাড়ি খাদ বেয়ে আছড়ে পড়া প্রাকৃতিক ঝরনা',
+    descriptionBn: 'বর্ষার জলে পূর্ণযৌবনা মাধবকুণ্ড জলপ্রপাতের অবিরাম গর্জন ও চারপাশের নিবিড় চিরহরিৎ বনাঞ্চলের সতেজ শ্যামল স্নিগ্ধতা।',
+    imageUrl: 'https://images.unsplash.com/photo-1473448912268-2022ce9509d8?auto=format&fit=crop&w=1400&q=80',
+    featuredSeasonBn: 'বর্ষা ও শরৎকালের সূচনা',
+    banglaPeriodBn: 'শ্রাবণ – ভাদ্র ১৪৩৩',
+    hijriPeriodBn: 'সফর – রবিউল আউয়াল ১৪৪৮',
+  },
+  {
+    monthIndex: 8,
+    monthNameBn: 'সেপ্টেম্বর',
+    monthNameEn: 'September',
+    titleBn: 'ঐতিহাসিক শাহী ঈদগাহ ময়দান, সিলেট',
+    locationBn: 'সিলেট মহানগর',
+    taglineBn: 'মুঘল আমলের ঐতিহ্যবাহী দুর্গসদৃশ স্থাপত্য ও ঐতিহাসিক ঈদগাহ',
+    descriptionBn: 'মুঘল সম্রাট আওরঙ্গজেবের শাসনামলে নির্মিত সিলেটের সবচেয়ে প্রাচীন ও সুবৃহৎ উন্মুক্ত ঈদগাহ ময়দান। এর প্রাচীন ২২টি গম্বুজ স্থাপত্যের স্মৃতি বহন করে।',
+    imageUrl: 'https://images.unsplash.com/photo-1564507592333-c60657eea523?auto=format&fit=crop&w=1400&q=80',
+    featuredSeasonBn: 'শরৎকাল',
+    banglaPeriodBn: 'ভাদ্র – আশ্বিন ১৪৩৩',
+    hijriPeriodBn: 'রবিউল আউয়াল – রবিউস সানি ১৪৪৮',
+  },
+  {
+    monthIndex: 9,
+    monthNameBn: 'অক্টোবর',
+    monthNameEn: 'October',
+    titleBn: 'ঐতিহাসিক ক্বীন ব্রিজ ও সুরমা নদী তীর, সিলেট',
+    locationBn: 'সুরমা নদী, সিলেট সদর',
+    taglineBn: '১৯৩৬ সালের ঐতিহাসিক ধনুকাকৃতির আর্চ সেতু ও সিলেটের প্রবেশদ্বার',
+    descriptionBn: 'সিলেটের প্রবেশদ্বার খ্যাত ঐতিহাসিক ক্বীন ব্রিজ। সুরমা নদীর বুক চিরে দাঁড়িয়ে থাকা লাল রঙের এই সুরম্য সেতুটি সিলেটের শতবর্ষী অহংকার।',
+    imageUrl: 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1400&q=80',
+    featuredSeasonBn: 'হেমন্তকাল',
+    banglaPeriodBn: 'আশ্বিন – কার্তিক ১৪৩৩',
+    hijriPeriodBn: 'রবিউস সানি – জমাদিউল আউয়াল ১৪৪৮',
+  },
+  {
+    monthIndex: 10,
+    monthNameBn: 'নভেম্বর',
+    monthNameEn: 'November',
+    titleBn: 'হযরত শাহ জালাল (রহ.) দরগাহ চত্বর, সিলেট',
+    locationBn: 'দরগাহ মহল্লা, সিলেট',
+    taglineBn: 'পুণ্যভূমি ও আধ্যাত্মিক রাজধানী সিলেটের শান্তির প্রাঙ্গণ',
+    descriptionBn: 'সিলেটের ঐতিহ্যবাহী আধ্যাত্মিক প্রতীক হযরত শাহ জালাল (রহ.)-এর পুণ্যভূমি। সুফি ভাবগাম্ভীর্য, পবিত্র গজার মাছের পুকুর ও শান্ত সৌম্য পরিবেশ।',
+    imageUrl: 'https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?auto=format&fit=crop&w=1400&q=80',
+    featuredSeasonBn: 'হেমন্তকাল ও কুয়াশাচ্ছন্ন সকাল',
+    banglaPeriodBn: 'কার্তিক – অগ্রহায়ণ ১৪৩৩',
+    hijriPeriodBn: 'জমাদিউল আউয়াল – জমাদিউস সানি ১৪৪৮',
+  },
+  {
+    monthIndex: 11,
+    monthNameBn: 'ডিসেম্বর',
+    monthNameEn: 'December',
+    titleBn: 'টাঙ্গুয়ার হাওর ও নীল জলরাশি, সিলেট অঞ্চল',
+    locationBn: 'তাহিরপুর ও সুনামগঞ্জ সীমান্ত',
+    taglineBn: 'বিশ্ব ঐতিহ্য রামসার সাইট, অতিথি পাখির কলকাকলি ও নীল জলের মায়াজাল',
+    descriptionBn: 'শীতের আগমনে সাইবেরিয়া ও দূরদেশ থেকে ঝাঁকে ঝাঁকে আসা পরিযায়ী পাখির মেলা, স্বচ্ছ নীল পানি এবং মেঘালয় পর্বতমালার অপরূপ নৈসর্গিক রূপ।',
+    imageUrl: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1400&q=80',
+    featuredSeasonBn: 'শীতকাল',
+    banglaPeriodBn: 'অগ্রহায়ণ – পৌষ ১৪৩৩',
+    hijriPeriodBn: 'জমাদিউস সানি – রজব ১৪৪৮',
+  },
+];
+
+// Helper to retrieve holidays for a specific month (0 to 11)
+export function getMonthHolidays(monthIndex: number): PublicHoliday[] {
+  const monthNum = monthIndex + 1;
+  const monthStr = String(monthNum).padStart(2, '0');
+  const monthPrefix = `2026-${monthStr}`;
+
+  return BANGLADESH_HOLIDAYS_2026.filter((h) => {
+    if (h.dateStr.startsWith(monthPrefix)) return true;
+    if (h.endDateStr && h.endDateStr.startsWith(monthPrefix)) return true;
+    return false;
+  }).sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+}
 
 export const MONTH_NAMES_BN = [
   'জানুয়ারি',
