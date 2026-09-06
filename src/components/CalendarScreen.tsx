@@ -471,27 +471,21 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               <span className="hidden sm:inline text-slate-300">স্মারক দেয়াল ও টেবিল ক্যালেন্ডার ২০২৬</span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-md bg-emerald-950 text-emerald-300 border border-emerald-800/80 font-semibold text-[10px] flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-emerald-400" />
-                <span>{currentMonthLandscape.locationBn}</span>
-              </span>
-              <div className="hidden sm:flex items-center gap-1.5">
-                {[...Array(6)].map((_, i) => (
-                  <span key={i} className="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-600 shadow-inner" />
-                ))}
-              </div>
+            <div className="flex items-center gap-1.5">
+              {[...Array(6)].map((_, i) => (
+                <span key={i} className="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-600 shadow-inner" />
+              ))}
             </div>
           </div>
 
-          {/* Monthly Scenic Header Image (Sylhet, Bangladesh) */}
-          <div className="relative w-full h-56 sm:h-72 md:h-84 lg:h-96 overflow-hidden group bg-slate-950">
+          {/* Pure Image Banner (No Text Overlay, No Titles, No Captions, No Location Tags) */}
+          <div className="relative w-full h-56 sm:h-72 md:h-84 lg:h-96 overflow-hidden bg-slate-950">
             <img
               key={`scenic-img-${selectedMonth}`}
               src={currentMonthLandscape.imageUrl}
-              alt={currentMonthLandscape.titleBn}
+              alt={`সিলট নৈসর্গিক দৃশ্য - ${MONTH_NAMES_EN[selectedMonth]}`}
               referrerPolicy="no-referrer"
-              className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+              className="w-full h-full object-cover transition-transform duration-700 ease-out hover:scale-102"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 if (!target.src.includes('sylhet_tea_garden')) {
@@ -499,89 +493,71 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                 }
               }}
             />
-
-            {/* Vignette Overlay Gradients */}
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-black/30 pointer-events-none" />
-
-            {/* Top Navigation & Month Controls Overlaid on Image */}
-            <div className="absolute top-3 inset-x-3 sm:top-4 sm:inset-x-5 flex items-center justify-between pointer-events-auto">
-              <button
-                onClick={handlePrevMonth}
-                id="calendar-scenic-prev-btn"
-                className="p-2 sm:p-2.5 rounded-2xl bg-black/60 hover:bg-black/85 backdrop-blur-md text-white border border-white/25 shadow-lg transition cursor-pointer active:scale-95 flex items-center gap-1"
-                title="পূর্ববর্তী মাস"
-              >
-                <ChevronLeft className="w-5 h-5" />
-                <span className="text-xs font-bold hidden md:inline pr-1">আগের মাস</span>
-              </button>
-
-              {/* Month / Year Center Badge */}
-              <div className="bg-slate-900/90 backdrop-blur-md px-4 py-2 sm:px-6 sm:py-2.5 rounded-2xl border border-white/20 shadow-xl text-center">
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-base sm:text-2xl font-black text-amber-300 tracking-wide">
-                    {currentMonthLandscape.monthNameBn} ২০২৬
-                  </span>
-                  <span className="text-xs sm:text-sm text-slate-300 font-medium">
-                    ({currentMonthLandscape.monthNameEn})
-                  </span>
-                </div>
-                <p className="text-[10px] sm:text-xs text-emerald-300 font-semibold tracking-wide mt-0.5">
-                  বাংলা: {currentMonthLandscape.banglaPeriodBn} • হিজরি: {currentMonthLandscape.hijriPeriodBn}
-                </p>
-              </div>
-
-              <button
-                onClick={handleNextMonth}
-                id="calendar-scenic-next-btn"
-                className="p-2 sm:p-2.5 rounded-2xl bg-black/60 hover:bg-black/85 backdrop-blur-md text-white border border-white/25 shadow-lg transition cursor-pointer active:scale-95 flex items-center gap-1"
-                title="পরবর্তী মাস"
-              >
-                <span className="text-xs font-bold hidden md:inline pl-1">পরের মাস</span>
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Bottom Caption: Landmark Name & Scenic Description */}
-            <div className="absolute bottom-3 inset-x-3 sm:bottom-4 sm:inset-x-6 text-white pointer-events-none">
-              <div className="max-w-3xl">
-                <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-600/90 text-white text-[10px] sm:text-xs font-bold backdrop-blur-xs border border-emerald-400/40 shadow-xs">
-                    <Camera className="w-3 h-3" />
-                    সিলেটের নৈসর্গিক রূপ ও ঐতিহ্য
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500 text-slate-950 text-[10px] sm:text-xs font-black backdrop-blur-xs">
-                    <MapPin className="w-3 h-3 text-slate-950" />
-                    {currentMonthLandscape.locationBn}
-                  </span>
-                  <span className="text-[10px] sm:text-xs text-slate-300 font-semibold hidden md:inline">
-                    ঋতু: {currentMonthLandscape.featuredSeasonBn}
-                  </span>
-                </div>
-
-                <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white drop-shadow-md leading-tight">
-                  {currentMonthLandscape.titleBn}
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-200 font-medium mt-1 line-clamp-2 drop-shadow-xs">
-                  {currentMonthLandscape.descriptionBn}
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Calendar Body: Navigation Tabs, Controls, Grid & Holidays */}
           <div className="p-4 sm:p-6 space-y-5">
+            {/* Month Header and Navigator Bar (Cleanly situated below the pure image banner) */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center flex-shrink-0 font-bold shadow-2xs">
+                    <CalendarDays className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight flex items-center gap-2">
+                      <span>{MONTH_NAMES_BN[selectedMonth]} ২০২৬</span>
+                      <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
+                        {MONTH_NAMES_EN[selectedMonth]} 2026
+                      </span>
+                    </h3>
+                    <p className="text-xs text-emerald-700 font-semibold mt-0.5">
+                      বাংলা: {currentMonthLandscape.banglaPeriodBn} • হিজরি: {currentMonthLandscape.hijriPeriodBn}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Prev / Next Month Navigator & Current Month Buttons */}
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={handlePrevMonth}
+                  id="calendar-prev-month-btn"
+                  className="p-2 sm:px-3 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer active:scale-95 flex items-center gap-1 text-xs font-bold"
+                  title="পূর্ববর্তী মাস"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline">পূর্ববর্তী মাস</span>
+                </button>
+
+                <button
+                  onClick={handleGoToCurrentMonth}
+                  id="calendar-current-month-btn"
+                  className="px-3 py-2 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl transition cursor-pointer shadow-2xs active:scale-95"
+                  title="চলতি মাসে যান"
+                >
+                  চলতি মাস
+                </button>
+
+                <button
+                  onClick={handleNextMonth}
+                  id="calendar-next-month-btn"
+                  className="p-2 sm:px-3 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer active:scale-95 flex items-center gap-1 text-xs font-bold"
+                  title="পরবর্তী মাস"
+                >
+                  <span className="hidden sm:inline">পরবর্তী মাস</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
             {/* Quick Month Bar Pill Tabs */}
             <div>
               <div className="flex items-center justify-between gap-2 mb-2">
                 <span className="text-xs font-bold text-slate-700">মাস নির্বাচন করুন (জানুয়ারি – ডিসেম্বর ২০২৬):</span>
-                <button
-                  onClick={handleGoToCurrentMonth}
-                  id="calendar-current-month-btn"
-                  className="px-3 py-1 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl transition cursor-pointer shadow-2xs active:scale-95"
-                  title="চলতি মাসে যান"
-                >
-                  চলতি মাস ({MONTH_NAMES_BN[realDate.getMonth()]})
-                </button>
+                <span className="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                  {MONTH_NAMES_BN[selectedMonth]} নির্বাচিত
+                </span>
               </div>
 
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none text-xs">
