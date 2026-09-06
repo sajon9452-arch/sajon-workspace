@@ -58,7 +58,8 @@ import {
   SupportReportItem,
   HomeSlide,
   HumanitarianActivity,
-  OrganizationRule
+  OrganizationRule,
+  CalendarMonthlyBanner
 } from '../types';
 import { AdminHomePageManager } from './AdminHomePageManager';
 import {
@@ -133,6 +134,8 @@ interface AdminPanelScreenProps {
   onUpdateHumanitarianActivities?: (activities: HumanitarianActivity[]) => void;
   organizationRules?: OrganizationRule[];
   onUpdateOrganizationRules?: (rules: OrganizationRule[]) => void;
+  calendarBanners?: Record<number, CalendarMonthlyBanner>;
+  onUpdateCalendarBanners?: (banners: Record<number, CalendarMonthlyBanner>) => void;
   initialActiveTab?: 'overview' | 'homepage' | 'members' | 'donors' | 'funds' | 'notices' | 'payments' | 'reports' | 'settings';
 }
 
@@ -178,6 +181,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onUpdateHumanitarianActivities,
   organizationRules = [],
   onUpdateOrganizationRules,
+  calendarBanners,
+  onUpdateCalendarBanners,
   initialActiveTab
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'homepage' | 'members' | 'donors' | 'funds' | 'notices' | 'payments' | 'reports' | 'settings'>(initialActiveTab || 'overview');
@@ -3441,6 +3446,8 @@ CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WIT
           onUpdateRules={onUpdateOrganizationRules || (() => {})}
           profile={profile}
           onUpdateProfile={onUpdateProfile || (() => {})}
+          calendarBanners={calendarBanners}
+          onUpdateCalendarBanners={onUpdateCalendarBanners}
           notifySuccess={notifySuccess}
           notifyError={notifyError}
         />

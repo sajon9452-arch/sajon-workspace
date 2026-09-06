@@ -154,3 +154,13 @@ export interface OrganizationStats {
   totalExpenses?: number;
   activeNotices: number;
 }
+
+export interface CalendarMonthlyBanner {
+  monthIndex: number; // 0 to 11
+  imageUrl: string | null; // null if explicitly deleted
+  isDeleted?: boolean;
+  customUploaded?: boolean;
+  titleBn?: string;
+  locationBn?: string;
+  updatedAt?: string;
+}

@@ -9,7 +9,8 @@ import {
   SupportReportItem,
   HomeSlide,
   HumanitarianActivity,
-  OrganizationRule
+  OrganizationRule,
+  CalendarMonthlyBanner
 } from '../types';
 
 export interface ServerDatabasePayload {
@@ -25,6 +26,8 @@ export interface ServerDatabasePayload {
   humanitarianActivities?: HumanitarianActivity[];
   organizationRules?: OrganizationRule[];
   adminPin?: string;
+  calendarBanners?: Record<number, CalendarMonthlyBanner>;
+  deletedSlideIds?: string[];
   updatedAt?: string;
 }
 
@@ -84,7 +87,9 @@ export async function syncKeyToServer(
     | 'homeSlides'
     | 'humanitarianActivities'
     | 'organizationRules'
-    | 'adminPin',
+    | 'adminPin'
+    | 'calendarBanners'
+    | 'deletedSlideIds',
   value: any
 ): Promise<boolean> {
   try {

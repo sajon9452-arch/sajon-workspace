@@ -29,7 +29,12 @@ import {
   Camera,
   Landmark,
   Compass,
-  Mountain
+  Mountain,
+  RotateCcw,
+  ImageOff,
+  Trash2,
+  Upload,
+  Check
 } from 'lucide-react';
 import { 
   BANGLADESH_HOLIDAYS_2026, 
@@ -50,7 +55,8 @@ import {
   OrganizationEvent, 
   getAllOrganizationEvents 
 } from '../utils/organizationEvents';
-import { OrganizationProfile, Notice, HumanitarianActivity, ActiveScreen } from '../types';
+import { OrganizationProfile, Notice, HumanitarianActivity, ActiveScreen, CalendarMonthlyBanner } from '../types';
+import { loadCalendarBanners, saveCalendarBanners } from '../utils/storage';
 import { toBengaliNumber } from '../utils/helpers';
 
 interface CalendarScreenProps {
@@ -59,6 +65,9 @@ interface CalendarScreenProps {
   notices?: Notice[];
   humanitarianActivities?: HumanitarianActivity[];
   onNavigate?: (screen: ActiveScreen) => void;
+  isAdmin?: boolean;
+  calendarBanners?: Record<number, CalendarMonthlyBanner>;
+  onUpdateCalendarBanners?: (banners: Record<number, CalendarMonthlyBanner>) => void;
 }
 
 export const CalendarScreen: React.FC<CalendarScreenProps> = ({ 
@@ -66,7 +75,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   profile,
   notices = [],
   humanitarianActivities = [],
-  onNavigate
+  onNavigate,
+  isAdmin = false,
+  calendarBanners,
+  onUpdateCalendarBanners
 }) => {
   // Current real date (or 2026 date context)
   const realDate = useMemo(() => new Date(), []);
@@ -140,6 +152,104 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const currentMonthLandscape = useMemo<SylhetMonthlyLandscape>(() => {
     return SYLHET_MONTHLY_SCENIC_LANDSCAPES[selectedMonth] || SYLHET_MONTHLY_SCENIC_LANDSCAPES[0];
   }, [selectedMonth]);
+
+  // Internal state fallback if not passed as prop
+  const [internalBanners, setInternalBanners] = useState<Record<number, CalendarMonthlyBanner>>(() => loadCalendarBanners());
+  const effectiveBanners = calendarBanners || internalBanners;
+  
+  const handleUpdateBanners = (updated: Record<number, CalendarMonthlyBanner>) => {
+    if (onUpdateCalendarBanners) {
+      onUpdateCalendarBanners(updated);
+    } else {
+      setInternalBanners(updated);
+      saveCalendarBanners(updated);
+    }
+  };
+
+  // Banner status for current month:
+  const currentMonthBannerConfig = effectiveBanners[selectedMonth];
+  const isBannerDeleted = currentMonthBannerConfig ? (currentMonthBannerConfig.isDeleted === true || currentMonthBannerConfig.imageUrl === null) : false;
+  const isBannerCustom = !isBannerDeleted && !!currentMonthBannerConfig?.imageUrl;
+  const activeBannerImageUrl = isBannerCustom 
+    ? currentMonthBannerConfig!.imageUrl! 
+    : (isBannerDeleted ? null : currentMonthLandscape.imageUrl);
+
+  // Banner Modal state (upload or enter URL)
+  const [isBannerModalOpen, setIsBannerModalOpen] = useState(false);
+  const [bannerTargetMonth, setBannerTargetMonth] = useState<number>(selectedMonth);
+  const [bannerInputUrl, setBannerInputUrl] = useState('');
+  const [bannerFilePreview, setBannerFilePreview] = useState('');
+
+  const openBannerUploadModal = (monthIdx: number) => {
+    setBannerTargetMonth(monthIdx);
+    const existing = effectiveBanners[monthIdx];
+    setBannerInputUrl(existing?.imageUrl || '');
+    setBannerFilePreview('');
+    setIsBannerModalOpen(true);
+  };
+
+  const handleBannerFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('ছবির সাইজ সর্বোচ্চ ৫ মেগাবাইট হতে পারবে');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBannerFilePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDeleteMonthlyBanner = (monthIndex: number) => {
+    const monthName = MONTH_NAMES_BN[monthIndex];
+    if (window.confirm(`${monthName} মাসের ব্যানার ছবিটি কি আপনি স্থায়ীভাবে মুছে ফেলতে চান?\n\nএকবার মুছে ফেললে এটি ডাটাবেজ ও স্টেট থেকে চিরতরে মুছে যাবে এবং স্বয়ংক্রিয়ভাবে আর কখনো ফিরে আসবে না।`)) {
+      const updated: Record<number, CalendarMonthlyBanner> = {
+        ...effectiveBanners,
+        [monthIndex]: {
+          monthIndex,
+          imageUrl: null,
+          isDeleted: true,
+          updatedAt: new Date().toISOString()
+        }
+      };
+      handleUpdateBanners(updated);
+    }
+  };
+
+  const handleResetMonthlyBanner = (monthIndex: number) => {
+    const monthName = MONTH_NAMES_BN[monthIndex];
+    if (window.confirm(`${monthName} মাসের মূল ডিফল্ট সিলেটি নৈসর্গিক ছবিটি কি ফিরিয়ে আনতে চান?`)) {
+      const updated = { ...effectiveBanners };
+      delete updated[monthIndex];
+      handleUpdateBanners(updated);
+    }
+  };
+
+  const handleSaveBannerModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalUrl = bannerFilePreview.trim() || bannerInputUrl.trim();
+    if (!finalUrl) {
+      alert('অনুগ্রহ করে একটি ছবি নির্বাচন করুন বা ছবির লিঙ্ক প্রদান করুন');
+      return;
+    }
+    const updated: Record<number, CalendarMonthlyBanner> = {
+      ...effectiveBanners,
+      [bannerTargetMonth]: {
+        monthIndex: bannerTargetMonth,
+        imageUrl: finalUrl,
+        isDeleted: false,
+        customUploaded: true,
+        updatedAt: new Date().toISOString()
+      }
+    };
+    handleUpdateBanners(updated);
+    setIsBannerModalOpen(false);
+    setBannerInputUrl('');
+    setBannerFilePreview('');
+  };
 
   // Public government holidays specifically for the selected month
   const currentMonthHolidays = useMemo<PublicHoliday[]>(() => {
@@ -478,22 +588,114 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             </div>
           </div>
 
-          {/* Pure Image Banner (No Text Overlay, No Titles, No Captions, No Location Tags) */}
-          <div className="relative w-full h-56 sm:h-72 md:h-84 lg:h-96 overflow-hidden bg-slate-950">
-            <img
-              key={`scenic-img-${selectedMonth}`}
-              src={currentMonthLandscape.imageUrl}
-              alt={`সিলট নৈসর্গিক দৃশ্য - ${MONTH_NAMES_EN[selectedMonth]}`}
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-cover transition-transform duration-700 ease-out hover:scale-102"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                if (!target.src.includes('sylhet_tea_garden')) {
-                  target.src = '/src/assets/images/sylhet_tea_garden_1788671827287.jpg';
-                }
-              }}
-            />
-          </div>
+          {/* Admin Banner Control Toolbar (Only visible to Admin) */}
+          {isAdmin && (
+            <div className="bg-slate-900 border-b border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5 text-xs text-slate-300">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold text-slate-200">
+                  ব্যানার নিয়ন্ত্রণ ({MONTH_NAMES_BN[selectedMonth]} ২০২৬):
+                </span>
+                {isBannerDeleted ? (
+                  <span className="px-2 py-0.5 rounded-md bg-rose-950/80 text-rose-300 border border-rose-800/80 font-bold text-[11px]">
+                    স্থায়ীভাবে মুছে ফেলা হয়েছে
+                  </span>
+                ) : isBannerCustom ? (
+                  <span className="px-2 py-0.5 rounded-md bg-blue-950/80 text-blue-300 border border-blue-800/80 font-bold text-[11px]">
+                    কাস্টম আপলোডকৃত ছবি
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-950/80 text-emerald-300 border border-emerald-800/80 font-bold text-[11px]">
+                    ডিফল্ট সিলেটি ছবি সক্রিয়
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openBannerUploadModal(selectedMonth)}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>ছবি পরিবর্তন / আপলোড</span>
+                </button>
+
+                {!isBannerDeleted && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteMonthlyBanner(selectedMonth)}
+                    className="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                    title="স্থায়ীভাবে মুছে ফেলুন"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>স্থায়ীভাবে মুছে ফেলুন</span>
+                  </button>
+                )}
+
+                {(isBannerDeleted || isBannerCustom) && (
+                  <button
+                    type="button"
+                    onClick={() => handleResetMonthlyBanner(selectedMonth)}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg font-semibold text-[11px] flex items-center gap-1.5 transition cursor-pointer border border-slate-700"
+                    title="ডিফল্ট সিলেটি ছবি ফিরিয়ে আনুন"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                    <span>ডিফল্ট সিলেটি ছবি সেট করুন</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Monthly Scenic Banner (Full-bleed photographic aesthetic, strictly no text overlays as per rule) */}
+          {isBannerDeleted ? (
+            <div className="relative w-full h-48 sm:h-64 md:h-72 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border-b border-slate-800 flex flex-col items-center justify-center p-6 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center text-slate-400 mb-2 shadow-inner">
+                <ImageOff className="w-6 h-6 text-slate-400" />
+              </div>
+              <h4 className="text-sm sm:text-base font-bold text-slate-300">
+                {MONTH_NAMES_BN[selectedMonth]} মাসের ব্যানার ছবি স্থায়ীভাবে মুছে ফেলা হয়েছে
+              </h4>
+              <p className="text-xs text-slate-500 mt-1 max-w-md">
+                এই ছবিটি ডাটাবেজ থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে। এটি আর কখনো স্বয়ংক্রিয়ভাবে ফিরে আসবে না।
+              </p>
+              {isAdmin && (
+                <div className="mt-3.5 flex items-center gap-2">
+                  <button
+                    onClick={() => openBannerUploadModal(selectedMonth)}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>নতুন ছবি আপলোড করুন</span>
+                  </button>
+                  <button
+                    onClick={() => handleResetMonthlyBanner(selectedMonth)}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium flex items-center gap-1.5 transition cursor-pointer border border-slate-700"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                    <span>ডিফল্ট সিলেটি ছবি সেট করুন</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="relative w-full h-56 sm:h-72 md:h-84 lg:h-96 overflow-hidden bg-slate-950">
+              <img
+                key={`scenic-img-${selectedMonth}-${activeBannerImageUrl}`}
+                src={activeBannerImageUrl || currentMonthLandscape.imageUrl}
+                alt={`সিলট নৈসর্গিক দৃশ্য - ${MONTH_NAMES_EN[selectedMonth]}`}
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover transition-transform duration-700 ease-out hover:scale-102"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  if (!target.src.includes('sylhet_tea_garden')) {
+                    target.src = '/src/assets/images/sylhet_tea_garden_1788671827287.jpg';
+                  }
+                }}
+              />
+            </div>
+          )}
 
           {/* Calendar Body: Navigation Tabs, Controls, Grid & Holidays */}
           <div className="p-4 sm:p-6 space-y-5">
@@ -1335,6 +1537,119 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                 ঠিক আছে
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Monthly Banner Upload Modal */}
+      {isBannerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-scaleUp">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Upload className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-bold text-sm">
+                  {MONTH_NAMES_BN[bannerTargetMonth]} ২০২৬ - ব্যানার ছবি পরিবর্তন
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsBannerModalOpen(false);
+                  setBannerInputUrl('');
+                  setBannerFilePreview('');
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBannerModal} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  মাস নির্বাচন করুন
+                </label>
+                <select
+                  value={bannerTargetMonth}
+                  onChange={(e) => setBannerTargetMonth(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  {MONTH_NAMES_BN.map((name, idx) => (
+                    <option key={idx} value={idx}>
+                      {name} ২০২৬ ({MONTH_NAMES_EN[idx]})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ডিভাইস থেকে ছবি আপলোড করুন
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBannerFileUpload}
+                  className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  জেপিজি, পিএনজি বা ওয়েবপি ছবি (সর্বোচ্চ ৫ মেগাবাইট)
+                </p>
+              </div>
+
+              <div className="text-center text-xs font-bold text-slate-400">অথবা</div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  সরাসরি ছবির লিঙ্ক (Image URL)
+                </label>
+                <input
+                  type="url"
+                  value={bannerInputUrl}
+                  onChange={(e) => setBannerInputUrl(e.target.value)}
+                  placeholder="https://images.unsplash.com/..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              {/* Preview */}
+              {(bannerFilePreview || bannerInputUrl) && (
+                <div className="mt-2 space-y-1">
+                  <span className="text-[11px] font-bold text-slate-600">ছবির প্রিভিউ:</span>
+                  <div className="h-32 rounded-xl overflow-hidden bg-slate-900 border border-slate-200">
+                    <img
+                      src={bannerFilePreview || bannerInputUrl}
+                      alt="Banner Preview"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=600&q=80';
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBannerModalOpen(false);
+                    setBannerInputUrl('');
+                    setBannerFilePreview('');
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>সংরক্ষণ করুন</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { Member, BloodDonor, Notice, FundRecord, OrganizationProfile, PaymentGatewayConfig, SupportReportItem, HomeSlide, HumanitarianActivity, OrganizationRule } from '../types';
+import { Member, BloodDonor, Notice, FundRecord, OrganizationProfile, PaymentGatewayConfig, SupportReportItem, HomeSlide, HumanitarianActivity, OrganizationRule, CalendarMonthlyBanner } from '../types';
 import { INITIAL_MEMBERS, INITIAL_DONORS, INITIAL_NOTICES, INITIAL_FUNDS, INITIAL_ORG_PROFILE, INITIAL_SUPPORT_REPORTS, INITIAL_HOME_SLIDES, INITIAL_HUMANITARIAN_ACTIVITIES, INITIAL_ORGANIZATION_RULES } from '../data/initialData';
 import { syncKeyToServer, resetServerDatabase, clearServerDatabase, ServerDatabasePayload } from './serverApi';
 import { sortMembersOldestFirst } from './helpers';
@@ -16,6 +16,8 @@ export const STORAGE_KEYS = {
   HOME_SLIDES: 'pms_home_slides_v2',
   HUMANITARIAN_ACTIVITIES: 'pms_humanitarian_activities_v2',
   ORGANIZATION_RULES: 'pms_organization_rules_v2',
+  CALENDAR_BANNERS: 'pms_calendar_banners_v2',
+  DELETED_SLIDE_IDS: 'pms_deleted_slide_ids_v2',
 };
 
 export const PMS_SYNC_CHANNEL_NAME = 'pms_realtime_sync_channel';
@@ -133,11 +135,25 @@ export function populateLocalStorageFromServer(
     if (Array.isArray(serverDb.homeSlides)) {
       const current = localStorage.getItem(STORAGE_KEYS.HOME_SLIDES);
       const incoming = JSON.stringify(serverDb.homeSlides);
-      if (serverDb.homeSlides.length > 0 || allowEmptyOverride || !current) {
-        if (current !== incoming) {
-          localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, incoming);
-          hasChanged = true;
-        }
+      if (current !== incoming) {
+        localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, incoming);
+        hasChanged = true;
+      }
+    }
+    if (serverDb.calendarBanners && typeof serverDb.calendarBanners === 'object') {
+      const current = localStorage.getItem(STORAGE_KEYS.CALENDAR_BANNERS);
+      const incoming = JSON.stringify(serverDb.calendarBanners);
+      if (current !== incoming) {
+        localStorage.setItem(STORAGE_KEYS.CALENDAR_BANNERS, incoming);
+        hasChanged = true;
+      }
+    }
+    if (Array.isArray(serverDb.deletedSlideIds)) {
+      const current = localStorage.getItem(STORAGE_KEYS.DELETED_SLIDE_IDS);
+      const incoming = JSON.stringify(serverDb.deletedSlideIds);
+      if (current !== incoming) {
+        localStorage.setItem(STORAGE_KEYS.DELETED_SLIDE_IDS, incoming);
+        hasChanged = true;
       }
     }
     if (Array.isArray(serverDb.humanitarianActivities)) {
@@ -457,20 +473,50 @@ export function saveSupportReports(reports: SupportReportItem[]): void {
   }
 }
 
-// Home Slides Storage
+// Deleted Slide IDs Tracking (Guarantees deleted images never reappear)
+export function loadDeletedSlideIds(): string[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.DELETED_SLIDE_IDS);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading deleted slide ids', e);
+  }
+  return [];
+}
+
+export function recordDeletedSlideId(id: string): void {
+  try {
+    const ids = loadDeletedSlideIds();
+    if (!ids.includes(id)) {
+      const updated = [...ids, id];
+      localStorage.setItem(STORAGE_KEYS.DELETED_SLIDE_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_SLIDE_IDS, updated);
+      syncKeyToServer('deletedSlideIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error recording deleted slide id', e);
+  }
+}
+
+// Home Slides Storage (Permanent deletion aware: empty arrays preserved, deleted items permanently filtered)
 export function loadHomeSlides(): HomeSlide[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.HOME_SLIDES);
-    if (saved) {
+    if (saved !== null) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      if (Array.isArray(parsed)) {
+        const deletedIds = loadDeletedSlideIds();
+        return parsed.filter(s => !deletedIds.includes(s.id));
       }
     }
   } catch (e) {
     console.error('Error loading home slides', e);
   }
-  return INITIAL_HOME_SLIDES;
+  const deletedIds = loadDeletedSlideIds();
+  return INITIAL_HOME_SLIDES.filter(s => !deletedIds.includes(s.id));
 }
 
 export function saveHomeSlides(slides: HomeSlide[]): void {
@@ -480,6 +526,32 @@ export function saveHomeSlides(slides: HomeSlide[]): void {
     syncKeyToServer('homeSlides', slides);
   } catch (e) {
     console.error('Error saving home slides', e);
+  }
+}
+
+// Calendar Monthly Banners Storage (Default placeholders preserved initially, permanent deletions respected forever)
+export function loadCalendarBanners(): Record<number, CalendarMonthlyBanner> {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.CALENDAR_BANNERS);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Error loading calendar banners', e);
+  }
+  return {};
+}
+
+export function saveCalendarBanners(banners: Record<number, CalendarMonthlyBanner>): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.CALENDAR_BANNERS, JSON.stringify(banners));
+    notifyDataChange(STORAGE_KEYS.CALENDAR_BANNERS, banners);
+    syncKeyToServer('calendarBanners', banners);
+  } catch (e) {
+    console.error('Error saving calendar banners', e);
   }
 }
 

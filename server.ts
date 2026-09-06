@@ -60,6 +60,8 @@ interface AppDatabase {
   humanitarianActivities: any[];
   organizationRules: any[];
   adminPin: string;
+  calendarBanners?: Record<string, any>;
+  deletedSlideIds?: string[];
   updatedAt: string;
 }
 
@@ -245,6 +247,8 @@ const DEFAULT_DB: AppDatabase = {
     }
   ],
   adminPin: '1234',
+  calendarBanners: {},
+  deletedSlideIds: [],
   updatedAt: new Date().toISOString()
 };
 
@@ -259,7 +263,11 @@ function readLocalDatabase(): AppDatabase {
     }
     const content = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed = JSON.parse(content);
-    return { ...DEFAULT_DB, ...parsed };
+    const db: AppDatabase = { ...DEFAULT_DB, ...parsed };
+    if (Array.isArray(db.deletedSlideIds) && db.deletedSlideIds.length > 0 && Array.isArray(db.homeSlides)) {
+      db.homeSlides = db.homeSlides.filter((s: any) => !db.deletedSlideIds!.includes(s.id));
+    }
+    return db;
   } catch (error) {
     console.error('Error reading local server database:', error);
     return DEFAULT_DB;
@@ -625,7 +633,9 @@ app.post('/api/data/:key', async (req, res) => {
       'homeSlides',
       'humanitarianActivities',
       'organizationRules',
-      'adminPin'
+      'adminPin',
+      'calendarBanners',
+      'deletedSlideIds'
     ];
 
     if (!allowedKeys.includes(key)) {

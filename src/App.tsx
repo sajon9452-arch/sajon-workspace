@@ -12,7 +12,8 @@ import {
   SupportReportItem,
   HomeSlide,
   HumanitarianActivity,
-  OrganizationRule
+  OrganizationRule,
+  CalendarMonthlyBanner
 } from './types';
 import { 
   loadMembers, 
@@ -37,6 +38,8 @@ import {
   saveHumanitarianActivities,
   loadOrganizationRules,
   saveOrganizationRules,
+  loadCalendarBanners,
+  saveCalendarBanners,
   populateLocalStorageFromServer, 
   resetAllData, 
   clearAllData,
@@ -74,6 +77,7 @@ export default function App() {
   const [homeSlides, setHomeSlides] = useState<HomeSlide[]>(() => loadHomeSlides());
   const [humanitarianActivities, setHumanitarianActivities] = useState<HumanitarianActivity[]>(() => loadHumanitarianActivities());
   const [organizationRules, setOrganizationRules] = useState<OrganizationRule[]>(() => loadOrganizationRules());
+  const [calendarBanners, setCalendarBanners] = useState<Record<number, CalendarMonthlyBanner>>(() => loadCalendarBanners());
   const [adminActiveTab, setAdminActiveTab] = useState<'overview' | 'homepage' | 'members' | 'donors' | 'funds' | 'notices' | 'payments' | 'reports' | 'settings'>('overview');
   const [manualTotalBalance, setManualTotalBalance] = useState<number | null>(() => loadManualTotalBalance());
   const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(() => loadPaymentSettings());
@@ -99,6 +103,7 @@ export default function App() {
       setHomeSlides(loadHomeSlides());
       setHumanitarianActivities(loadHumanitarianActivities());
       setOrganizationRules(loadOrganizationRules());
+      setCalendarBanners(loadCalendarBanners());
       setManualTotalBalance(loadManualTotalBalance());
       setPaymentConfig(loadPaymentSettings());
     };
@@ -115,6 +120,7 @@ export default function App() {
         if (Array.isArray(serverData.homeSlides)) setHomeSlides(serverData.homeSlides);
         if (Array.isArray(serverData.humanitarianActivities)) setHumanitarianActivities(serverData.humanitarianActivities);
         if (Array.isArray(serverData.organizationRules)) setOrganizationRules(serverData.organizationRules);
+        if (serverData.calendarBanners) setCalendarBanners(serverData.calendarBanners);
         if (serverData.manualTotalBalance !== undefined) setManualTotalBalance(serverData.manualTotalBalance);
         if (serverData.paymentConfig) setPaymentConfig(serverData.paymentConfig);
         populateLocalStorageFromServer(serverData, true);
@@ -380,6 +386,12 @@ export default function App() {
     syncKeyToServer('organizationRules', updated).catch(() => {});
   };
 
+  const handleUpdateCalendarBanners = (updated: Record<number, CalendarMonthlyBanner>) => {
+    setCalendarBanners(updated);
+    saveCalendarBanners(updated);
+    syncKeyToServer('calendarBanners', updated).catch(() => {});
+  };
+
   const handleResetData = () => {
     if (confirm('আপনি কি সকল ডাটা রিসেট করে ডিফল্ট অবস্থায় ফিরিয়ে নিতে চান?')) {
       resetAllData();
@@ -518,6 +530,9 @@ export default function App() {
             humanitarianActivities={humanitarianActivities}
             onBack={() => setActiveScreen('home')}
             onNavigate={(screen) => setActiveScreen(screen)}
+            isAdmin={isAdmin}
+            calendarBanners={calendarBanners}
+            onUpdateCalendarBanners={handleUpdateCalendarBanners}
           />
         )}
 
@@ -570,6 +585,8 @@ export default function App() {
             onUpdateHumanitarianActivities={handleUpdateHumanitarianActivities}
             organizationRules={organizationRules}
             onUpdateOrganizationRules={handleUpdateOrganizationRules}
+            calendarBanners={calendarBanners}
+            onUpdateCalendarBanners={handleUpdateCalendarBanners}
             initialActiveTab={adminActiveTab}
           />
         )}
