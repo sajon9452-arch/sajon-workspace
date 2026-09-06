@@ -326,11 +326,17 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                           (জ্যেষ্ঠতা ক্রম)
                         </span>
                       </div>
-                      {member.joinDate && (
-                        <span className="text-[11px] text-slate-500 font-medium">
-                          যোগদান: {toBengaliNumber(member.joinDate)}
+                      <div className="flex items-center gap-1.5">
+                        {member.bloodGroup && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 text-[11px] font-bold border border-rose-200/70">
+                            রক্ত: {member.bloodGroup}
+                          </span>
+                        )}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200/60">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          <span>সক্রিয় সদস্য</span>
                         </span>
-                      )}
+                      </div>
                     </div>
 
                     {/* Professional ID Card Body */}
@@ -360,7 +366,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                       </div>
                       
                       {/* Member Info Column */}
-                      <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex-1 min-w-0 flex flex-col justify-center space-y-2 py-0.5">
                         <h3 className="font-bold text-slate-900 text-base sm:text-lg leading-snug break-words">
                           {member.name}
                         </h3>
@@ -372,16 +378,17 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                           </span>
                         </div>
 
-                        {member.area && (
-                          <p className="text-xs text-slate-600 flex items-center gap-1.5 pt-0.5">
+                        {member.area ? (
+                          <p className="text-xs text-slate-600 flex items-center gap-1.5">
                             <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                             <span className="truncate">{member.area}</span>
                           </p>
+                        ) : (
+                          <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                            <span className="truncate">পতেঙ্গা, চট্টগ্রাম</span>
+                          </p>
                         )}
-
-                        <p className="text-[11px] text-slate-400 font-medium">
-                          যোগদান: {member.joinDate ? toBengaliNumber(member.joinDate) : '১৫/০৮/২০২২'}
-                        </p>
                       </div>
                     </div>
 
