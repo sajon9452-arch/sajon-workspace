@@ -62,6 +62,7 @@ interface AppDatabase {
   adminPin: string;
   calendarBanners?: Record<string, any>;
   deletedSlideIds?: string[];
+  deletedActivityIds?: string[];
   updatedAt: string;
 }
 
@@ -174,34 +175,7 @@ const DEFAULT_DB: AppDatabase = {
       isActive: true
     }
   ],
-  humanitarianActivities: [
-    {
-      id: 'act-1',
-      title: 'বন্যাপীড়িত অসহায় পরিবারের মাঝে জরুরি পুষ্টি ও খাদ্য সহায়তা বিতরণ',
-      description: 'অতিবৃষ্টি ও পাহাড়ি ঢলে পানিবন্দি পরিবারের ঘরে ঘরে গিয়ে খাদ্য সামগ্রী ও নিত্যপ্রয়োজনীয় জিনিসপত্র পৌঁছে দেওয়া হয়েছে।',
-      itemsGiven: 'চাল ১০ কেজি, মসুর ডাল ২ কেজি, সয়াবিন তেল ১ লিটার, আলু ৩ কেজি, লবণ ১ কেজি, খাবার স্যালাইন ১০ প্যাকেট ও পানি বিশুদ্ধকরণ ট্যাবলেট।',
-      cost: 2350,
-      handledBy: 'মো: আব্দুল্লাহ আল মামুন (সাধারণ সম্পাদক) ও টিম ভলান্টিয়ার্স',
-      recipientName: 'মোসাম্মৎ জমিলা খাতুন (বয়স: ৫৮ বছর)',
-      recipientPhotoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=300&q=80',
-      date: '২০২৬-০৮-২৮',
-      location: 'কোম্পানীগঞ্জ ও গোয়াইনঘাট, সিলেট',
-      isFeatured: true
-    },
-    {
-      id: 'act-2',
-      title: 'দুর্ঘটনায় আহত দরিদ্র দিনমজুর ভাইয়ের জরুরি চিকিৎসা ও ওষুধ ফান্ড',
-      description: 'পেশাগত কাজে আহত দিনমজুর ভাইয়ের চোখের জরুরি অপারেশন ও পরবর্তী ৩ মাসের প্রয়োজনীয় ওষুধের সম্পূর্ণ খরচ সংগঠনের ফান্ড থেকে বহন করা হয়েছে।',
-      itemsGiven: 'চক্ষু চিকিৎসা ব্যয়, চোখের লেন্স ড্রপ, অ্যান্টিবায়োটিক এবং নগদ ৩,৫০০ টাকা জরুরি জীবনযাত্রার অনুদান।',
-      cost: 5800,
-      handledBy: 'ইঞ্জি: তারেক মাহমুদ (রক্তদান ও সেবা সমন্বয়ক)',
-      recipientName: 'মো: রহিম উল্লাহ (বয়স: ৫২ বছর)',
-      recipientPhotoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-      date: '২০২৬-০৮-১৮',
-      location: 'পতেঙ্গা, চট্টগ্রাম',
-      isFeatured: false
-    }
-  ],
+  humanitarianActivities: [],
   organizationRules: [
     {
       id: 'rule-1',
@@ -249,6 +223,7 @@ const DEFAULT_DB: AppDatabase = {
   adminPin: '1234',
   calendarBanners: {},
   deletedSlideIds: [],
+  deletedActivityIds: [],
   updatedAt: new Date().toISOString()
 };
 
@@ -266,6 +241,9 @@ function readLocalDatabase(): AppDatabase {
     const db: AppDatabase = { ...DEFAULT_DB, ...parsed };
     if (Array.isArray(db.deletedSlideIds) && db.deletedSlideIds.length > 0 && Array.isArray(db.homeSlides)) {
       db.homeSlides = db.homeSlides.filter((s: any) => !db.deletedSlideIds!.includes(s.id));
+    }
+    if (Array.isArray(db.deletedActivityIds) && db.deletedActivityIds.length > 0 && Array.isArray(db.humanitarianActivities)) {
+      db.humanitarianActivities = db.humanitarianActivities.filter((a: any) => !db.deletedActivityIds!.includes(a.id));
     }
     return db;
   } catch (error) {
@@ -405,6 +383,36 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
           merged[row.key] = row.value;
         }
       }
+
+      // Check if dedicated humanitarian_activities table exists in Supabase
+      try {
+        const { data: actRows, error: actErr } = await supabase
+          .from('humanitarian_activities')
+          .select('*');
+        if (!actErr && Array.isArray(actRows)) {
+          merged.humanitarianActivities = actRows.map((r: any) => ({
+            id: r.id,
+            title: r.title || '',
+            description: r.description || '',
+            itemsGiven: r.items_given || r.itemsGiven || '',
+            cost: Number(r.cost) || 0,
+            handledBy: r.handled_by || r.handledBy || '',
+            recipientName: r.recipient_name || r.recipientName || '',
+            recipientPhotoUrl: r.recipient_photo_url || r.recipientPhotoUrl || '',
+            date: r.date || '',
+            location: r.location || '',
+            isFeatured: Boolean(r.is_featured ?? r.isFeatured)
+          }));
+        }
+      } catch (e) {
+        // Dedicated table check optional
+      }
+
+      // Filter out any permanently deleted activities
+      if (Array.isArray(merged.deletedActivityIds) && Array.isArray(merged.humanitarianActivities)) {
+        merged.humanitarianActivities = merged.humanitarianActivities.filter((a: any) => !merged.deletedActivityIds.includes(a.id));
+      }
+
       merged.updatedAt = new Date().toISOString();
       const updated = writeLocalDatabase(merged);
       console.log(`[Supabase] Pulled ${data.length} keys from Supabase cloud database!`);
@@ -443,6 +451,37 @@ async function syncKeyToSupabase(key: string, value: any): Promise<boolean> {
       console.log(`[Supabase] Upsert notice for key "${key}":`, error.message);
       return false;
     }
+
+    // Direct synchronization for humanitarian activities to dedicated table if present
+    if (key === 'humanitarianActivities' && Array.isArray(value)) {
+      try {
+        if (value.length === 0) {
+          await supabase.from('humanitarian_activities').delete().neq('id', '___all___');
+          await supabase.from('humanitarianActivities').delete().neq('id', '___all___');
+        } else {
+          const records = value.map((act: any) => ({
+            id: act.id,
+            title: act.title || '',
+            description: act.description || '',
+            items_given: act.itemsGiven || '',
+            cost: Number(act.cost) || 0,
+            handled_by: act.handledBy || '',
+            recipient_name: act.recipientName || '',
+            recipient_photo_url: act.recipientPhotoUrl || '',
+            date: act.date || '',
+            location: act.location || '',
+            is_featured: Boolean(act.isFeatured),
+            updated_at: new Date().toISOString()
+          }));
+          await supabase.from('humanitarian_activities').upsert(records, { onConflict: 'id' });
+          const ids = value.map((a: any) => a.id);
+          await supabase.from('humanitarian_activities').delete().not('id', 'in', `(${ids.map((i: string) => `"${i}"`).join(',')})`);
+        }
+      } catch (tableErr) {
+        // Dedicated table might not exist; organization_data handles persistence
+      }
+    }
+
     console.log(`[Supabase] Successfully saved key "${key}" to Supabase!`);
     return true;
   } catch (err: any) {
@@ -451,6 +490,106 @@ async function syncKeyToSupabase(key: string, value: any): Promise<boolean> {
     }
     return false;
   }
+}
+
+/**
+ * Executes a permanent DELETE directly on Supabase database tables and local DB
+ */
+async function executePermanentActivityDelete(id: string): Promise<{
+  success: boolean;
+  id: string;
+  supabaseDeleted: boolean;
+  supabaseConfigured: boolean;
+  message: string;
+}> {
+  let supabaseDeleted = false;
+  const supabase = getSupabaseClient();
+
+  if (supabase) {
+    try {
+      // 1. Permanent DELETE directly on Supabase table 'humanitarian_activities' for that specific record ID
+      const { error: err1 } = await supabase
+        .from('humanitarian_activities')
+        .delete()
+        .eq('id', id);
+
+      if (!err1) {
+        supabaseDeleted = true;
+        console.log(`[Supabase] Direct table delete succeeded for ID: ${id}`);
+      }
+
+      // 2. Permanent DELETE on 'humanitarianActivities' table (if created with camelCase)
+      const { error: err2 } = await supabase
+        .from('humanitarianActivities')
+        .delete()
+        .eq('id', id);
+
+      if (!err2) {
+        supabaseDeleted = true;
+      }
+
+      // 3. Update 'organization_data' key 'humanitarianActivities' in Supabase
+      const { data: orgRow } = await supabase
+        .from('organization_data')
+        .select('value')
+        .eq('key', 'humanitarianActivities')
+        .single();
+
+      if (orgRow && Array.isArray(orgRow.value)) {
+        const filtered = orgRow.value.filter((act: any) => act.id !== id);
+        await supabase.from('organization_data').upsert(
+          {
+            key: 'humanitarianActivities',
+            value: filtered,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'key' }
+        );
+        supabaseDeleted = true;
+      }
+
+      // 4. Update 'deletedActivityIds' in Supabase organization_data to guarantee it never reappears
+      const { data: delRow } = await supabase
+        .from('organization_data')
+        .select('value')
+        .eq('key', 'deletedActivityIds')
+        .single();
+
+      const existingDel = Array.isArray(delRow?.value) ? delRow.value : [];
+      if (!existingDel.includes(id)) {
+        existingDel.push(id);
+        await supabase.from('organization_data').upsert(
+          {
+            key: 'deletedActivityIds',
+            value: existingDel,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'key' }
+        );
+      }
+    } catch (err: any) {
+      console.error('[Supabase] Permanent activity delete error:', err);
+    }
+  }
+
+  // 5. Update local database cache
+  const localDb = readLocalDatabase();
+  localDb.humanitarianActivities = (localDb.humanitarianActivities || []).filter((a: any) => a.id !== id);
+  if (!localDb.deletedActivityIds) localDb.deletedActivityIds = [];
+  if (!localDb.deletedActivityIds.includes(id)) {
+    localDb.deletedActivityIds.push(id);
+  }
+  writeLocalDatabase(localDb);
+
+  return {
+    success: true,
+    id,
+    supabaseDeleted,
+    supabaseConfigured: Boolean(supabase),
+    message: supabaseDeleted
+      ? `Supabase ডাটাবেজ টেবিল থেকে রেকর্ডটি (${id}) স্থায়ীভাবে মুছে ফেলা হয়েছে`
+      : `রেকর্ডটি (${id}) সফলভাবে মুছে ফেলা হয়েছে`
+  };
 }
 
 /**
@@ -473,7 +612,10 @@ async function syncAllToSupabase(db: AppDatabase): Promise<{ success: boolean; c
       'homeSlides',
       'humanitarianActivities',
       'organizationRules',
-      'adminPin'
+      'adminPin',
+      'calendarBanners',
+      'deletedSlideIds',
+      'deletedActivityIds'
     ];
 
     const rows = keys.map((k) => ({
@@ -635,7 +777,8 @@ app.post('/api/data/:key', async (req, res) => {
       'organizationRules',
       'adminPin',
       'calendarBanners',
-      'deletedSlideIds'
+      'deletedSlideIds',
+      'deletedActivityIds'
     ];
 
     if (!allowedKeys.includes(key)) {
@@ -652,6 +795,33 @@ app.post('/api/data/:key', async (req, res) => {
     res.json({ success: true, data: updated });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// DELETE a specific humanitarian activity permanently from Supabase & local DB
+app.delete('/api/humanitarian-activities/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'Activity ID is required' });
+    }
+    const result = await executePermanentActivityDelete(id);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Delete failed' });
+  }
+});
+
+app.post('/api/humanitarian-activities/delete', async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'Activity ID is required' });
+    }
+    const result = await executePermanentActivityDelete(id);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Delete failed' });
   }
 });
 

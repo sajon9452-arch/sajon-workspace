@@ -36,6 +36,7 @@ import {
   saveHomeSlides,
   loadHumanitarianActivities,
   saveHumanitarianActivities,
+  loadDeletedActivityIds,
   loadOrganizationRules,
   saveOrganizationRules,
   loadCalendarBanners,
@@ -118,7 +119,10 @@ export default function App() {
         if (Array.isArray(serverData.funds)) setFunds(serverData.funds);
         if (Array.isArray(serverData.supportReports)) setSupportReports(serverData.supportReports);
         if (Array.isArray(serverData.homeSlides)) setHomeSlides(serverData.homeSlides);
-        if (Array.isArray(serverData.humanitarianActivities)) setHumanitarianActivities(serverData.humanitarianActivities);
+        if (Array.isArray(serverData.humanitarianActivities)) {
+          const deletedActIds = loadDeletedActivityIds();
+          setHumanitarianActivities(serverData.humanitarianActivities.filter(a => !deletedActIds.includes(a.id)));
+        }
         if (Array.isArray(serverData.organizationRules)) setOrganizationRules(serverData.organizationRules);
         if (serverData.calendarBanners) setCalendarBanners(serverData.calendarBanners);
         if (serverData.manualTotalBalance !== undefined) setManualTotalBalance(serverData.manualTotalBalance);

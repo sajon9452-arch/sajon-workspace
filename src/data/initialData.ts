@@ -66,34 +66,7 @@ export const INITIAL_HOME_SLIDES: HomeSlide[] = [
   }
 ];
 
-export const INITIAL_HUMANITARIAN_ACTIVITIES: HumanitarianActivity[] = [
-  {
-    id: 'act-1',
-    title: 'বন্যাপীড়িত অসহায় পরিবারের মাঝে জরুরি পুষ্টি ও খাদ্য সহায়তা বিতরণ',
-    description: 'অতিবৃষ্টি ও পাহাড়ি ঢলে পানিবন্দি পরিবারের ঘরে ঘরে গিয়ে খাদ্য সামগ্রী ও নিত্যপ্রয়োজনীয় জিনিসপত্র পৌঁছে দেওয়া হয়েছে।',
-    itemsGiven: 'চাল ১০ কেজি, মসুর ডাল ২ কেজি, সয়াবিন তেল ১ লিটার, আলু ৩ কেজি, লবণ ১ কেজি, খাবার স্যালাইন ১০ প্যাকেট ও পানি বিশুদ্ধকরণ ট্যাবলেট।',
-    cost: 2350,
-    handledBy: 'মো: আব্দুল্লাহ আল মামুন (সাধারণ সম্পাদক) ও টিম ভলান্টিয়ার্স',
-    recipientName: 'মোসাম্মৎ জমিলা খাতুন (বয়স: ৫৮ বছর)',
-    recipientPhotoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=300&q=80',
-    date: '২০২৬-০৮-২৮',
-    location: 'কোম্পানীগঞ্জ ও গোয়াইনঘাট, সিলেট',
-    isFeatured: true
-  },
-  {
-    id: 'act-2',
-    title: 'দুর্ঘটনায় আহত দরিদ্র দিনমজুর ভাইয়ের জরুরি চিকিৎসা ও ওষুধ ফান্ড',
-    description: 'পেশাগত কাজে আহত দিনমজুর ভাইয়ের চোখের জরুরি অপারেশন ও পরবর্তী ৩ মাসের প্রয়োজনীয় ওষুধের সম্পূর্ণ খরচ সংগঠনের ফান্ড থেকে বহন করা হয়েছে।',
-    itemsGiven: 'চক্ষু চিকিৎসা ব্যয়, চোখের লেন্স ড্রপ, অ্যান্টিবায়োটিক এবং নগদ ৩,৫০০ টাকা জরুরি জীবনযাত্রার অনুদান।',
-    cost: 5800,
-    handledBy: 'ইঞ্জি: তারেক মাহমুদ (রক্তদান ও সেবা সমন্বয়ক)',
-    recipientName: 'মো: রহিম উল্লাহ (বয়স: ৫২ বছর)',
-    recipientPhotoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-    date: '২০২৬-০৮-১৮',
-    location: 'পতেঙ্গা, চট্টগ্রাম',
-    isFeatured: false
-  }
-];
+export const INITIAL_HUMANITARIAN_ACTIVITIES: HumanitarianActivity[] = [];
 
 export const INITIAL_ORGANIZATION_RULES: OrganizationRule[] = [
   {

@@ -381,16 +381,37 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
   const handleCopySqlScript = () => {
     const sql = `-- Supabase SQL Editor এ পেস্ট করে এক ক্লিকে Run করুন
+-- ১. প্রধান কি-ভ্যালু ডাটাবেজ টেবিল
 CREATE TABLE IF NOT EXISTS organization_data (
   key TEXT PRIMARY KEY,
   value JSONB NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- RLS ও Public Read-Write পারমিশন
 ALTER TABLE organization_data ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Full Access" ON organization_data;
-CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WITH CHECK (true);`;
+CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WITH CHECK (true);
+
+-- ২. মানবিক কার্যক্রম বিবরণী টেবিল (সরাসরি রেকর্ড ম্যানেজমেন্ট ও পার্মানেন্ট ডিলিট)
+CREATE TABLE IF NOT EXISTS humanitarian_activities (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  items_given TEXT,
+  cost NUMERIC DEFAULT 0,
+  handled_by TEXT,
+  recipient_name TEXT,
+  recipient_photo_url TEXT,
+  date TEXT,
+  location TEXT,
+  is_featured BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE humanitarian_activities ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Activities Public Access" ON humanitarian_activities;
+CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USING (true) WITH CHECK (true);`;
 
     navigator.clipboard.writeText(sql).then(() => {
       setCopiedSql(true);
@@ -3415,7 +3436,8 @@ CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WIT
                 </div>
 
                 <pre className="text-[11px] leading-relaxed text-emerald-200 overflow-x-auto p-2 bg-slate-950/60 rounded-lg">
-{`CREATE TABLE IF NOT EXISTS organization_data (
+{`-- ১. প্রধান কি-ভ্যালু ডাটাবেজ টেবিল
+CREATE TABLE IF NOT EXISTS organization_data (
   key TEXT PRIMARY KEY,
   value JSONB NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
@@ -3423,7 +3445,28 @@ CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WIT
 
 ALTER TABLE organization_data ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Full Access" ON organization_data;
-CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WITH CHECK (true);`}
+CREATE POLICY "Public Full Access" ON organization_data FOR ALL USING (true) WITH CHECK (true);
+
+-- ২. মানবিক কার্যক্রম বিবরণী টেবিল (সরাসরি রেকর্ড ম্যানেজমেন্ট ও পার্মানেন্ট ডিলিট)
+CREATE TABLE IF NOT EXISTS humanitarian_activities (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  items_given TEXT,
+  cost NUMERIC DEFAULT 0,
+  handled_by TEXT,
+  recipient_name TEXT,
+  recipient_photo_url TEXT,
+  date TEXT,
+  location TEXT,
+  is_featured BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE humanitarian_activities ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Activities Public Access" ON humanitarian_activities;
+CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USING (true) WITH CHECK (true);`}
                 </pre>
 
                 <p className="text-[11px] text-slate-400 font-sans pt-1">

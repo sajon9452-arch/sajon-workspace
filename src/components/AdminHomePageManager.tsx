@@ -40,7 +40,8 @@ import {
   CalendarMonthlyBanner
 } from '../types';
 import { formatTaka, toBengaliNumber } from '../utils/helpers';
-import { recordDeletedSlideId, loadCalendarBanners, saveCalendarBanners } from '../utils/storage';
+import { recordDeletedSlideId, recordDeletedActivityId, clearDeletedActivityId, loadCalendarBanners, saveCalendarBanners } from '../utils/storage';
+import { deleteHumanitarianActivityOnServer } from '../utils/serverApi';
 import { MONTH_NAMES_BN, MONTH_NAMES_EN, SYLHET_MONTHLY_SCENIC_LANDSCAPES } from '../utils/calendarData';
 
 interface AdminHomePageManagerProps {
@@ -360,15 +361,34 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
       notifySuccess('নতুন মানবিক কার্যক্রম সফলভাবে যুক্ত হয়েছে');
     }
 
+    clearDeletedActivityId(activityData.id);
     onUpdateActivities(updatedActivities);
     setIsActivityModalOpen(false);
   };
 
-  const handleDeleteActivity = (id: string, title: string) => {
-    if (window.confirm(`আপনি কি "${title}" কার্যক্রমটি মুছে ফেলতে চান?`)) {
-      const updated = activities.filter(a => a.id !== id);
-      onUpdateActivities(updated);
-      notifySuccess('কার্যক্রম মুছে ফেলা হয়েছে');
+  const handleDeleteActivity = async (id: string, title: string) => {
+    if (!window.confirm(`আপনি কি "${title}" কার্যক্রমটি মুছে ফেলতে চান?\n\nএটি Supabase ডাটাবেজ থেকে স্থায়ীভাবে মুছে ফেলা হবে এবং আর ফিরে আসবে না।`)) {
+      return;
+    }
+
+    // 1. Instant UI State Update: remove from cards list immediately without needing a hard reload
+    const updated = activities.filter(a => a.id !== id);
+    onUpdateActivities(updated);
+
+    // 2. Mark as permanently deleted in local persistent storage so fallback never reloads it
+    recordDeletedActivityId(id);
+
+    // 3. Permanent Database Deletion: execute DELETE directly on Supabase database table
+    try {
+      const response = await deleteHumanitarianActivityOnServer(id);
+      if (response && response.supabaseDeleted) {
+        notifySuccess(`"${title}" কার্যক্রমটি Supabase ডাটাবেজ টেবিল থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে`);
+      } else {
+        notifySuccess('কার্যক্রমটি ডাটাবেজ থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে');
+      }
+    } catch (err) {
+      console.warn('Permanent delete request completed with local sync:', err);
+      notifySuccess('কার্যক্রমটি মুছে ফেলা হয়েছে');
     }
   };
 

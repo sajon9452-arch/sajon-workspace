@@ -18,6 +18,7 @@ export const STORAGE_KEYS = {
   ORGANIZATION_RULES: 'pms_organization_rules_v2',
   CALENDAR_BANNERS: 'pms_calendar_banners_v2',
   DELETED_SLIDE_IDS: 'pms_deleted_slide_ids_v2',
+  DELETED_ACTIVITY_IDS: 'pms_deleted_activity_ids_v2',
 };
 
 export const PMS_SYNC_CHANNEL_NAME = 'pms_realtime_sync_channel';
@@ -156,14 +157,22 @@ export function populateLocalStorageFromServer(
         hasChanged = true;
       }
     }
+    if (Array.isArray(serverDb.deletedActivityIds)) {
+      const current = localStorage.getItem(STORAGE_KEYS.DELETED_ACTIVITY_IDS);
+      const incoming = JSON.stringify(serverDb.deletedActivityIds);
+      if (current !== incoming) {
+        localStorage.setItem(STORAGE_KEYS.DELETED_ACTIVITY_IDS, incoming);
+        hasChanged = true;
+      }
+    }
     if (Array.isArray(serverDb.humanitarianActivities)) {
+      const deletedIds = loadDeletedActivityIds();
+      const filtered = serverDb.humanitarianActivities.filter((a: any) => !deletedIds.includes(a.id));
       const current = localStorage.getItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES);
-      const incoming = JSON.stringify(serverDb.humanitarianActivities);
-      if (serverDb.humanitarianActivities.length > 0 || allowEmptyOverride || !current) {
-        if (current !== incoming) {
-          localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, incoming);
-          hasChanged = true;
-        }
+      const incoming = JSON.stringify(filtered);
+      if (current !== incoming) {
+        localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, incoming);
+        hasChanged = true;
       }
     }
     if (Array.isArray(serverDb.organizationRules)) {
@@ -555,27 +564,72 @@ export function saveCalendarBanners(banners: Record<number, CalendarMonthlyBanne
   }
 }
 
-// Humanitarian Activities Storage
-export function loadHumanitarianActivities(): HumanitarianActivity[] {
+// Deleted Activity IDs Tracking (Guarantees deleted activities never reappear)
+export function loadDeletedActivityIds(): string[] {
   try {
-    const saved = localStorage.getItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES);
+    const saved = localStorage.getItem(STORAGE_KEYS.DELETED_ACTIVITY_IDS);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading deleted activity ids', e);
+  }
+  return [];
+}
+
+export function recordDeletedActivityId(id: string): void {
+  try {
+    const ids = loadDeletedActivityIds();
+    if (!ids.includes(id)) {
+      const updated = [...ids, id];
+      localStorage.setItem(STORAGE_KEYS.DELETED_ACTIVITY_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_ACTIVITY_IDS, updated);
+      syncKeyToServer('deletedActivityIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error recording deleted activity id', e);
+  }
+}
+
+export function clearDeletedActivityId(id: string): void {
+  try {
+    const ids = loadDeletedActivityIds();
+    if (ids.includes(id)) {
+      const updated = ids.filter(i => i !== id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_ACTIVITY_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_ACTIVITY_IDS, updated);
+      syncKeyToServer('deletedActivityIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error clearing deleted activity id', e);
+  }
+}
+
+// Humanitarian Activities Storage - Zero fallback mock data
+export function loadHumanitarianActivities(): HumanitarianActivity[] {
+  try {
+    const deletedIds = loadDeletedActivityIds();
+    const saved = localStorage.getItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(a => !deletedIds.includes(a.id));
       }
     }
   } catch (e) {
     console.error('Error loading humanitarian activities', e);
   }
-  return INITIAL_HUMANITARIAN_ACTIVITIES;
+  return [];
 }
 
 export function saveHumanitarianActivities(activities: HumanitarianActivity[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, JSON.stringify(activities));
-    notifyDataChange(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, activities);
-    syncKeyToServer('humanitarianActivities', activities);
+    const deletedIds = loadDeletedActivityIds();
+    const filtered = activities.filter(a => !deletedIds.includes(a.id));
+    localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, JSON.stringify(filtered));
+    notifyDataChange(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, filtered);
+    syncKeyToServer('humanitarianActivities', filtered);
   } catch (e) {
     console.error('Error saving humanitarian activities', e);
   }
@@ -617,6 +671,7 @@ export function resetAllData(): void {
   localStorage.removeItem(STORAGE_KEYS.SUPPORT_REPORTS);
   localStorage.removeItem(STORAGE_KEYS.HOME_SLIDES);
   localStorage.removeItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES);
+  localStorage.removeItem(STORAGE_KEYS.DELETED_ACTIVITY_IDS);
   localStorage.removeItem(STORAGE_KEYS.ORGANIZATION_RULES);
   localStorage.removeItem(STORAGE_KEYS.TOTAL_ORG_BALANCE);
   notifyDataChange('RESET_ALL');
@@ -632,6 +687,7 @@ export function clearAllData(): void {
   localStorage.setItem(STORAGE_KEYS.SUPPORT_REPORTS, JSON.stringify([]));
   localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, JSON.stringify([]));
   localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, JSON.stringify([]));
+  localStorage.removeItem(STORAGE_KEYS.DELETED_ACTIVITY_IDS);
   localStorage.setItem(STORAGE_KEYS.ORGANIZATION_RULES, JSON.stringify([]));
   localStorage.removeItem(STORAGE_KEYS.TOTAL_ORG_BALANCE);
   notifyDataChange('CLEAR_ALL');

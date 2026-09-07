@@ -28,6 +28,7 @@ export interface ServerDatabasePayload {
   adminPin?: string;
   calendarBanners?: Record<number, CalendarMonthlyBanner>;
   deletedSlideIds?: string[];
+  deletedActivityIds?: string[];
   updatedAt?: string;
 }
 
@@ -89,7 +90,8 @@ export async function syncKeyToServer(
     | 'organizationRules'
     | 'adminPin'
     | 'calendarBanners'
-    | 'deletedSlideIds',
+    | 'deletedSlideIds'
+    | 'deletedActivityIds',
   value: any
 ): Promise<boolean> {
   try {
@@ -110,6 +112,58 @@ export async function syncKeyToServer(
   } catch (error) {
     // Non-blocking catch for offline/client-only modes
     return false;
+  }
+}
+
+/**
+ * Executes a permanent DELETE operation directly on Supabase database table and server database
+ */
+export async function deleteHumanitarianActivityOnServer(id: string): Promise<{
+  success: boolean;
+  supabaseDeleted?: boolean;
+  message?: string;
+}> {
+  try {
+    const response = await fetch(`/api/humanitarian-activities/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        success: Boolean(data?.success),
+        supabaseDeleted: Boolean(data?.supabaseDeleted),
+        message: data?.message
+      };
+    }
+
+    // Fallback to POST delete endpoint if DELETE method is blocked by any proxy
+    const fallbackResponse = await fetch('/api/humanitarian-activities/delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ id })
+    });
+
+    if (fallbackResponse.ok) {
+      const fallbackData = await fallbackResponse.json();
+      return {
+        success: Boolean(fallbackData?.success),
+        supabaseDeleted: Boolean(fallbackData?.supabaseDeleted),
+        message: fallbackData?.message
+      };
+    }
+
+    return { success: false, message: 'Server responded with error' };
+  } catch (error) {
+    console.error('[ServerApi] Error deleting humanitarian activity on server/Supabase:', error);
+    return { success: false, message: String(error) };
   }
 }
 
