@@ -6,7 +6,6 @@ import {
   Heart,
   Calendar,
   ShieldCheck,
-  Sparkles,
   MapPin,
   HeartHandshake,
   BookOpen,
@@ -185,67 +184,38 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               }}
             />
 
-            {/* Gradient Overlays for optimal readability */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20 pointer-events-none" />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-transparent to-transparent pointer-events-none" />
+            {/* Gradient Overlay for optimal photo clarity and legible badges */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent pointer-events-none" />
 
-            {/* Top Badges & Admin Edit Shortcut */}
-            <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10">
-              <div className="flex items-center gap-2">
-                <span className="bg-emerald-600/90 backdrop-blur-md text-white text-xs font-bold px-3 py-1 rounded-full shadow-md flex items-center gap-1.5 border border-emerald-400/30">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  <span>{currentSlide.category || 'মানবিক কার্যক্রম'}</span>
-                </span>
+            {/* Admin Slide Manager Shortcut */}
+            <div className="absolute top-3.5 right-3.5 z-10">
+              <button
+                onClick={handleAdminEditShortcut}
+                className="bg-black/50 hover:bg-black/80 backdrop-blur-md text-amber-300 hover:text-amber-200 text-xs font-semibold px-2.5 py-1 rounded-full border border-white/20 shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                title="স্লাইডার ম্যানেজ করুন"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                <span>{isAdmin ? 'স্লাইড এডিট' : 'এডমিন'}</span>
+              </button>
+            </div>
+
+            {/* Bottom Overlay: Date & Location Only */}
+            {(currentSlide.date || currentSlide.location) && (
+              <div className="absolute bottom-4 left-4 z-10 flex flex-wrap items-center gap-2">
+                {currentSlide.date && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-white text-xs sm:text-sm font-medium border border-white/20 shadow-md">
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="font-sans font-medium tracking-wide">{currentSlide.date}</span>
+                  </span>
+                )}
                 {currentSlide.location && (
-                  <span className="hidden sm:inline-flex bg-black/60 backdrop-blur-md text-white text-xs font-medium px-2.5 py-1 rounded-full border border-white/20 items-center gap-1">
-                    <MapPin className="w-3 h-3 text-emerald-400" />
-                    <span>{currentSlide.location}</span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-white text-xs sm:text-sm font-medium border border-white/20 shadow-md">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="font-semibold">{currentSlide.location}</span>
                   </span>
                 )}
               </div>
-
-              <div className="flex items-center gap-2">
-                {/* Slide Counter Badge */}
-                <span className="bg-black/70 backdrop-blur-md text-white text-xs font-bold px-2.5 py-1 rounded-full border border-white/20">
-                  {toBengaliNumber(currentSlideIndex + 1)} / {toBengaliNumber(activeSlides.length)}
-                </span>
-
-                {/* Admin Slide Manager Shortcut */}
-                <button
-                  onClick={handleAdminEditShortcut}
-                  className="bg-amber-500/90 hover:bg-amber-400 text-slate-950 text-xs font-black px-3 py-1 rounded-full shadow-md transition flex items-center gap-1 cursor-pointer"
-                  title="স্লাইডার ম্যানেজ করুন"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-slate-950" />
-                  <span>{isAdmin ? 'স্লাইড এডিট' : 'এডমিন'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Bottom Content Overlay */}
-            <div className="absolute bottom-4 left-4 right-4 z-10 max-w-3xl">
-              <div className="flex items-center gap-2 mb-1.5 text-amber-300 text-xs font-semibold">
-                <Calendar className="w-3.5 h-3.5" />
-                <span>{currentSlide.date || '২০২৬'}</span>
-                {currentSlide.location && (
-                  <span className="sm:hidden flex items-center gap-1 text-emerald-300">
-                    • <MapPin className="w-3 h-3" /> {currentSlide.location}
-                  </span>
-                )}
-              </div>
-
-              {(currentSlide.title || currentSlide.location) && (
-                <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white leading-tight drop-shadow-md">
-                  {currentSlide.title || currentSlide.location}
-                </h2>
-              )}
-
-              {currentSlide.description && (
-                <p className="text-xs sm:text-sm text-slate-200 mt-1.5 line-clamp-2 sm:line-clamp-3 leading-relaxed drop-shadow-sm max-w-2xl">
-                  {currentSlide.description}
-                </p>
-              )}
-            </div>
+            )}
 
             {/* Prev / Next Navigation Arrows */}
             {activeSlides.length > 1 && (
