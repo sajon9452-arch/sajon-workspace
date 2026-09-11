@@ -81,7 +81,21 @@ import {
   loadPaymentSettings,
   savePaymentSettings,
   loadSupportReports,
-  saveSupportReports
+  saveSupportReports,
+  saveMembers,
+  saveDonors,
+  saveNotices,
+  saveFunds,
+  recordDeletedMemberId,
+  clearDeletedMemberId,
+  recordDeletedDonorId,
+  clearDeletedDonorId,
+  recordDeletedNoticeId,
+  clearDeletedNoticeId,
+  recordDeletedFundId,
+  clearDeletedFundId,
+  recordDeletedReportId,
+  clearDeletedReportId
 } from '../utils/storage';
 import {
   fetchSupabaseStatus,
@@ -624,10 +638,15 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
   const handleDeleteMember = async (id: string, name: string) => {
     if (window.confirm(`আপনি কি নিশ্চিত যে "${name}"-কে সদস্য তালিকা থেকে মুছে ফেলতে চান?`)) {
+      recordDeletedMemberId(id);
       if (onDeleteMember) {
         await onDeleteMember(id, name);
       } else if (setMembers) {
-        setMembers(prev => prev.filter(m => m.id !== id));
+        setMembers(prev => {
+          const updated = prev.filter(m => m.id !== id);
+          saveMembers(updated);
+          return updated;
+        });
       }
       notifySuccess(`"${name}" সদস্য তালিকা থেকে মুছে ফেলা হয়েছে`);
     }
@@ -715,10 +734,15 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
   const handleDeleteDonor = (id: string, name: string) => {
     if (window.confirm(`আপনি কি "${name}" রক্তদাতাকে মুছে ফেলতে চান?`)) {
+      recordDeletedDonorId(id);
       if (onDeleteDonor) {
         onDeleteDonor(id, name);
       } else if (setDonors) {
-        setDonors(prev => prev.filter(d => d.id !== id));
+        setDonors(prev => {
+          const updated = prev.filter(d => d.id !== id);
+          saveDonors(updated);
+          return updated;
+        });
       }
       notifySuccess(`"${name}" রক্তদাতা ডিরেক্টরি থেকে মুছে ফেলা হয়েছে`);
     }
@@ -916,10 +940,15 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
   const handleDeleteFund = (id: string, name: string) => {
     if (window.confirm(`আপনি কি "${name}"-এর ফান্ড এন্ট্রিটি মুছে ফেলতে চান?`)) {
+      recordDeletedFundId(id);
       if (onDeleteFund) {
         onDeleteFund(id);
       } else if (setFunds) {
-        setFunds(prev => prev.filter(f => f.id !== id));
+        setFunds(prev => {
+          const updated = prev.filter(f => f.id !== id);
+          saveFunds(updated);
+          return updated;
+        });
       }
       notifySuccess('ফান্ড এন্ট্রি মুছে ফেলা হয়েছে এবং ব্যালেন্স স্বয়ংক্রিয়ভাবে সমন্বয় করা হয়েছে');
     }
@@ -990,10 +1019,15 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
   const handleDeleteNotice = (id: string) => {
     if (window.confirm('আপনি কি এই নোটিশটি মুছে ফেলতে চান?')) {
+      recordDeletedNoticeId(id);
       if (onDeleteNotice) {
         onDeleteNotice(id);
       } else if (setNotices) {
-        setNotices(prev => prev.filter(n => n.id !== id));
+        setNotices(prev => {
+          const updated = prev.filter(n => n.id !== id);
+          saveNotices(updated);
+          return updated;
+        });
       }
       notifySuccess('নোটিশ সফলভাবে মুছে ফেলা হয়েছে');
     }
@@ -1098,10 +1132,15 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
   const handleDeleteSupportReport = (id: string, name: string) => {
     if (window.confirm(`আপনি কি "${name}"-এর সাপোর্ট/রিপোর্ট এন্ট্রি মুছে ফেলতে চান?`)) {
+      recordDeletedReportId(id);
       if (onDeleteSupportReport) {
         onDeleteSupportReport(id);
       } else if (setSupportReports) {
-        setSupportReports(prev => prev.filter(r => r.id !== id));
+        setSupportReports(prev => {
+          const updated = prev.filter(r => r.id !== id);
+          saveSupportReports(updated);
+          return updated;
+        });
       }
       notifySuccess('সাপোর্ট/রিপোর্ট এন্ট্রি সফলভাবে মুছে ফেলা হয়েছে');
     }

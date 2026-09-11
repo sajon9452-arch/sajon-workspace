@@ -19,6 +19,12 @@ export const STORAGE_KEYS = {
   CALENDAR_BANNERS: 'pms_calendar_banners_v2',
   DELETED_SLIDE_IDS: 'pms_deleted_slide_ids_v2',
   DELETED_ACTIVITY_IDS: 'pms_deleted_activity_ids_v2',
+  DELETED_MEMBER_IDS: 'pms_deleted_member_ids_v2',
+  DELETED_DONOR_IDS: 'pms_deleted_donor_ids_v2',
+  DELETED_NOTICE_IDS: 'pms_deleted_notice_ids_v2',
+  DELETED_FUND_IDS: 'pms_deleted_fund_ids_v2',
+  DELETED_REPORT_IDS: 'pms_deleted_report_ids_v2',
+  DELETED_RULE_IDS: 'pms_deleted_rule_ids_v2',
 };
 
 export const PMS_SYNC_CHANNEL_NAME = 'pms_realtime_sync_channel';
@@ -66,15 +72,195 @@ export function notifyDataChange(key: string, data?: any): void {
 }
 
 /**
- * Hydrates local storage as a cache with Firestore/server-persisted database state
+ * Reconciles an entity array in storage non-destructively:
+ * 1. Unions incoming server data with local changes by unique ID.
+ * 2. Filters out any items whose IDs are in the deleted ID blacklist.
+ * 3. Never wipes out locally added items if server has not synced yet.
+ * 4. Pushes any unsynced local additions up to server so Supabase is populated.
+ */
+function reconcileEntityStorageList<T extends { id: string }>(
+  incomingServerList: T[] | undefined,
+  storageKey: string,
+  deletedIds: string[],
+  sortFn?: (items: T[]) => T[]
+): { merged: T[]; changed: boolean; hasLocalAdditions: boolean } {
+  let localList: T[] = [];
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        localList = parsed;
+      }
+    }
+  } catch (e) {}
+
+  const map = new Map<string, T>();
+  // Server records
+  if (Array.isArray(incomingServerList)) {
+    for (const item of incomingServerList) {
+      if (item && item.id && !deletedIds.includes(item.id)) {
+        map.set(item.id, item);
+      }
+    }
+  }
+
+  // Local additions (guarantee admin content never vanishes)
+  let hasLocalAdditions = false;
+  for (const item of localList) {
+    if (item && item.id && !deletedIds.includes(item.id)) {
+      if (!map.has(item.id)) {
+        map.set(item.id, item);
+        hasLocalAdditions = true;
+      }
+    }
+  }
+
+  let merged = Array.from(map.values());
+  if (sortFn) {
+    merged = sortFn(merged);
+  }
+
+  const currentJson = localStorage.getItem(storageKey);
+  const newJson = JSON.stringify(merged);
+  const changed = currentJson !== newJson;
+
+  if (changed) {
+    localStorage.setItem(storageKey, newJson);
+  }
+
+  return { merged, changed, hasLocalAdditions };
+}
+
+function reconcileDeletedIdStorage(serverIds: string[] | undefined, storageKey: string): string[] {
+  let localIds: string[] = [];
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) localIds = parsed;
+    }
+  } catch (e) {}
+  const combined = Array.from(new Set([
+    ...(Array.isArray(serverIds) ? serverIds : []),
+    ...localIds
+  ]));
+  localStorage.setItem(storageKey, JSON.stringify(combined));
+  return combined;
+}
+
+/**
+ * Hydrates local storage as a cache with server-persisted database state.
+ * Performs strictly additive / non-destructive merging across all management sections.
  */
 export function populateLocalStorageFromServer(
   serverDb: ServerDatabasePayload,
-  allowEmptyOverride: boolean = true
+  _allowEmptyOverride: boolean = false
 ): boolean {
   if (typeof window === 'undefined' || !serverDb) return false;
   let hasChanged = false;
+
   try {
+    // 1. Reconcile all deleted ID blacklists first so deletions stay permanent
+    const deletedSlideIds = reconcileDeletedIdStorage(serverDb.deletedSlideIds, STORAGE_KEYS.DELETED_SLIDE_IDS);
+    const deletedActivityIds = reconcileDeletedIdStorage(serverDb.deletedActivityIds, STORAGE_KEYS.DELETED_ACTIVITY_IDS);
+    const deletedMemberIds = reconcileDeletedIdStorage(serverDb.deletedMemberIds, STORAGE_KEYS.DELETED_MEMBER_IDS);
+    const deletedDonorIds = reconcileDeletedIdStorage(serverDb.deletedDonorIds, STORAGE_KEYS.DELETED_DONOR_IDS);
+    const deletedNoticeIds = reconcileDeletedIdStorage(serverDb.deletedNoticeIds, STORAGE_KEYS.DELETED_NOTICE_IDS);
+    const deletedFundIds = reconcileDeletedIdStorage(serverDb.deletedFundIds, STORAGE_KEYS.DELETED_FUND_IDS);
+    const deletedReportIds = reconcileDeletedIdStorage(serverDb.deletedReportIds, STORAGE_KEYS.DELETED_REPORT_IDS);
+    const deletedRuleIds = reconcileDeletedIdStorage(serverDb.deletedRuleIds, STORAGE_KEYS.DELETED_RULE_IDS);
+
+    // 2. Members (with strict ascending seniority sort)
+    const membersRes = reconcileEntityStorageList(
+      serverDb.members,
+      STORAGE_KEYS.MEMBERS,
+      deletedMemberIds,
+      sortMembersOldestFirst
+    );
+    if (membersRes.changed) hasChanged = true;
+    if (membersRes.hasLocalAdditions) {
+      syncKeyToServer('members', membersRes.merged).catch(() => {});
+    }
+
+    // 3. Donors
+    const donorsRes = reconcileEntityStorageList(
+      serverDb.donors,
+      STORAGE_KEYS.DONORS,
+      deletedDonorIds
+    );
+    if (donorsRes.changed) hasChanged = true;
+    if (donorsRes.hasLocalAdditions) {
+      syncKeyToServer('donors', donorsRes.merged).catch(() => {});
+    }
+
+    // 4. Notices
+    const noticesRes = reconcileEntityStorageList(
+      serverDb.notices,
+      STORAGE_KEYS.NOTICES,
+      deletedNoticeIds
+    );
+    if (noticesRes.changed) hasChanged = true;
+    if (noticesRes.hasLocalAdditions) {
+      syncKeyToServer('notices', noticesRes.merged).catch(() => {});
+    }
+
+    // 5. Funds
+    const fundsRes = reconcileEntityStorageList(
+      serverDb.funds,
+      STORAGE_KEYS.FUNDS,
+      deletedFundIds
+    );
+    if (fundsRes.changed) hasChanged = true;
+    if (fundsRes.hasLocalAdditions) {
+      syncKeyToServer('funds', fundsRes.merged).catch(() => {});
+    }
+
+    // 6. Support Reports
+    const reportsRes = reconcileEntityStorageList(
+      serverDb.supportReports,
+      STORAGE_KEYS.SUPPORT_REPORTS,
+      deletedReportIds
+    );
+    if (reportsRes.changed) hasChanged = true;
+    if (reportsRes.hasLocalAdditions) {
+      syncKeyToServer('supportReports', reportsRes.merged).catch(() => {});
+    }
+
+    // 7. Home Slides
+    const slidesRes = reconcileEntityStorageList(
+      serverDb.homeSlides,
+      STORAGE_KEYS.HOME_SLIDES,
+      deletedSlideIds
+    );
+    if (slidesRes.changed) hasChanged = true;
+    if (slidesRes.hasLocalAdditions) {
+      syncKeyToServer('homeSlides', slidesRes.merged).catch(() => {});
+    }
+
+    // 8. Humanitarian Activities (strict empty-safe & deletion-aware)
+    const actRes = reconcileEntityStorageList(
+      serverDb.humanitarianActivities,
+      STORAGE_KEYS.HUMANITARIAN_ACTIVITIES,
+      deletedActivityIds
+    );
+    if (actRes.changed) hasChanged = true;
+    if (actRes.hasLocalAdditions) {
+      syncKeyToServer('humanitarianActivities', actRes.merged).catch(() => {});
+    }
+
+    // 9. Organization Rules
+    const rulesRes = reconcileEntityStorageList(
+      serverDb.organizationRules,
+      STORAGE_KEYS.ORGANIZATION_RULES,
+      deletedRuleIds
+    );
+    if (rulesRes.changed) hasChanged = true;
+    if (rulesRes.hasLocalAdditions) {
+      syncKeyToServer('organizationRules', rulesRes.merged).catch(() => {});
+    }
+
+    // 10. Profile
     if (serverDb.profile && typeof serverDb.profile === 'object') {
       const current = localStorage.getItem(STORAGE_KEYS.PROFILE);
       const incoming = JSON.stringify(serverDb.profile);
@@ -83,108 +269,18 @@ export function populateLocalStorageFromServer(
         hasChanged = true;
       }
     }
-    if (Array.isArray(serverDb.members)) {
-      const current = localStorage.getItem(STORAGE_KEYS.MEMBERS);
-      const incoming = JSON.stringify(serverDb.members);
-      if (serverDb.members.length > 0 || allowEmptyOverride || !current) {
-        if (current !== incoming) {
-          localStorage.setItem(STORAGE_KEYS.MEMBERS, incoming);
-          hasChanged = true;
-        }
-      }
-    }
-    if (Array.isArray(serverDb.donors)) {
-      const current = localStorage.getItem(STORAGE_KEYS.DONORS);
-      const incoming = JSON.stringify(serverDb.donors);
-      if (serverDb.donors.length > 0 || allowEmptyOverride || !current) {
-        if (current !== incoming) {
-          localStorage.setItem(STORAGE_KEYS.DONORS, incoming);
-          hasChanged = true;
-        }
-      }
-    }
-    if (Array.isArray(serverDb.notices)) {
-      const current = localStorage.getItem(STORAGE_KEYS.NOTICES);
-      const incoming = JSON.stringify(serverDb.notices);
-      if (serverDb.notices.length > 0 || allowEmptyOverride || !current) {
-        if (current !== incoming) {
-          localStorage.setItem(STORAGE_KEYS.NOTICES, incoming);
-          hasChanged = true;
-        }
-      }
-    }
-    if (Array.isArray(serverDb.funds)) {
-      const current = localStorage.getItem(STORAGE_KEYS.FUNDS);
-      const incoming = JSON.stringify(serverDb.funds);
-      if (serverDb.funds.length > 0 || allowEmptyOverride || !current) {
-        if (current !== incoming) {
-          localStorage.setItem(STORAGE_KEYS.FUNDS, incoming);
-          hasChanged = true;
-        }
-      }
-    }
-    if (Array.isArray(serverDb.supportReports)) {
-      const current = localStorage.getItem(STORAGE_KEYS.SUPPORT_REPORTS);
-      const incoming = JSON.stringify(serverDb.supportReports);
-      if (serverDb.supportReports.length > 0 || allowEmptyOverride || !current) {
-        if (current !== incoming) {
-          localStorage.setItem(STORAGE_KEYS.SUPPORT_REPORTS, incoming);
-          hasChanged = true;
-        }
-      }
-    }
-    if (Array.isArray(serverDb.homeSlides)) {
-      const current = localStorage.getItem(STORAGE_KEYS.HOME_SLIDES);
-      const incoming = JSON.stringify(serverDb.homeSlides);
+
+    // 11. Payment Gateway Settings
+    if (serverDb.paymentConfig && typeof serverDb.paymentConfig === 'object') {
+      const current = localStorage.getItem(STORAGE_KEYS.PAYMENT_SETTINGS);
+      const incoming = JSON.stringify(serverDb.paymentConfig);
       if (current !== incoming) {
-        localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, incoming);
+        localStorage.setItem(STORAGE_KEYS.PAYMENT_SETTINGS, incoming);
         hasChanged = true;
       }
     }
-    if (serverDb.calendarBanners && typeof serverDb.calendarBanners === 'object') {
-      const current = localStorage.getItem(STORAGE_KEYS.CALENDAR_BANNERS);
-      const incoming = JSON.stringify(serverDb.calendarBanners);
-      if (current !== incoming) {
-        localStorage.setItem(STORAGE_KEYS.CALENDAR_BANNERS, incoming);
-        hasChanged = true;
-      }
-    }
-    if (Array.isArray(serverDb.deletedSlideIds)) {
-      const current = localStorage.getItem(STORAGE_KEYS.DELETED_SLIDE_IDS);
-      const incoming = JSON.stringify(serverDb.deletedSlideIds);
-      if (current !== incoming) {
-        localStorage.setItem(STORAGE_KEYS.DELETED_SLIDE_IDS, incoming);
-        hasChanged = true;
-      }
-    }
-    if (Array.isArray(serverDb.deletedActivityIds)) {
-      const current = localStorage.getItem(STORAGE_KEYS.DELETED_ACTIVITY_IDS);
-      const incoming = JSON.stringify(serverDb.deletedActivityIds);
-      if (current !== incoming) {
-        localStorage.setItem(STORAGE_KEYS.DELETED_ACTIVITY_IDS, incoming);
-        hasChanged = true;
-      }
-    }
-    if (Array.isArray(serverDb.humanitarianActivities)) {
-      const deletedIds = loadDeletedActivityIds();
-      const filtered = serverDb.humanitarianActivities.filter((a: any) => !deletedIds.includes(a.id));
-      const current = localStorage.getItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES);
-      const incoming = JSON.stringify(filtered);
-      if (current !== incoming) {
-        localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, incoming);
-        hasChanged = true;
-      }
-    }
-    if (Array.isArray(serverDb.organizationRules)) {
-      const current = localStorage.getItem(STORAGE_KEYS.ORGANIZATION_RULES);
-      const incoming = JSON.stringify(serverDb.organizationRules);
-      if (serverDb.organizationRules.length > 0 || allowEmptyOverride || !current) {
-        if (current !== incoming) {
-          localStorage.setItem(STORAGE_KEYS.ORGANIZATION_RULES, incoming);
-          hasChanged = true;
-        }
-      }
-    }
+
+    // 12. Total Organization Balance
     if (serverDb.manualTotalBalance !== undefined) {
       const current = localStorage.getItem(STORAGE_KEYS.TOTAL_ORG_BALANCE);
       if (serverDb.manualTotalBalance === null) {
@@ -200,14 +296,8 @@ export function populateLocalStorageFromServer(
         }
       }
     }
-    if (serverDb.paymentConfig && typeof serverDb.paymentConfig === 'object') {
-      const current = localStorage.getItem(STORAGE_KEYS.PAYMENT_SETTINGS);
-      const incoming = JSON.stringify(serverDb.paymentConfig);
-      if (current !== incoming) {
-        localStorage.setItem(STORAGE_KEYS.PAYMENT_SETTINGS, incoming);
-        hasChanged = true;
-      }
-    }
+
+    // 13. Admin PIN
     if (serverDb.adminPin) {
       const current = localStorage.getItem(STORAGE_KEYS.ADMIN_PIN);
       if (current !== serverDb.adminPin) {
@@ -215,6 +305,23 @@ export function populateLocalStorageFromServer(
         hasChanged = true;
       }
     }
+
+    // 14. Calendar Banners
+    if (serverDb.calendarBanners && typeof serverDb.calendarBanners === 'object') {
+      let localBanners: Record<string, any> = {};
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.CALENDAR_BANNERS);
+        if (raw) localBanners = JSON.parse(raw);
+      } catch (e) {}
+      const mergedBanners = { ...localBanners, ...serverDb.calendarBanners };
+      const current = localStorage.getItem(STORAGE_KEYS.CALENDAR_BANNERS);
+      const incoming = JSON.stringify(mergedBanners);
+      if (current !== incoming) {
+        localStorage.setItem(STORAGE_KEYS.CALENDAR_BANNERS, incoming);
+        hasChanged = true;
+      }
+    }
+
     if (hasChanged) {
       notifyDataChange('HYDRATE_FROM_SERVER', serverDb);
     }
@@ -300,24 +407,68 @@ export function saveOrgProfile(profile: OrganizationProfile): void {
 }
 
 // Members
+export function loadDeletedMemberIds(): string[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.DELETED_MEMBER_IDS);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading deleted member ids', e);
+  }
+  return [];
+}
+
+export function recordDeletedMemberId(id: string): void {
+  try {
+    const ids = loadDeletedMemberIds();
+    if (!ids.includes(id)) {
+      const updated = [...ids, id];
+      localStorage.setItem(STORAGE_KEYS.DELETED_MEMBER_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_MEMBER_IDS, updated);
+      syncKeyToServer('deletedMemberIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error recording deleted member id', e);
+  }
+}
+
+export function clearDeletedMemberId(id: string): void {
+  try {
+    const ids = loadDeletedMemberIds();
+    if (ids.includes(id)) {
+      const updated = ids.filter(i => i !== id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_MEMBER_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_MEMBER_IDS, updated);
+      syncKeyToServer('deletedMemberIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error clearing deleted member id', e);
+  }
+}
+
 export function loadMembers(): Member[] {
+  const deletedIds = loadDeletedMemberIds();
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.MEMBERS);
     if (saved !== null) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        return sortMembersOldestFirst(parsed);
+        return sortMembersOldestFirst(parsed.filter(m => !deletedIds.includes(m.id)));
       }
     }
   } catch (e) {
     console.error('Error loading members', e);
   }
-  return sortMembersOldestFirst(INITIAL_MEMBERS);
+  return sortMembersOldestFirst(INITIAL_MEMBERS.filter(m => !deletedIds.includes(m.id)));
 }
 
 export function saveMembers(members: Member[]): void {
   try {
-    const sorted = sortMembersOldestFirst(members);
+    const deletedIds = loadDeletedMemberIds();
+    const filtered = members.filter(m => !deletedIds.includes(m.id));
+    const sorted = sortMembersOldestFirst(filtered);
     localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(sorted));
     notifyDataChange(STORAGE_KEYS.MEMBERS, sorted);
     syncKeyToServer('members', sorted);
@@ -327,63 +478,210 @@ export function saveMembers(members: Member[]): void {
 }
 
 // Donors
+export function loadDeletedDonorIds(): string[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.DELETED_DONOR_IDS);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading deleted donor ids', e);
+  }
+  return [];
+}
+
+export function recordDeletedDonorId(id: string): void {
+  try {
+    const ids = loadDeletedDonorIds();
+    if (!ids.includes(id)) {
+      const updated = [...ids, id];
+      localStorage.setItem(STORAGE_KEYS.DELETED_DONOR_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_DONOR_IDS, updated);
+      syncKeyToServer('deletedDonorIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error recording deleted donor id', e);
+  }
+}
+
+export function clearDeletedDonorId(id: string): void {
+  try {
+    const ids = loadDeletedDonorIds();
+    if (ids.includes(id)) {
+      const updated = ids.filter(i => i !== id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_DONOR_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_DONOR_IDS, updated);
+      syncKeyToServer('deletedDonorIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error clearing deleted donor id', e);
+  }
+}
+
 export function loadDonors(): BloodDonor[] {
+  const deletedIds = loadDeletedDonorIds();
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.DONORS);
-    if (saved !== null) return JSON.parse(saved);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(d => !deletedIds.includes(d.id));
+      }
+    }
   } catch (e) {
     console.error('Error loading donors', e);
   }
-  return INITIAL_DONORS;
+  return INITIAL_DONORS.filter(d => !deletedIds.includes(d.id));
 }
 
 export function saveDonors(donors: BloodDonor[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.DONORS, JSON.stringify(donors));
-    notifyDataChange(STORAGE_KEYS.DONORS, donors);
-    syncKeyToServer('donors', donors);
+    const deletedIds = loadDeletedDonorIds();
+    const filtered = donors.filter(d => !deletedIds.includes(d.id));
+    localStorage.setItem(STORAGE_KEYS.DONORS, JSON.stringify(filtered));
+    notifyDataChange(STORAGE_KEYS.DONORS, filtered);
+    syncKeyToServer('donors', filtered);
   } catch (e) {
     console.error('Error saving donors', e);
   }
 }
 
 // Notices
+export function loadDeletedNoticeIds(): string[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.DELETED_NOTICE_IDS);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading deleted notice ids', e);
+  }
+  return [];
+}
+
+export function recordDeletedNoticeId(id: string): void {
+  try {
+    const ids = loadDeletedNoticeIds();
+    if (!ids.includes(id)) {
+      const updated = [...ids, id];
+      localStorage.setItem(STORAGE_KEYS.DELETED_NOTICE_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_NOTICE_IDS, updated);
+      syncKeyToServer('deletedNoticeIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error recording deleted notice id', e);
+  }
+}
+
+export function clearDeletedNoticeId(id: string): void {
+  try {
+    const ids = loadDeletedNoticeIds();
+    if (ids.includes(id)) {
+      const updated = ids.filter(i => i !== id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_NOTICE_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_NOTICE_IDS, updated);
+      syncKeyToServer('deletedNoticeIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error clearing deleted notice id', e);
+  }
+}
+
 export function loadNotices(): Notice[] {
+  const deletedIds = loadDeletedNoticeIds();
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.NOTICES);
-    if (saved !== null) return JSON.parse(saved);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(n => !deletedIds.includes(n.id));
+      }
+    }
   } catch (e) {
     console.error('Error loading notices', e);
   }
-  return INITIAL_NOTICES;
+  return INITIAL_NOTICES.filter(n => !deletedIds.includes(n.id));
 }
 
 export function saveNotices(notices: Notice[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.NOTICES, JSON.stringify(notices));
-    notifyDataChange(STORAGE_KEYS.NOTICES, notices);
-    syncKeyToServer('notices', notices);
+    const deletedIds = loadDeletedNoticeIds();
+    const filtered = notices.filter(n => !deletedIds.includes(n.id));
+    localStorage.setItem(STORAGE_KEYS.NOTICES, JSON.stringify(filtered));
+    notifyDataChange(STORAGE_KEYS.NOTICES, filtered);
+    syncKeyToServer('notices', filtered);
   } catch (e) {
     console.error('Error saving notices', e);
   }
 }
 
 // Funds
+export function loadDeletedFundIds(): string[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.DELETED_FUND_IDS);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading deleted fund ids', e);
+  }
+  return [];
+}
+
+export function recordDeletedFundId(id: string): void {
+  try {
+    const ids = loadDeletedFundIds();
+    if (!ids.includes(id)) {
+      const updated = [...ids, id];
+      localStorage.setItem(STORAGE_KEYS.DELETED_FUND_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_FUND_IDS, updated);
+      syncKeyToServer('deletedFundIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error recording deleted fund id', e);
+  }
+}
+
+export function clearDeletedFundId(id: string): void {
+  try {
+    const ids = loadDeletedFundIds();
+    if (ids.includes(id)) {
+      const updated = ids.filter(i => i !== id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_FUND_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_FUND_IDS, updated);
+      syncKeyToServer('deletedFundIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error clearing deleted fund id', e);
+  }
+}
+
 export function loadFunds(): FundRecord[] {
+  const deletedIds = loadDeletedFundIds();
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.FUNDS);
-    if (saved !== null) return JSON.parse(saved);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(f => !deletedIds.includes(f.id));
+      }
+    }
   } catch (e) {
     console.error('Error loading funds', e);
   }
-  return INITIAL_FUNDS;
+  return INITIAL_FUNDS.filter(f => !deletedIds.includes(f.id));
 }
 
 export function saveFunds(funds: FundRecord[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.FUNDS, JSON.stringify(funds));
-    notifyDataChange(STORAGE_KEYS.FUNDS, funds);
-    syncKeyToServer('funds', funds);
+    const deletedIds = loadDeletedFundIds();
+    const filtered = funds.filter(f => !deletedIds.includes(f.id));
+    localStorage.setItem(STORAGE_KEYS.FUNDS, JSON.stringify(filtered));
+    notifyDataChange(STORAGE_KEYS.FUNDS, filtered);
+    syncKeyToServer('funds', filtered);
   } catch (e) {
     console.error('Error saving funds', e);
   }
@@ -457,26 +755,70 @@ export function savePaymentSettings(settings: PaymentGatewayConfig): void {
 }
 
 // Support / Report Entries Storage
+export function loadDeletedReportIds(): string[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.DELETED_REPORT_IDS);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading deleted report ids', e);
+  }
+  return [];
+}
+
+export function recordDeletedReportId(id: string): void {
+  try {
+    const ids = loadDeletedReportIds();
+    if (!ids.includes(id)) {
+      const updated = [...ids, id];
+      localStorage.setItem(STORAGE_KEYS.DELETED_REPORT_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_REPORT_IDS, updated);
+      syncKeyToServer('deletedReportIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error recording deleted report id', e);
+  }
+}
+
+export function clearDeletedReportId(id: string): void {
+  try {
+    const ids = loadDeletedReportIds();
+    if (ids.includes(id)) {
+      const updated = ids.filter(i => i !== id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_REPORT_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_REPORT_IDS, updated);
+      syncKeyToServer('deletedReportIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error clearing deleted report id', e);
+  }
+}
+
 export function loadSupportReports(): SupportReportItem[] {
+  const deletedIds = loadDeletedReportIds();
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.SUPPORT_REPORTS);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        return parsed;
+        return parsed.filter(r => !deletedIds.includes(r.id));
       }
     }
   } catch (e) {
     console.error('Error loading support reports', e);
   }
-  return INITIAL_SUPPORT_REPORTS;
+  return INITIAL_SUPPORT_REPORTS.filter(r => !deletedIds.includes(r.id));
 }
 
 export function saveSupportReports(reports: SupportReportItem[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.SUPPORT_REPORTS, JSON.stringify(reports));
-    notifyDataChange(STORAGE_KEYS.SUPPORT_REPORTS, reports);
-    syncKeyToServer('supportReports', reports);
+    const deletedIds = loadDeletedReportIds();
+    const filtered = reports.filter(r => !deletedIds.includes(r.id));
+    localStorage.setItem(STORAGE_KEYS.SUPPORT_REPORTS, JSON.stringify(filtered));
+    notifyDataChange(STORAGE_KEYS.SUPPORT_REPORTS, filtered);
+    syncKeyToServer('supportReports', filtered);
   } catch (e) {
     console.error('Error saving support reports', e);
   }
@@ -636,26 +978,70 @@ export function saveHumanitarianActivities(activities: HumanitarianActivity[]): 
 }
 
 // Organization Rules Storage
+export function loadDeletedRuleIds(): string[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.DELETED_RULE_IDS);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading deleted rule ids', e);
+  }
+  return [];
+}
+
+export function recordDeletedRuleId(id: string): void {
+  try {
+    const ids = loadDeletedRuleIds();
+    if (!ids.includes(id)) {
+      const updated = [...ids, id];
+      localStorage.setItem(STORAGE_KEYS.DELETED_RULE_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_RULE_IDS, updated);
+      syncKeyToServer('deletedRuleIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error recording deleted rule id', e);
+  }
+}
+
+export function clearDeletedRuleId(id: string): void {
+  try {
+    const ids = loadDeletedRuleIds();
+    if (ids.includes(id)) {
+      const updated = ids.filter(i => i !== id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_RULE_IDS, JSON.stringify(updated));
+      notifyDataChange(STORAGE_KEYS.DELETED_RULE_IDS, updated);
+      syncKeyToServer('deletedRuleIds', updated).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Error clearing deleted rule id', e);
+  }
+}
+
 export function loadOrganizationRules(): OrganizationRule[] {
+  const deletedIds = loadDeletedRuleIds();
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.ORGANIZATION_RULES);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.filter(r => !deletedIds.includes(r.id));
       }
     }
   } catch (e) {
     console.error('Error loading organization rules', e);
   }
-  return INITIAL_ORGANIZATION_RULES;
+  return INITIAL_ORGANIZATION_RULES.filter(r => !deletedIds.includes(r.id));
 }
 
 export function saveOrganizationRules(rules: OrganizationRule[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.ORGANIZATION_RULES, JSON.stringify(rules));
-    notifyDataChange(STORAGE_KEYS.ORGANIZATION_RULES, rules);
-    syncKeyToServer('organizationRules', rules);
+    const deletedIds = loadDeletedRuleIds();
+    const filtered = rules.filter(r => !deletedIds.includes(r.id));
+    localStorage.setItem(STORAGE_KEYS.ORGANIZATION_RULES, JSON.stringify(filtered));
+    notifyDataChange(STORAGE_KEYS.ORGANIZATION_RULES, filtered);
+    syncKeyToServer('organizationRules', filtered);
   } catch (e) {
     console.error('Error saving organization rules', e);
   }

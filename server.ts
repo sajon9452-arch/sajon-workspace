@@ -63,6 +63,12 @@ interface AppDatabase {
   calendarBanners?: Record<string, any>;
   deletedSlideIds?: string[];
   deletedActivityIds?: string[];
+  deletedMemberIds?: string[];
+  deletedDonorIds?: string[];
+  deletedNoticeIds?: string[];
+  deletedFundIds?: string[];
+  deletedReportIds?: string[];
+  deletedRuleIds?: string[];
   updatedAt: string;
 }
 
@@ -224,6 +230,12 @@ const DEFAULT_DB: AppDatabase = {
   calendarBanners: {},
   deletedSlideIds: [],
   deletedActivityIds: [],
+  deletedMemberIds: [],
+  deletedDonorIds: [],
+  deletedNoticeIds: [],
+  deletedFundIds: [],
+  deletedReportIds: [],
+  deletedRuleIds: [],
   updatedAt: new Date().toISOString()
 };
 
@@ -239,12 +251,33 @@ function readLocalDatabase(): AppDatabase {
     const content = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed = JSON.parse(content);
     const db: AppDatabase = { ...DEFAULT_DB, ...parsed };
+
+    // Strict filter out of permanently deleted IDs across all management domains
     if (Array.isArray(db.deletedSlideIds) && db.deletedSlideIds.length > 0 && Array.isArray(db.homeSlides)) {
       db.homeSlides = db.homeSlides.filter((s: any) => !db.deletedSlideIds!.includes(s.id));
     }
     if (Array.isArray(db.deletedActivityIds) && db.deletedActivityIds.length > 0 && Array.isArray(db.humanitarianActivities)) {
       db.humanitarianActivities = db.humanitarianActivities.filter((a: any) => !db.deletedActivityIds!.includes(a.id));
     }
+    if (Array.isArray(db.deletedMemberIds) && db.deletedMemberIds.length > 0 && Array.isArray(db.members)) {
+      db.members = db.members.filter((m: any) => !db.deletedMemberIds!.includes(m.id));
+    }
+    if (Array.isArray(db.deletedDonorIds) && db.deletedDonorIds.length > 0 && Array.isArray(db.donors)) {
+      db.donors = db.donors.filter((d: any) => !db.deletedDonorIds!.includes(d.id));
+    }
+    if (Array.isArray(db.deletedNoticeIds) && db.deletedNoticeIds.length > 0 && Array.isArray(db.notices)) {
+      db.notices = db.notices.filter((n: any) => !db.deletedNoticeIds!.includes(n.id));
+    }
+    if (Array.isArray(db.deletedFundIds) && db.deletedFundIds.length > 0 && Array.isArray(db.funds)) {
+      db.funds = db.funds.filter((f: any) => !db.deletedFundIds!.includes(f.id));
+    }
+    if (Array.isArray(db.deletedReportIds) && db.deletedReportIds.length > 0 && Array.isArray(db.supportReports)) {
+      db.supportReports = db.supportReports.filter((r: any) => !db.deletedReportIds!.includes(r.id));
+    }
+    if (Array.isArray(db.deletedRuleIds) && db.deletedRuleIds.length > 0 && Array.isArray(db.organizationRules)) {
+      db.organizationRules = db.organizationRules.filter((r: any) => !db.deletedRuleIds!.includes(r.id));
+    }
+
     return db;
   } catch (error) {
     console.error('Error reading local server database:', error);
@@ -375,47 +408,155 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
       return null;
     }
 
-    if (data && Array.isArray(data) && data.length > 0) {
+    if (data && Array.isArray(data)) {
       const current = readLocalDatabase();
       const merged: any = { ...current };
+      const missingKeysInSupabase: string[] = [];
+
+      const cloudMap = new Map<string, any>();
       for (const row of data) {
         if (row.key && row.value !== undefined) {
-          merged[row.key] = row.value;
+          cloudMap.set(row.key, row.value);
         }
       }
 
-      // Check if dedicated humanitarian_activities table exists in Supabase
+      // 1. Merge deleted ID tracking lists first to prevent resurrection of manually deleted records
+      const deletedKeyPairs: [string, string][] = [
+        ['deletedActivityIds', 'humanitarianActivities'],
+        ['deletedSlideIds', 'homeSlides'],
+        ['deletedMemberIds', 'members'],
+        ['deletedDonorIds', 'donors'],
+        ['deletedNoticeIds', 'notices'],
+        ['deletedFundIds', 'funds'],
+        ['deletedReportIds', 'supportReports'],
+        ['deletedRuleIds', 'organizationRules']
+      ];
+
+      for (const [delKey] of deletedKeyPairs) {
+        const cloudDels = cloudMap.get(delKey);
+        const localDels = (current as any)[delKey];
+        const combinedDels = Array.from(new Set([
+          ...(Array.isArray(cloudDels) ? cloudDels : []),
+          ...(Array.isArray(localDels) ? (localDels as string[]) : [])
+        ]));
+        merged[delKey] = combinedDels;
+      }
+
+      // 2. Multi-domain non-destructive merge for array entities
+      const arrayEntityKeys = [
+        'members',
+        'donors',
+        'notices',
+        'funds',
+        'supportReports',
+        'homeSlides',
+        'humanitarianActivities',
+        'organizationRules'
+      ];
+
+      for (const key of arrayEntityKeys) {
+        const cloudVal = cloudMap.get(key);
+        const localVal = (current as any)[key];
+        const delKey = deletedKeyPairs.find(p => p[1] === key)?.[0] || '';
+        const deletedIds: string[] = delKey ? (merged[delKey] || []) : [];
+
+        if (Array.isArray(cloudVal) && Array.isArray(localVal)) {
+          const itemMap = new Map<string, any>();
+          // Cloud records
+          cloudVal.forEach((item: any) => {
+            if (item && item.id && !deletedIds.includes(item.id)) {
+              itemMap.set(item.id, item);
+            }
+          });
+          let hasLocalNew = false;
+          // Retain local records that are not in cloud and not deleted
+          localVal.forEach((item: any) => {
+            if (item && item.id && !deletedIds.includes(item.id)) {
+              if (!itemMap.has(item.id)) {
+                itemMap.set(item.id, item);
+                hasLocalNew = true;
+              }
+            }
+          });
+          merged[key] = Array.from(itemMap.values());
+          if (hasLocalNew || !cloudMap.has(key)) {
+            missingKeysInSupabase.push(key);
+          }
+        } else if (Array.isArray(cloudVal)) {
+          merged[key] = cloudVal.filter((i: any) => i && i.id && !deletedIds.includes(i.id));
+        } else if (Array.isArray(localVal)) {
+          merged[key] = localVal.filter((i: any) => i && i.id && !deletedIds.includes(i.id));
+          missingKeysInSupabase.push(key);
+        }
+      }
+
+      // 3. Scalar and object keys (profile, paymentConfig, calendarBanners, manualTotalBalance, adminPin)
+      const otherKeys = ['profile', 'manualTotalBalance', 'paymentConfig', 'calendarBanners', 'adminPin'];
+      for (const k of otherKeys) {
+        if (cloudMap.has(k) && cloudMap.get(k) !== undefined && cloudMap.get(k) !== null) {
+          merged[k] = cloudMap.get(k);
+        } else if ((current as any)[k] !== undefined) {
+          missingKeysInSupabase.push(k);
+        }
+      }
+
+      // 4. Check if dedicated humanitarian_activities table exists in Supabase
       try {
         const { data: actRows, error: actErr } = await supabase
           .from('humanitarian_activities')
           .select('*');
-        if (!actErr && Array.isArray(actRows)) {
-          merged.humanitarianActivities = actRows.map((r: any) => ({
-            id: r.id,
-            title: r.title || '',
-            description: r.description || '',
-            itemsGiven: r.items_given || r.itemsGiven || '',
-            cost: Number(r.cost) || 0,
-            handledBy: r.handled_by || r.handledBy || '',
-            recipientName: r.recipient_name || r.recipientName || '',
-            recipientPhotoUrl: r.recipient_photo_url || r.recipientPhotoUrl || '',
-            date: r.date || '',
-            location: r.location || '',
-            isFeatured: Boolean(r.is_featured ?? r.isFeatured)
-          }));
+        if (!actErr && Array.isArray(actRows) && actRows.length > 0) {
+          const deletedActIds = merged.deletedActivityIds || [];
+          const dedicatedActivities = actRows
+            .filter((r: any) => r && r.id && !deletedActIds.includes(r.id))
+            .map((r: any) => ({
+              id: r.id,
+              title: r.title || '',
+              description: r.description || '',
+              itemsGiven: r.items_given || r.itemsGiven || '',
+              cost: Number(r.cost) || 0,
+              handledBy: r.handled_by || r.handledBy || '',
+              recipientName: r.recipient_name || r.recipientName || '',
+              recipientPhotoUrl: r.recipient_photo_url || r.recipientPhotoUrl || '',
+              date: r.date || '',
+              location: r.location || '',
+              isFeatured: Boolean(r.is_featured ?? r.isFeatured)
+            }));
+
+          const actMap = new Map<string, any>();
+          dedicatedActivities.forEach((a: any) => actMap.set(a.id, a));
+          if (Array.isArray(merged.humanitarianActivities)) {
+            merged.humanitarianActivities.forEach((a: any) => {
+              if (!actMap.has(a.id) && !deletedActIds.includes(a.id)) {
+                actMap.set(a.id, a);
+              }
+            });
+          }
+          merged.humanitarianActivities = Array.from(actMap.values());
         }
       } catch (e) {
         // Dedicated table check optional
       }
 
-      // Filter out any permanently deleted activities
-      if (Array.isArray(merged.deletedActivityIds) && Array.isArray(merged.humanitarianActivities)) {
-        merged.humanitarianActivities = merged.humanitarianActivities.filter((a: any) => !merged.deletedActivityIds.includes(a.id));
+      // 5. Final strict filtering of any deleted IDs across all arrays
+      for (const [delKey, entityKey] of deletedKeyPairs) {
+        const deletedIds: string[] = merged[delKey] || [];
+        if (deletedIds.length > 0 && Array.isArray(merged[entityKey])) {
+          merged[entityKey] = merged[entityKey].filter((item: any) => !deletedIds.includes(item.id));
+        }
       }
 
       merged.updatedAt = new Date().toISOString();
       const updated = writeLocalDatabase(merged);
-      console.log(`[Supabase] Pulled ${data.length} keys from Supabase cloud database!`);
+
+      // Asynchronously seed any keys that were missing in Supabase so cloud is 100% persistent
+      if (missingKeysInSupabase.length > 0) {
+        for (const key of missingKeysInSupabase) {
+          syncKeyToSupabase(key, (merged as any)[key]).catch(() => {});
+        }
+      }
+
+      console.log(`[Supabase] Pulled and merged ${data.length} keys from Supabase cloud database!`);
       return updated;
     }
   } catch (err: any) {
@@ -778,7 +919,13 @@ app.post('/api/data/:key', async (req, res) => {
       'adminPin',
       'calendarBanners',
       'deletedSlideIds',
-      'deletedActivityIds'
+      'deletedActivityIds',
+      'deletedMemberIds',
+      'deletedDonorIds',
+      'deletedNoticeIds',
+      'deletedFundIds',
+      'deletedReportIds',
+      'deletedRuleIds'
     ];
 
     if (!allowedKeys.includes(key)) {
@@ -787,10 +934,12 @@ app.post('/api/data/:key', async (req, res) => {
 
     const updated = writeLocalDatabase({ [key]: value });
 
-    // Sync specific key to Supabase
-    syncKeyToSupabase(key, value).catch((err) => {
-      console.warn(`Supabase key push for ${key} failed:`, err);
-    });
+    // Sync specific key to Supabase and await confirmation
+    try {
+      await syncKeyToSupabase(key, value);
+    } catch (err) {
+      console.warn(`Supabase key push for ${key} notice:`, err);
+    }
 
     res.json({ success: true, data: updated });
   } catch (e: any) {

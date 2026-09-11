@@ -40,7 +40,15 @@ import {
   CalendarMonthlyBanner
 } from '../types';
 import { formatTaka, toBengaliNumber } from '../utils/helpers';
-import { recordDeletedSlideId, recordDeletedActivityId, clearDeletedActivityId, loadCalendarBanners, saveCalendarBanners } from '../utils/storage';
+import { 
+  recordDeletedSlideId, 
+  recordDeletedActivityId, 
+  clearDeletedActivityId, 
+  recordDeletedRuleId,
+  clearDeletedRuleId,
+  loadCalendarBanners, 
+  saveCalendarBanners 
+} from '../utils/storage';
 import { deleteHumanitarianActivityOnServer } from '../utils/serverApi';
 import { MONTH_NAMES_BN, MONTH_NAMES_EN, SYLHET_MONTHLY_SCENIC_LANDSCAPES } from '../utils/calendarData';
 
@@ -442,12 +450,14 @@ export const AdminHomePageManager: React.FC<AdminHomePageManagerProps> = ({
       notifySuccess('নতুন নিয়ম সফলভাবে যুক্ত হয়েছে');
     }
 
+    clearDeletedRuleId(ruleData.id);
     onUpdateRules(updatedRules);
     setIsRuleModalOpen(false);
   };
 
   const handleDeleteRule = (id: string) => {
     if (window.confirm('আপনি কি এই নিয়মটি তালিকা থেকে মুছে ফেলতে চান?')) {
+      recordDeletedRuleId(id);
       const updated = rules.filter(r => r.id !== id);
       onUpdateRules(updated);
       notifySuccess('নিয়ম সফলভাবে মুছে ফেলা হয়েছে');

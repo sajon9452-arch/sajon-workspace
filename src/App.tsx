@@ -36,11 +36,20 @@ import {
   saveHomeSlides,
   loadHumanitarianActivities,
   saveHumanitarianActivities,
-  loadDeletedActivityIds,
   loadOrganizationRules,
   saveOrganizationRules,
   loadCalendarBanners,
   saveCalendarBanners,
+  recordDeletedMemberId,
+  clearDeletedMemberId,
+  recordDeletedDonorId,
+  clearDeletedDonorId,
+  recordDeletedNoticeId,
+  clearDeletedNoticeId,
+  recordDeletedFundId,
+  clearDeletedFundId,
+  recordDeletedReportId,
+  clearDeletedReportId,
   populateLocalStorageFromServer, 
   resetAllData, 
   clearAllData,
@@ -112,22 +121,8 @@ export default function App() {
     // Hydrate from server / Supabase Cloud database
     fetchServerDatabase().then((serverData) => {
       if (serverData && isMounted) {
-        if (serverData.profile) setProfile(serverData.profile);
-        if (Array.isArray(serverData.members)) setMembers(sortMembersOldestFirst(serverData.members));
-        if (Array.isArray(serverData.donors)) setDonors(serverData.donors);
-        if (Array.isArray(serverData.notices)) setNotices(serverData.notices);
-        if (Array.isArray(serverData.funds)) setFunds(serverData.funds);
-        if (Array.isArray(serverData.supportReports)) setSupportReports(serverData.supportReports);
-        if (Array.isArray(serverData.homeSlides)) setHomeSlides(serverData.homeSlides);
-        if (Array.isArray(serverData.humanitarianActivities)) {
-          const deletedActIds = loadDeletedActivityIds();
-          setHumanitarianActivities(serverData.humanitarianActivities.filter(a => !deletedActIds.includes(a.id)));
-        }
-        if (Array.isArray(serverData.organizationRules)) setOrganizationRules(serverData.organizationRules);
-        if (serverData.calendarBanners) setCalendarBanners(serverData.calendarBanners);
-        if (serverData.manualTotalBalance !== undefined) setManualTotalBalance(serverData.manualTotalBalance);
-        if (serverData.paymentConfig) setPaymentConfig(serverData.paymentConfig);
         populateLocalStorageFromServer(serverData, true);
+        syncAllFromStorage();
       }
     }).catch(() => {
       // Fallback seamlessly to local storage cache
@@ -168,6 +163,7 @@ export default function App() {
       createdAt: (newMember as any).createdAt || new Date(timestamp).toISOString(),
     };
     
+    clearDeletedMemberId(member.id);
     setMembers(prev => {
       // Strict Seniority Maintenance:
       // Filter out duplicate if updating and append the newly registered member at the very bottom
@@ -181,6 +177,7 @@ export default function App() {
   };
 
   const handleEditMember = async (updatedMember: Member): Promise<void> => {
+    clearDeletedMemberId(updatedMember.id);
     setMembers(prev => {
       const updated = prev.map(m => m.id === updatedMember.id ? updatedMember : m);
       saveMembers(updated);
@@ -189,15 +186,14 @@ export default function App() {
     });
   };
 
-  const handleDeleteMember = async (id: string, name: string): Promise<void> => {
-    if (confirm(`আপনি কি সদস্য "${name}" কে মুছে ফেলতে চান?`)) {
-      setMembers(prev => {
-        const updated = prev.filter(m => m.id !== id);
-        saveMembers(updated);
-        syncKeyToServer('members', updated).catch(() => {});
-        return updated;
-      });
-    }
+  const handleDeleteMember = async (id: string, _name?: string): Promise<void> => {
+    recordDeletedMemberId(id);
+    setMembers(prev => {
+      const updated = prev.filter(m => m.id !== id);
+      saveMembers(updated);
+      syncKeyToServer('members', updated).catch(() => {});
+      return updated;
+    });
   };
 
   // Blood Donor Handlers
@@ -208,6 +204,7 @@ export default function App() {
       id: donorId
     };
     
+    clearDeletedDonorId(donor.id);
     setDonors(prev => {
       const updated = [donor, ...prev.filter(d => d.id !== donor.id)];
       saveDonors(updated);
@@ -218,6 +215,7 @@ export default function App() {
   };
 
   const handleEditDonor = async (updatedDonor: BloodDonor): Promise<void> => {
+    clearDeletedDonorId(updatedDonor.id);
     setDonors(prev => {
       const updated = prev.map(d => d.id === updatedDonor.id ? updatedDonor : d);
       saveDonors(updated);
@@ -226,15 +224,14 @@ export default function App() {
     });
   };
 
-  const handleDeleteDonor = async (id: string, name: string): Promise<void> => {
-    if (confirm(`আপনি কি রক্তদাতা "${name}" এর তথ্য মুছে ফেলতে চান?`)) {
-      setDonors(prev => {
-        const updated = prev.filter(d => d.id !== id);
-        saveDonors(updated);
-        syncKeyToServer('donors', updated).catch(() => {});
-        return updated;
-      });
-    }
+  const handleDeleteDonor = async (id: string, _name?: string): Promise<void> => {
+    recordDeletedDonorId(id);
+    setDonors(prev => {
+      const updated = prev.filter(d => d.id !== id);
+      saveDonors(updated);
+      syncKeyToServer('donors', updated).catch(() => {});
+      return updated;
+    });
   };
 
   // Notice Handlers
@@ -245,6 +242,7 @@ export default function App() {
       id: noticeId
     };
 
+    clearDeletedNoticeId(notice.id);
     setNotices(prev => {
       const updated = [notice, ...prev.filter(n => n.id !== notice.id)];
       saveNotices(updated);
@@ -255,6 +253,7 @@ export default function App() {
   };
 
   const handleEditNotice = async (updatedNotice: Notice): Promise<void> => {
+    clearDeletedNoticeId(updatedNotice.id);
     setNotices(prev => {
       const updated = prev.map(n => n.id === updatedNotice.id ? updatedNotice : n);
       saveNotices(updated);
@@ -264,14 +263,13 @@ export default function App() {
   };
 
   const handleDeleteNotice = async (id: string): Promise<void> => {
-    if (confirm('আপনি কি এই নোটিশটি মুছে ফেলতে চান?')) {
-      setNotices(prev => {
-        const updated = prev.filter(n => n.id !== id);
-        saveNotices(updated);
-        syncKeyToServer('notices', updated).catch(() => {});
-        return updated;
-      });
-    }
+    recordDeletedNoticeId(id);
+    setNotices(prev => {
+      const updated = prev.filter(n => n.id !== id);
+      saveNotices(updated);
+      syncKeyToServer('notices', updated).catch(() => {});
+      return updated;
+    });
   };
 
   // Fund Handlers
@@ -282,6 +280,7 @@ export default function App() {
       id: fundId
     };
 
+    clearDeletedFundId(fund.id);
     setFunds(prev => {
       const updated = [fund, ...prev.filter(f => f.id !== fund.id)];
       saveFunds(updated);
@@ -292,6 +291,7 @@ export default function App() {
   };
 
   const handleEditFund = async (updatedFund: FundRecord): Promise<void> => {
+    clearDeletedFundId(updatedFund.id);
     setFunds(prev => {
       const updated = prev.map(f => f.id === updatedFund.id ? updatedFund : f);
       saveFunds(updated);
@@ -301,14 +301,13 @@ export default function App() {
   };
 
   const handleDeleteFund = async (id: string): Promise<void> => {
-    if (confirm('আপনি কি এই ফান্ড এন্ট্রিটি মুছে ফেলতে চান?')) {
-      setFunds(prev => {
-        const updated = prev.filter(f => f.id !== id);
-        saveFunds(updated);
-        syncKeyToServer('funds', updated).catch(() => {});
-        return updated;
-      });
-    }
+    recordDeletedFundId(id);
+    setFunds(prev => {
+      const updated = prev.filter(f => f.id !== id);
+      saveFunds(updated);
+      syncKeyToServer('funds', updated).catch(() => {});
+      return updated;
+    });
   };
 
   const handleToggleFundStatus = async (id: string, newStatus: PaymentStatus): Promise<void> => {
@@ -338,6 +337,7 @@ export default function App() {
       id: reportId
     };
 
+    clearDeletedReportId(report.id);
     setSupportReports(prev => {
       const updated = [report, ...prev.filter(r => r.id !== report.id)];
       saveSupportReports(updated);
@@ -348,6 +348,7 @@ export default function App() {
   };
 
   const handleEditSupportReport = async (updatedReport: SupportReportItem): Promise<void> => {
+    clearDeletedReportId(updatedReport.id);
     setSupportReports(prev => {
       const updated = prev.map(r => r.id === updatedReport.id ? updatedReport : r);
       saveSupportReports(updated);
@@ -357,6 +358,7 @@ export default function App() {
   };
 
   const handleDeleteSupportReport = async (id: string): Promise<void> => {
+    recordDeletedReportId(id);
     setSupportReports(prev => {
       const updated = prev.filter(r => r.id !== id);
       saveSupportReports(updated);

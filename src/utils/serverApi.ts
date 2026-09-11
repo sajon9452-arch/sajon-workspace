@@ -29,6 +29,12 @@ export interface ServerDatabasePayload {
   calendarBanners?: Record<number, CalendarMonthlyBanner>;
   deletedSlideIds?: string[];
   deletedActivityIds?: string[];
+  deletedMemberIds?: string[];
+  deletedDonorIds?: string[];
+  deletedNoticeIds?: string[];
+  deletedFundIds?: string[];
+  deletedReportIds?: string[];
+  deletedRuleIds?: string[];
   updatedAt?: string;
 }
 
@@ -91,7 +97,13 @@ export async function syncKeyToServer(
     | 'adminPin'
     | 'calendarBanners'
     | 'deletedSlideIds'
-    | 'deletedActivityIds',
+    | 'deletedActivityIds'
+    | 'deletedMemberIds'
+    | 'deletedDonorIds'
+    | 'deletedNoticeIds'
+    | 'deletedFundIds'
+    | 'deletedReportIds'
+    | 'deletedRuleIds',
   value: any
 ): Promise<boolean> {
   try {
