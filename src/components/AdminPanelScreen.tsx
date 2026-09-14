@@ -227,6 +227,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [memberPhotoBase64, setMemberPhotoBase64] = useState<string>('');
+  const [zoomedMemberPhoto, setZoomedMemberPhoto] = useState<Member | null>(null);
 
   // Explicit Member Form Input States for robust submission
   const [memberNameInput, setMemberNameInput] = useState('');
@@ -1592,12 +1593,20 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                         </td>
                         <td className="p-3.5">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-800 flex items-center justify-center font-bold text-xs flex-shrink-0 overflow-hidden shadow-2xs">
+                            <div 
+                              onClick={() => {
+                                if (m.photoUrl) setZoomedMemberPhoto(m);
+                              }}
+                              className={`w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-800 flex items-center justify-center font-bold text-xs flex-shrink-0 overflow-hidden shadow-2xs ${
+                                m.photoUrl ? 'cursor-pointer hover:border-emerald-500 transition-all' : ''
+                              }`}
+                              title={m.photoUrl ? `${m.name}-এর ছবি বড় করে দেখতে ক্লিক করুন` : m.name}
+                            >
                               {m.photoUrl ? (
                                 <img
                                   src={m.photoUrl}
                                   alt={m.name}
-                                  className="w-full h-full object-cover"
+                                  className="w-full h-full object-cover hover:scale-110 transition-transform duration-200"
                                   onError={(e) => {
                                     (e.target as HTMLElement).style.display = 'none';
                                   }}
@@ -4351,6 +4360,47 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Member Photo Zoom Modal */}
+      {zoomedMemberPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-fadeIn"
+          onClick={() => setZoomedMemberPhoto(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="relative max-w-lg w-full bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200/90 animate-scaleUp flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/70">
+              <div className="min-w-0 pr-2">
+                <h3 className="font-bold text-slate-900 text-base sm:text-lg truncate">
+                  {zoomedMemberPhoto.name}
+                </h3>
+                <span className="inline-flex items-center gap-1 mt-0.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200/70">
+                  {zoomedMemberPhoto.designation}
+                </span>
+              </div>
+              <button
+                onClick={() => setZoomedMemberPhoto(null)}
+                className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition cursor-pointer flex-shrink-0"
+                title="বন্ধ করুন"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 sm:p-5 flex-1 flex items-center justify-center bg-slate-950 overflow-hidden">
+              {zoomedMemberPhoto.photoUrl && (
+                <img
+                  src={zoomedMemberPhoto.photoUrl}
+                  alt={zoomedMemberPhoto.name}
+                  className="w-full h-auto max-h-[65vh] object-contain rounded-2xl select-none shadow-lg"
+                />
+              )}
+            </div>
           </div>
         </div>
       )}

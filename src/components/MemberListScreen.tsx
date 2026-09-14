@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, 
   Search, 
@@ -17,7 +17,8 @@ import {
   Upload,
   Camera,
   Image as ImageIcon,
-  ShieldCheck
+  ShieldCheck,
+  Maximize2
 } from 'lucide-react';
 import { Member } from '../types';
 import { toBengaliNumber, sanitizePhone, sortMembersOldestFirst } from '../utils/helpers';
@@ -44,6 +45,22 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const [zoomedMember, setZoomedMember] = useState<Member | null>(null);
+
+  // Close zoom modal on escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setZoomedMember(null);
+      }
+    };
+    if (zoomedMember) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [zoomedMember]);
 
   // Form State
   const [name, setName] = useState('');
@@ -341,17 +358,38 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
 
                     {/* Professional ID Card Body */}
                     <div className="flex items-start gap-4">
-                      {/* Large ID Card Portrait Photo with Seniority Badge */}
-                      <div className="w-20 h-24 sm:w-24 sm:h-28 rounded-xl bg-gradient-to-b from-slate-50 to-slate-100 border-2 border-emerald-500/30 text-emerald-800 flex flex-col items-center justify-center font-bold flex-shrink-0 overflow-hidden shadow-xs relative">
+                      {/* Large ID Card Portrait Photo with Seniority Badge & Click-to-Zoom */}
+                      <div 
+                        onClick={() => {
+                          if (member.photoUrl) {
+                            setZoomedMember(member);
+                          }
+                        }}
+                        id={`member-photo-${member.id || idx}`}
+                        className={`w-20 h-24 sm:w-24 sm:h-28 rounded-xl bg-gradient-to-b from-slate-50 to-slate-100 border-2 border-emerald-500/30 text-emerald-800 flex flex-col items-center justify-center font-bold flex-shrink-0 overflow-hidden shadow-xs relative ${
+                          member.photoUrl ? 'cursor-pointer group/photo hover:border-emerald-500 transition-all active:scale-95' : ''
+                        }`}
+                        title={member.photoUrl ? `${member.name}-এর ছবি বড় করে দেখতে ক্লিক করুন` : member.name}
+                        role={member.photoUrl ? 'button' : undefined}
+                        aria-label={member.photoUrl ? `${member.name}-এর ছবি জুম করে দেখুন` : undefined}
+                      >
                         {member.photoUrl ? (
-                          <img
-                            src={member.photoUrl}
-                            alt={member.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLElement).style.display = 'none';
-                            }}
-                          />
+                          <>
+                            <img
+                              src={member.photoUrl}
+                              alt={member.name}
+                              className="w-full h-full object-cover group-hover/photo:scale-105 transition-transform duration-300"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                            {/* Subtle hover zoom overlay affordance */}
+                            <div className="absolute inset-0 bg-slate-950/25 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                              <div className="p-1.5 rounded-lg bg-black/60 text-white shadow-xs backdrop-blur-xs">
+                                <Maximize2 className="w-3.5 h-3.5" />
+                              </div>
+                            </div>
+                          </>
                         ) : (
                           <div className="flex flex-col items-center justify-center text-center p-2">
                             <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base font-black mb-1">
@@ -360,7 +398,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                             <span className="text-[10px] font-bold text-slate-400">সদস্য</span>
                           </div>
                         )}
-                        <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/65 backdrop-blur-xs text-white text-[9px] font-bold rounded-md">
+                        <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/65 backdrop-blur-xs text-white text-[9px] font-bold rounded-md z-10">
                           #{toBengaliNumber(serialNo)}
                         </div>
                       </div>
@@ -646,6 +684,93 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Member Profile Picture Click-to-Zoom Modal */}
+      {zoomedMember && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-fadeIn"
+          onClick={() => setZoomedMember(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="member-zoom-title"
+        >
+          <div
+            className="relative max-w-lg w-full bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200/90 animate-scaleUp flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header: Member's Name & Clear Close ('X') Button */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/70">
+              <div className="min-w-0 pr-2">
+                <h3
+                  id="member-zoom-title"
+                  className="font-bold text-slate-900 text-base sm:text-lg truncate flex items-center gap-2"
+                >
+                  <span>{zoomedMember.name}</span>
+                </h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200/70">
+                    <UserCheck className="w-3 h-3 text-emerald-600" />
+                    <span>{zoomedMember.designation}</span>
+                  </span>
+                  {memberSerialMap.get(zoomedMember.id) && (
+                    <span className="text-xs text-slate-400 font-medium">
+                      ক্রমিক #{toBengaliNumber(memberSerialMap.get(zoomedMember.id)!)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => setZoomedMember(null)}
+                id="close-member-zoom-btn"
+                className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition cursor-pointer flex-shrink-0"
+                title="বন্ধ করুন (Esc)"
+                aria-label="বন্ধ করুন"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body: Large High-Resolution Member Photo */}
+            <div className="p-4 sm:p-5 flex-1 flex items-center justify-center bg-slate-950 overflow-hidden">
+              {zoomedMember.photoUrl ? (
+                <div className="relative w-full flex items-center justify-center max-h-[65vh]">
+                  <img
+                    src={zoomedMember.photoUrl}
+                    alt={zoomedMember.name}
+                    className="w-full h-auto max-h-[65vh] object-contain rounded-2xl select-none shadow-lg"
+                  />
+                </div>
+              ) : (
+                <div className="py-16 text-center text-slate-400">
+                  <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-3xl font-bold mx-auto mb-2">
+                    {zoomedMember.name.charAt(0)}
+                  </div>
+                  <p className="text-sm font-semibold text-slate-300">কোনো ছবি সংরক্ষিত নেই</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer: Location and Direct Contact Bar */}
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs text-slate-600 truncate">
+                <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                <span className="truncate">{zoomedMember.area || 'পতেঙ্গা, চট্টগ্রাম'}</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href={`tel:${sanitizePhone(zoomedMember.phone)}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  <span>কল করুন ({zoomedMember.phone})</span>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       )}
