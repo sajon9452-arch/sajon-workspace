@@ -33,6 +33,9 @@ export interface Member {
   status?: 'সক্রিয়' | 'স্থগিত';
   createdAt?: string;
   serial?: number;
+  isExpatriate?: boolean;
+  memberType?: 'general' | 'expatriate';
+  countryStatus?: string; // যেমন: 'সৌদি প্রবাসী', 'দুবাই প্রবাসী' ইত্যাদি
 }
 
 export interface PaymentGatewayConfig {

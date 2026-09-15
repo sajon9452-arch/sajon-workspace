@@ -18,7 +18,8 @@ import {
   Camera,
   Image as ImageIcon,
   ShieldCheck,
-  Maximize2
+  Maximize2,
+  Globe
 } from 'lucide-react';
 import { Member } from '../types';
 import { toBengaliNumber, sanitizePhone, sortMembersOldestFirst } from '../utils/helpers';
@@ -42,6 +43,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'general' | 'expatriate'>('general');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
@@ -68,6 +70,8 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
   const [phone, setPhone] = useState('');
   const [area, setArea] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
+  const [isExpatriateForm, setIsExpatriateForm] = useState(false);
+  const [countryStatus, setCountryStatus] = useState('');
   const [formError, setFormError] = useState('');
 
   const handlePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,41 +90,65 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
     }
   };
 
+  // Helper to determine whether a member is an expatriate member
+  const isExpatriateMember = (m: Member): boolean => {
+    return Boolean(
+      m.isExpatriate === true ||
+      m.memberType === 'expatriate' ||
+      (m.countryStatus && m.countryStatus.trim().length > 0)
+    );
+  };
+
   // Strictly sort members in ascending (oldest-first) order by registration/addition time
   // Earliest added members stay at the top (starting from #1) and new members append to the bottom
   const sortedMembers = useMemo(() => {
     return sortMembersOldestFirst(members);
   }, [members]);
 
-  // Master serial number lookup for each member respecting registration order / seniority
+  // Split into mutually exclusive lists: General members and Expatriate members
+  const generalMembers = useMemo(() => {
+    return sortedMembers.filter(m => !isExpatriateMember(m));
+  }, [sortedMembers]);
+
+  const expatriateMembers = useMemo(() => {
+    return sortedMembers.filter(m => isExpatriateMember(m));
+  }, [sortedMembers]);
+
+  // Exclusive visibility: Current active member list
+  const currentMembersList = useMemo(() => {
+    return activeTab === 'general' ? generalMembers : expatriateMembers;
+  }, [activeTab, generalMembers, expatriateMembers]);
+
+  // Master serial number lookup for the active list respecting registration order / seniority (#১ থেকে শুরু)
   const memberSerialMap = useMemo(() => {
     const map = new Map<string, number>();
-    sortedMembers.forEach((m, idx) => {
+    currentMembersList.forEach((m, idx) => {
       map.set(m.id, idx + 1);
     });
     return map;
-  }, [sortedMembers]);
+  }, [currentMembersList]);
 
-  // Extract unique designations for filter from sorted members
+  // Extract unique designations for filter from active list
   const designations = useMemo(() => {
-    const set = new Set(sortedMembers.map(m => m.designation));
+    const set = new Set(currentMembersList.map(m => m.designation).filter(Boolean));
     return Array.from(set);
-  }, [sortedMembers]);
+  }, [currentMembersList]);
 
   // Filtered members list strictly maintaining ascending / oldest-first seniority hierarchy
   const filteredMembers = useMemo(() => {
-    return sortedMembers.filter(m => {
+    return currentMembersList.filter(m => {
       const matchesSearch = 
         m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         m.phone.includes(searchTerm) ||
         m.designation.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.countryStatus && m.countryStatus.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (m.area && m.area.toLowerCase().includes(searchTerm.toLowerCase()));
       
       const matchesDesignation = selectedDesignation === 'all' || m.designation === selectedDesignation;
 
       return matchesSearch && matchesDesignation;
     });
-  }, [sortedMembers, searchTerm, selectedDesignation]);
+  }, [currentMembersList, searchTerm, selectedDesignation]);
 
   const handleCopyPhone = (phoneNumber: string) => {
     navigator.clipboard.writeText(phoneNumber);
@@ -129,23 +157,29 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
   };
 
   const handleOpenEdit = (m: Member) => {
+    const isExp = isExpatriateMember(m);
     setEditingMember(m);
     setName(m.name);
     setDesignation(m.designation);
     setPhone(m.phone);
-    setArea(m.area || 'পতেঙ্গা, চট্টগ্রাম');
+    setArea(m.area || (isExp ? '' : 'পতেঙ্গা, চট্টগ্রাম'));
     setPhotoUrl(m.photoUrl || '');
+    setIsExpatriateForm(isExp);
+    setCountryStatus(m.countryStatus || '');
     setFormError('');
     setIsAddModalOpen(true);
   };
 
-  const handleOpenAdd = () => {
+  const handleOpenAdd = (forceExpatriate?: boolean) => {
+    const isExp = typeof forceExpatriate === 'boolean' ? forceExpatriate : activeTab === 'expatriate';
     setEditingMember(null);
     setName('');
     setDesignation('');
     setPhone('');
-    setArea('পতেঙ্গা, চট্টগ্রাম');
+    setArea(isExp ? '' : 'পতেঙ্গা, চট্টগ্রাম');
     setPhotoUrl('');
+    setIsExpatriateForm(isExp);
+    setCountryStatus(''); // STRICTLY BLANK: No default or hardcoded value
     setFormError('');
     setIsAddModalOpen(true);
   };
@@ -165,27 +199,37 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
       return;
     }
 
+    const memberPayload = {
+      name: name.trim(),
+      designation: designation.trim(),
+      phone: phone.trim(),
+      area: area.trim() || (isExpatriateForm ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'),
+      photoUrl: photoUrl.trim() || '',
+      isExpatriate: isExpatriateForm,
+      memberType: (isExpatriateForm ? 'expatriate' : 'general') as 'expatriate' | 'general',
+      countryStatus: isExpatriateForm ? countryStatus.trim() : undefined,
+    };
+
     if (editingMember) {
       if (onEditMember) {
         onEditMember({
           ...editingMember,
-          name: name.trim(),
-          designation: designation.trim(),
-          phone: phone.trim(),
-          area: area.trim() || 'পতেঙ্গা, চট্টগ্রাম',
-          photoUrl: photoUrl.trim() || '',
+          ...memberPayload,
         });
       }
     } else {
       onAddMember({
-        name: name.trim(),
-        designation: designation.trim(),
-        phone: phone.trim(),
-        area: area.trim() || 'পতেঙ্গা, চট্টগ্রাম',
-        photoUrl: photoUrl.trim() || '',
+        ...memberPayload,
         joinDate: new Date().toISOString().split('T')[0],
         status: 'সক্রিয়'
       });
+    }
+
+    // Automatically navigate to the corresponding tab if different
+    if (isExpatriateForm && activeTab !== 'expatriate') {
+      setActiveTab('expatriate');
+    } else if (!isExpatriateForm && activeTab !== 'general') {
+      setActiveTab('general');
     }
 
     setName('');
@@ -193,6 +237,8 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
     setPhone('');
     setArea('');
     setPhotoUrl('');
+    setCountryStatus('');
+    setIsExpatriateForm(false);
     setEditingMember(null);
     setFormError('');
     setIsAddModalOpen(false);
@@ -227,12 +273,12 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
           {/* Admin Only: Add Member Button */}
           {isAdmin && (
             <button
-              onClick={handleOpenAdd}
+              onClick={() => handleOpenAdd(activeTab === 'expatriate')}
               id="members-add-new-btn"
               className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>নতুন সদস্য যোগ</span>
+              <span>{activeTab === 'expatriate' ? 'নতুন প্রবাসী সদস্য যোগ' : 'নতুন সদস্য যোগ'}</span>
             </button>
           )}
         </div>
@@ -248,7 +294,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
               id="members-search-input"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="নাম, পদবি, এলাকা বা ফোন নম্বর দিয়ে সদস্য খুঁজুন..."
+              placeholder="নাম, পদবি, এলাকা, দেশ বা ফোন নম্বর দিয়ে সদস্য খুঁজুন..."
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
             />
             {searchTerm && (
@@ -271,7 +317,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
               id="filter-designation-select"
               className="bg-transparent text-xs text-slate-700 font-semibold focus:outline-none cursor-pointer"
             >
-              <option value="all">সকল পদবি ({toBengaliNumber(members.length)})</option>
+              <option value="all">সকল পদবি ({toBengaliNumber(currentMembersList.length)})</option>
               {designations.map(des => (
                 <option key={des} value={des}>{des}</option>
               ))}
@@ -280,40 +326,96 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
         </div>
       </div>
 
+      {/* Mutually Exclusive Tabs: General Members vs Expatriate Members */}
+      <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 shadow-2xs">
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('general');
+              setSelectedDesignation('all');
+            }}
+            id="tab-general-members"
+            className={`flex items-center justify-center gap-2 py-2.5 px-3 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+              activeTab === 'general'
+                ? 'bg-white text-emerald-800 shadow-xs border border-emerald-500/20'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Users className={`w-4 h-4 ${activeTab === 'general' ? 'text-emerald-600' : 'text-slate-400'}`} />
+            <span className="truncate">সদস্য তালিকা</span>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 ${
+              activeTab === 'general' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+            }`}>
+              {toBengaliNumber(generalMembers.length)}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('expatriate');
+              setSelectedDesignation('all');
+            }}
+            id="tab-expatriate-members"
+            className={`flex items-center justify-center gap-2 py-2.5 px-3 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+              activeTab === 'expatriate'
+                ? 'bg-white text-emerald-800 shadow-xs border border-emerald-500/20'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Globe className={`w-4 h-4 ${activeTab === 'expatriate' ? 'text-emerald-600' : 'text-slate-400'}`} />
+            <span className="truncate">প্রবাসী সদস্য তালিকা</span>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 ${
+              activeTab === 'expatriate' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+            }`}>
+              {toBengaliNumber(expatriateMembers.length)}
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* Member Cards Grid */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 px-1 text-xs text-slate-500">
           <div className="flex flex-wrap items-center gap-2">
-            <span>মোট সদস্য: <strong className="text-slate-800 font-bold">{toBengaliNumber(filteredMembers.length)}</strong> জন</span>
+            <span>
+              {activeTab === 'general' ? 'মোট সাধারণ সদস্য: ' : 'মোট প্রবাসী সদস্য: '}
+              <strong className="text-slate-800 font-bold">{toBengaliNumber(filteredMembers.length)}</strong> জন
+            </span>
             <span className="hidden sm:inline text-slate-300">•</span>
             <span className="inline-flex items-center gap-1.5 text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full font-semibold border border-emerald-200/70">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
               জ্যেষ্ঠতা ক্রম অনুসারে সজ্জিত (#১ থেকে শুরু)
             </span>
           </div>
-          <span>ঠিকানা: পতেঙ্গা, চট্টগ্রাম</span>
+          <span>{activeTab === 'general' ? 'ঠিকানা: পতেঙ্গা, চট্টগ্রাম' : 'প্রবাসী ভাইদের তালিকা'}</span>
         </div>
 
         {filteredMembers.length === 0 ? (
           <div className="bg-white rounded-3xl p-10 text-center border-2 border-dashed border-slate-200 shadow-xs">
             <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3 border border-emerald-100">
-              <Users className="w-8 h-8" />
+              {activeTab === 'expatriate' ? <Globe className="w-8 h-8" /> : <Users className="w-8 h-8" />}
             </div>
             <h4 className="text-base font-bold text-slate-800">
-              {searchTerm || selectedDesignation !== 'all' ? 'কোনো সদস্য পাওয়া যায়নি' : 'সদস্য তালিকা বর্তমানে সম্পূর্ণ খালি'}
+              {searchTerm || selectedDesignation !== 'all' 
+                ? 'কোনো সদস্য পাওয়া যায়নি' 
+                : (activeTab === 'general' ? 'সাধারণ সদস্য তালিকা বর্তমানে সম্পূর্ণ খালি' : 'প্রবাসী সদস্য তালিকা বর্তমানে সম্পূর্ণ খালি')}
             </h4>
             <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto leading-relaxed">
               {searchTerm || selectedDesignation !== 'all' 
                 ? 'আপনার সার্চ বা ফিল্টারের সাথে মিলে এমন কোনো সদস্য নেই। ফিল্টার রিসেট করে আবার চেষ্টা করুন।'
-                : 'সংগঠনে এখনও কোনো সদস্য অন্তর্ভুক্ত করা হয়নি। অ্যাডমিন প্যানেল থেকে লগইন করে নতুন সদস্যদের নাম, পদবি, মোবাইল নম্বর ও ছবি যুক্ত করুন।'}
+                : (activeTab === 'general'
+                    ? 'সংগঠনে এখনও কোনো সাধারণ সদস্য অন্তর্ভুক্ত করা হয়নি। অ্যাডমিন প্যানেল থেকে লগইন করে নতুন সদস্যদের নাম, পদবি, মোবাইল নম্বর ও ছবি যুক্ত করুন।'
+                    : 'সংগঠনে এখনও কোনো প্রবাসী সদস্য অন্তর্ভুক্ত করা হয়নি। নতুন প্রবাসী সদস্য যুক্ত করতে উপরের বাটনে ক্লিক করুন।')}
             </p>
             {isAdmin && (
               <button
-                onClick={handleOpenAdd}
+                onClick={() => handleOpenAdd(activeTab === 'expatriate')}
                 className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>নতুন সদস্য যুক্ত করুন</span>
+                <span>{activeTab === 'expatriate' ? 'নতুন প্রবাসী সদস্য যুক্ত করুন' : 'নতুন সদস্য যুক্ত করুন'}</span>
               </button>
             )}
           </div>
@@ -343,7 +445,19 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                           (জ্যেষ্ঠতা ক্রম)
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {member.countryStatus ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-800 text-[11px] font-bold border border-blue-200/80">
+                            <Globe className="w-3 h-3 text-blue-600" />
+                            <span>{member.countryStatus}</span>
+                          </span>
+                        ) : member.isExpatriate ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-800 text-[11px] font-bold border border-blue-200/80">
+                            <Globe className="w-3 h-3 text-blue-600" />
+                            <span>প্রবাসী সদস্য</span>
+                          </span>
+                        ) : null}
+
                         {member.bloodGroup && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 text-[11px] font-bold border border-rose-200/70">
                             রক্ত: {member.bloodGroup}
@@ -351,7 +465,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                         )}
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200/60">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          <span>সক্রিয় সদস্য</span>
+                          <span>{member.isExpatriate ? 'প্রবাসী' : 'সক্রিয়'}</span>
                         </span>
                       </div>
                     </div>
@@ -395,7 +509,9 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                             <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base font-black mb-1">
                               {member.name.charAt(0)}
                             </div>
-                            <span className="text-[10px] font-bold text-slate-400">সদস্য</span>
+                            <span className="text-[10px] font-bold text-slate-400">
+                              {member.isExpatriate ? 'প্রবাসী' : 'সদস্য'}
+                            </span>
                           </div>
                         )}
                         <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/65 backdrop-blur-xs text-white text-[9px] font-bold rounded-md z-10">
@@ -424,7 +540,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                         ) : (
                           <p className="text-xs text-slate-500 flex items-center gap-1.5">
                             <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                            <span className="truncate">পতেঙ্গা, চট্টগ্রাম</span>
+                            <span className="truncate">{member.isExpatriate ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'}</span>
                           </p>
                         )}
                       </div>
@@ -515,18 +631,54 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 animate-scaleUp">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-emerald-600" />
-                {editingMember ? 'সদস্যের তথ্য সম্পাদনা' : 'নতুন সদস্য যুক্ত করুন'}
+                {isExpatriateForm ? (
+                  <Globe className="w-5 h-5 text-blue-600" />
+                ) : (
+                  <Users className="w-5 h-5 text-emerald-600" />
+                )}
+                {editingMember
+                  ? (isExpatriateForm ? 'প্রবাসী সদস্যের তথ্য সম্পাদনা' : 'সদস্যের তথ্য সম্পাদনা')
+                  : (isExpatriateForm ? 'নতুন প্রবাসী সদস্য যুক্তকরণ' : 'নতুন সদস্য যুক্তকরণ')}
               </h3>
               <button
                 onClick={() => { setIsAddModalOpen(false); setEditingMember(null); }}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-3.5 mt-4">
+            {/* Member Type Switcher */}
+            <div className="flex items-center p-1 bg-slate-100 rounded-xl mt-3.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExpatriateForm(false);
+                  if (!area || area === 'প্রবাসী') setArea('পতেঙ্গা, চট্টগ্রাম');
+                }}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  !isExpatriateForm ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>সাধারণ সদস্য</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExpatriateForm(true);
+                  if (area === 'পতেঙ্গা, চট্টগ্রাম') setArea('');
+                }}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  isExpatriateForm ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5 text-blue-600" />
+                <span>প্রবাসী সদস্য</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-3 mt-3">
               {formError && (
                 <div className="p-2.5 rounded-lg bg-red-50 text-red-700 text-xs font-medium border border-red-200">
                   {formError}
@@ -577,15 +729,39 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                 </div>
               </div>
 
+              {/* Dedicated Expatriate Country / Status Title Input (Blank by default) */}
+              {isExpatriateForm && (
+                <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200/80 space-y-1">
+                  <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-blue-600" />
+                      <span>প্রবাসী দেশ / স্ট্যাটাস (Country / Status Title)</span>
+                    </span>
+                    <span className="text-[10px] text-blue-700 font-semibold">ঐচ্ছিক / টাইপ করুন</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="member-country-status-input"
+                    value={countryStatus}
+                    onChange={(e) => setCountryStatus(e.target.value)}
+                    placeholder="যেমন: সৌদি প্রবাসী, দুবাই প্রবাসী, কাতার প্রবাসী"
+                    className="w-full px-3 py-2 border border-blue-200 focus:border-blue-500 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none bg-white font-medium"
+                  />
+                  <p className="text-[10px] text-slate-500 leading-tight pt-0.5">
+                    দেশ বা স্ট্যাটাস টাইটেল ম্যানুয়ালি লিখে দিন (যেমন: সৌদি প্রবাসী, ওমান প্রবাসী ইত্যাদি)। কোনো ডিফল্ট বা হার্ডকোডেড মান রাখা হয়নি।
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  এলাকা / ঠিকানা (ঐচ্ছিক)
+                  {isExpatriateForm ? 'কর্মস্থল / বর্তমান ঠিকানা বা এলাকা (ঐচ্ছিক)' : 'এলাকা / ঠিকানা (ঐচ্ছিক)'}
                 </label>
                 <input
                   type="text"
                   value={area}
                   onChange={(e) => setArea(e.target.value)}
-                  placeholder="যেমন: কাঠগড়, পতেঙ্গা, চট্টগ্রাম"
+                  placeholder={isExpatriateForm ? 'যেমন: রিয়াদ, সৌদি আরব / দুবাই' : 'যেমন: কাঠগড়, পতেঙ্গা, চট্টগ্রাম'}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none"
                 />
               </div>
@@ -621,7 +797,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                         <button
                           type="button"
                           onClick={() => document.getElementById('member-photo-gallery-picker')?.click()}
-                          className="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300 transition flex items-center gap-1"
+                          className="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300 transition flex items-center gap-1 cursor-pointer"
                         >
                           <Camera className="w-3.5 h-3.5" />
                           <span>পরিবর্তন</span>
@@ -629,7 +805,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                         <button
                           type="button"
                           onClick={() => setPhotoUrl('')}
-                          className="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-600 text-xs font-bold rounded-lg border border-rose-200 transition"
+                          className="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-600 text-xs font-bold rounded-lg border border-rose-200 transition cursor-pointer"
                         >
                           মুছুন
                         </button>
@@ -661,7 +837,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                   <div className="space-y-0.5">
                     <p className="font-bold text-emerald-950">জ্যেষ্ঠতা রক্ষা ও সিরিয়াল নীতি:</p>
                     <p className="text-[11px] text-emerald-800 leading-relaxed">
-                      নতুন সদস্যের তথ্য তালিকার সবার শেষে (ক্রমিক #{toBengaliNumber(members.length + 1)}) যুক্ত হবে। আগের সদস্যদের জ্যেষ্ঠতা ও ক্রমিক নম্বর সম্পূর্ণ অক্ষুণ্ণ থাকবে।
+                      নতুন সদস্যের তথ্য তালিকার সবার শেষে (ক্রমিক #{toBengaliNumber(currentMembersList.length + 1)}) যুক্ত হবে। আগের সদস্যদের জ্যেষ্ঠতা ও ক্রমিক নম্বর সম্পূর্ণ অক্ষুণ্ণ থাকবে।
                     </p>
                   </div>
                 </div>
@@ -671,14 +847,14 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => { setIsAddModalOpen(false); setEditingMember(null); }}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
                 >
                   বাতিল
                 </button>
                 <button
                   type="submit"
                   id="members-submit-btn"
-                  className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition"
+                  className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition cursor-pointer"
                 >
                   {editingMember ? 'আপডেট সম্পন্ন করুন' : 'সংরক্ষণ করুন'}
                 </button>
@@ -710,11 +886,17 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                 >
                   <span>{zoomedMember.name}</span>
                 </h3>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200/70">
                     <UserCheck className="w-3 h-3 text-emerald-600" />
                     <span>{zoomedMember.designation}</span>
                   </span>
+                  {zoomedMember.countryStatus && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 text-xs font-bold border border-blue-200/70">
+                      <Globe className="w-3 h-3 text-blue-600" />
+                      <span>{zoomedMember.countryStatus}</span>
+                    </span>
+                  )}
                   {memberSerialMap.get(zoomedMember.id) && (
                     <span className="text-xs text-slate-400 font-medium">
                       ক্রমিক #{toBengaliNumber(memberSerialMap.get(zoomedMember.id)!)}
@@ -758,7 +940,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
             <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs text-slate-600 truncate">
                 <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                <span className="truncate">{zoomedMember.area || 'পতেঙ্গা, চট্টগ্রাম'}</span>
+                <span className="truncate">{zoomedMember.area || (zoomedMember.isExpatriate ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম')}</span>
               </div>
 
               <div className="flex items-center gap-2">

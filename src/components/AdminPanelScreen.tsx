@@ -43,7 +43,8 @@ import {
   Database,
   Server,
   Code,
-  ExternalLink
+  ExternalLink,
+  Globe
 } from 'lucide-react';
 import { ExpenseModal } from './ExpenseModal';
 import {
@@ -237,17 +238,22 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [memberJoinDateInput, setMemberJoinDateInput] = useState(new Date().toISOString().split('T')[0]);
   const [memberEmailInput, setMemberEmailInput] = useState('');
   const [memberStatusInput, setMemberStatusInput] = useState<'সক্রিয়' | 'স্থগিত'>('সক্রিয়');
+  const [memberIsExpatriateInput, setMemberIsExpatriateInput] = useState(false);
+  const [memberCountryStatusInput, setMemberCountryStatusInput] = useState('');
+  const [adminMemberTab, setAdminMemberTab] = useState<'all' | 'general' | 'expatriate'>('all');
 
   useEffect(() => {
     if (editingMember) {
       setMemberNameInput(editingMember.name || '');
       setMemberDesignationInput(editingMember.designation || 'সদস্য');
       setMemberPhoneInput(editingMember.phone || '');
-      setMemberAreaInput(editingMember.area || 'পতেঙ্গা, চট্টগ্রাম');
+      setMemberAreaInput(editingMember.area || (editingMember.isExpatriate ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'));
       setMemberJoinDateInput(editingMember.joinDate || new Date().toISOString().split('T')[0]);
       setMemberEmailInput(editingMember.email || '');
       setMemberStatusInput(editingMember.status || 'সক্রিয়');
       setMemberPhotoBase64(editingMember.photoUrl || '');
+      setMemberIsExpatriateInput(Boolean(editingMember.isExpatriate || editingMember.memberType === 'expatriate'));
+      setMemberCountryStatusInput(editingMember.countryStatus || '');
     } else {
       setMemberNameInput('');
       setMemberDesignationInput('সদস্য');
@@ -257,6 +263,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       setMemberEmailInput('');
       setMemberStatusInput('সক্রিয়');
       setMemberPhotoBase64('');
+      setMemberIsExpatriateInput(false);
+      setMemberCountryStatusInput('');
     }
   }, [editingMember, isAddMemberOpen]);
 
@@ -596,11 +604,14 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       name,
       designation: designation || 'সদস্য',
       phone,
-      area: area || 'পতেঙ্গা, চট্টগ্রাম',
+      area: area || (memberIsExpatriateInput ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'),
       photoUrl: photoUrl || '',
       joinDate: joinDate || new Date().toISOString().split('T')[0],
       email: email || '',
-      status: status || 'সক্রিয়'
+      status: status || 'সক্রিয়',
+      isExpatriate: memberIsExpatriateInput,
+      memberType: memberIsExpatriateInput ? 'expatriate' : 'general',
+      countryStatus: memberCountryStatusInput.trim()
     };
 
     if (editingMember) {
@@ -633,6 +644,8 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       setMemberPhoneInput('');
       setMemberPhotoBase64('');
       setMemberEmailInput('');
+      setMemberIsExpatriateInput(false);
+      setMemberCountryStatusInput('');
       notifySuccess('নতুন সদস্য সফলভাবে যুক্ত হয়েছে');
     }
   };
@@ -1549,12 +1562,51 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                   setIsAddMemberOpen(true);
                 }}
                 id="admin-add-member-btn"
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>নতুন সদস্য যুক্ত করুন</span>
               </button>
             </div>
+          </div>
+
+          {/* Sub-tabs: All, General, Expatriate */}
+          <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80">
+            <button
+              type="button"
+              onClick={() => setAdminMemberTab('all')}
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer ${
+                adminMemberTab === 'all'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/60'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              সকল সদস্য ({toBengaliNumber(members.length)})
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdminMemberTab('general')}
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
+                adminMemberTab === 'general'
+                  ? 'bg-white text-emerald-800 shadow-xs border border-emerald-300/60'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-emerald-600" />
+              <span>সাধারণ সদস্য ({toBengaliNumber(members.filter(m => !m.isExpatriate && m.memberType !== 'expatriate').length)})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdminMemberTab('expatriate')}
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
+                adminMemberTab === 'expatriate'
+                  ? 'bg-white text-blue-800 shadow-xs border border-blue-300/60'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Globe className="w-3.5 h-3.5 text-blue-600" />
+              <span>প্রবাসী সদস্য ({toBengaliNumber(members.filter(m => m.isExpatriate || m.memberType === 'expatriate').length)})</span>
+            </button>
           </div>
 
           {/* Members Table */}
@@ -1574,10 +1626,16 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {sortMembersOldestFirst(members)
+                    .filter(m => {
+                      if (adminMemberTab === 'general') return !m.isExpatriate && m.memberType !== 'expatriate';
+                      if (adminMemberTab === 'expatriate') return m.isExpatriate || m.memberType === 'expatriate';
+                      return true;
+                    })
                     .filter(m =>
                       m.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
                       m.designation.toLowerCase().includes(memberSearch.toLowerCase()) ||
                       m.phone.includes(memberSearch) ||
+                      (m.countryStatus && m.countryStatus.toLowerCase().includes(memberSearch.toLowerCase())) ||
                       (m.area && m.area.toLowerCase().includes(memberSearch.toLowerCase()))
                     )
                     .map((m, idx) => {
@@ -1616,13 +1674,26 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                               )}
                             </div>
                             <div>
-                              <div className="font-bold text-slate-900">{m.name}</div>
+                              <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                <span>{m.name}</span>
+                                {m.countryStatus ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                    <Globe className="w-2.5 h-2.5 text-blue-600" />
+                                    <span>{m.countryStatus}</span>
+                                  </span>
+                                ) : (m.isExpatriate || m.memberType === 'expatriate') ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                    <Globe className="w-2.5 h-2.5 text-blue-600" />
+                                    <span>প্রবাসী</span>
+                                  </span>
+                                ) : null}
+                              </div>
                               <div className="text-[11px] text-slate-500">{m.designation}</div>
                             </div>
                           </div>
                         </td>
                         <td className="p-3.5 font-mono text-slate-800 font-semibold">{m.phone}</td>
-                        <td className="p-3.5 text-slate-600">{m.area || 'পতেঙ্গা, চট্টগ্রাম'}</td>
+                        <td className="p-3.5 text-slate-600">{m.area || ((m.isExpatriate || m.memberType === 'expatriate') ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম')}</td>
                         <td className="p-3.5 text-slate-500 text-[11px]">
                           {m.joinDate ? toBengaliNumber(m.joinDate) : '১৫/০৮/২০২২'}
                         </td>
@@ -3550,18 +3621,58 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 animate-scaleUp">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-600" />
-                {editingMember ? 'সদস্যের তথ্য সম্পাদনা (Edit)' : 'নতুন সদস্য যুক্তকরণ (Add)'}
+                {memberIsExpatriateInput ? (
+                  <Globe className="w-5 h-5 text-blue-600" />
+                ) : (
+                  <Users className="w-5 h-5 text-emerald-600" />
+                )}
+                {editingMember 
+                  ? (memberIsExpatriateInput ? 'প্রবাসী সদস্যের তথ্য সম্পাদনা (Edit)' : 'সদস্যের তথ্য সম্পাদনা (Edit)')
+                  : (memberIsExpatriateInput ? 'নতুন প্রবাসী সদস্য যুক্তকরণ (Add)' : 'নতুন সদস্য যুক্তকরণ (Add)')}
               </h3>
               <button
                 onClick={() => { setIsAddMemberOpen(false); setEditingMember(null); }}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveMember} className="space-y-3 mt-4">
+            {/* Member Category Switcher */}
+            <div className="flex items-center p-1 bg-slate-100 rounded-xl mt-3.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setMemberIsExpatriateInput(false);
+                  if (!memberAreaInput || memberAreaInput === 'প্রবাসী') {
+                    setMemberAreaInput('পতেঙ্গা, চট্টগ্রাম');
+                  }
+                }}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  !memberIsExpatriateInput ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 text-emerald-600" />
+                <span>সাধারণ সদস্য</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMemberIsExpatriateInput(true);
+                  if (memberAreaInput === 'পতেঙ্গা, চট্টগ্রাম') {
+                    setMemberAreaInput('');
+                  }
+                }}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  memberIsExpatriateInput ? 'bg-white text-blue-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5 text-blue-600" />
+                <span>প্রবাসী সদস্য</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMember} className="space-y-3 mt-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">পূর্ণ নাম (Name) *</label>
                 <input
@@ -3584,7 +3695,7 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                     required
                     value={memberDesignationInput}
                     onChange={(e) => setMemberDesignationInput(e.target.value)}
-                    placeholder="যেমন: সাধারণ সম্পাদক"
+                    placeholder="যেমন: সাধারণ সম্পাদক / সদস্য"
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
                   />
                 </div>
@@ -3603,14 +3714,40 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                 </div>
               </div>
 
+              {/* Expatriate Country / Status Title Input (Blank by default, manual input) */}
+              {memberIsExpatriateInput && (
+                <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 space-y-1">
+                  <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-blue-600" />
+                      <span>প্রবাসী দেশ / স্ট্যাটাস টাইটেল (Country / Status Title)</span>
+                    </span>
+                    <span className="text-[10px] text-blue-700 font-semibold">ঐচ্ছিক / টাইপ করুন</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="countryStatus"
+                    value={memberCountryStatusInput}
+                    onChange={(e) => setMemberCountryStatusInput(e.target.value)}
+                    placeholder="যেমন: সৌদি প্রবাসী, দুবাই প্রবাসী, কাতার প্রবাসী"
+                    className="w-full px-3 py-2 border border-blue-200 focus:border-blue-500 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none bg-white font-medium"
+                  />
+                  <p className="text-[10px] text-slate-500 leading-tight pt-0.5">
+                    প্রবাসীর দেশ বা অবস্থান অনুযায়ী পদবি বা টাইটেল টাইপ করুন (যেমন: সৌদি প্রবাসী, দুবাই প্রবাসী ইত্যাদি)। কোনো ডিফল্ট মান রাখা হয়নি।
+                  </p>
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">এলাকা / ঠিকানা (Area)</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {memberIsExpatriateInput ? 'কর্মস্থল / বর্তমান ঠিকানা বা এলাকা (ঐচ্ছিক)' : 'এলাকা / ঠিকানা (Area)'}
+                </label>
                 <input
                   type="text"
                   name="area"
                   value={memberAreaInput}
                   onChange={(e) => setMemberAreaInput(e.target.value)}
-                  placeholder="যেমন: কাঠগড়, পতেঙ্গা, চট্টগ্রাম"
+                  placeholder={memberIsExpatriateInput ? 'যেমন: রিয়াদ, সৌদি আরব / দুবাই' : 'যেমন: কাঠগড়, পতেঙ্গা, চট্টগ্রাম'}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
                 />
               </div>
@@ -4380,9 +4517,22 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                 <h3 className="font-bold text-slate-900 text-base sm:text-lg truncate">
                   {zoomedMemberPhoto.name}
                 </h3>
-                <span className="inline-flex items-center gap-1 mt-0.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200/70">
-                  {zoomedMemberPhoto.designation}
-                </span>
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200/70">
+                    {zoomedMemberPhoto.designation}
+                  </span>
+                  {zoomedMemberPhoto.countryStatus ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 text-xs font-bold border border-blue-200/70">
+                      <Globe className="w-3 h-3 text-blue-600" />
+                      <span>{zoomedMemberPhoto.countryStatus}</span>
+                    </span>
+                  ) : (zoomedMemberPhoto.isExpatriate || zoomedMemberPhoto.memberType === 'expatriate') ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 text-xs font-bold border border-blue-200/70">
+                      <Globe className="w-3 h-3 text-blue-600" />
+                      <span>প্রবাসী সদস্য</span>
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <button
                 onClick={() => setZoomedMemberPhoto(null)}
