@@ -675,7 +675,6 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
     const phone = formData.get('phone') as string;
     const bloodGroup = formData.get('bloodGroup') as BloodGroup;
     const lastDonationDate = formData.get('lastDonationDate') as string;
-    const nextEligibleDate = formData.get('nextEligibleDate') as string;
     const area = formData.get('area') as string;
     const totalDonations = parseInt(formData.get('totalDonations') as string, 10) || 1;
     const notes = formData.get('notes') as string;
@@ -685,7 +684,8 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       return;
     }
 
-    const calculatedNext = nextEligibleDate || (lastDonationDate ? calculateNextEligibleDate(lastDonationDate) : '');
+    // 6-month (180 days) automatic calculation in the background
+    const calculatedNext = lastDonationDate ? calculateNextEligibleDate(lastDonationDate) : '';
 
     if (editingDonor) {
       if (onEditDonor) {
@@ -763,6 +763,7 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
   };
 
   const handleQuickLogDonation = (donorId: string, donationDateStr: string) => {
+    // Automatically calculate 6 months (180 days)
     const nextDate = calculateNextEligibleDate(donationDateStr);
     const donorToUpdate = donors.find(d => d.id === donorId);
     if (donorToUpdate && onEditDonor) {
@@ -786,7 +787,7 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       }));
     }
     setLoggingDonationDonor(null);
-    notifySuccess('নতুন রক্তদানের তথ্য লিপিবদ্ধ হয়েছে (+৯০ দিন পর পরবর্তী তারিখ স্বয়ংক্রিয়ভাবে নির্ধারণ করা হলো)');
+    notifySuccess('নতুন রক্তদানের তথ্য লিপিবদ্ধ হয়েছে (৬ মাস / ১৮০ দিন পর পরবর্তী তারিখ স্বয়ংক্রিয়ভাবে নির্ধারণ করা হলো)');
   };
 
   // FUND CRUD & Auto Balance Calculation
@@ -1787,12 +1788,14 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                         </div>
 
                         {eligibility.eligible ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            প্রস্তুত
+                          <span className="px-2.5 py-1 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span>প্রস্তুত আছেন (Eligible)</span>
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                            {toBengaliNumber(eligibility.daysRemaining)} দিন বাকি
+                          <span className="px-2.5 py-1 rounded text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            <span>৬ মাসের অপেক্ষমান ({toBengaliNumber(eligibility.daysRemaining)} দিন বাকি)</span>
                           </span>
                         )}
                       </div>
@@ -1803,8 +1806,12 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                           <span className="font-bold text-slate-700">{d.lastDonationDate ? formatBengaliDate(d.lastDonationDate) : 'তথ্য নেই'}</span>
                         </div>
                         <div>
-                          <span className="text-slate-500 block">পরবর্তী তারিখ:</span>
-                          <span className="font-bold text-rose-700">{d.nextEligibleDate ? formatBengaliDate(d.nextEligibleDate) : 'প্রস্তুত'}</span>
+                          <span className="text-slate-500 block">পরবর্তী তারিখ (৬ মাস):</span>
+                          <span className="font-bold text-rose-700">
+                            {d.lastDonationDate 
+                              ? formatBengaliDate(calculateNextEligibleDate(d.lastDonationDate)) 
+                              : (d.nextEligibleDate ? formatBengaliDate(d.nextEligibleDate) : 'প্রস্তুত')}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -3923,26 +3930,17 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">সর্বশেষ রক্তদানের তারিখ</label>
-                  <input
-                    type="date"
-                    name="lastDonationDate"
-                    defaultValue={editingDonor?.lastDonationDate || ''}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">পরবর্তী উপযুক্ত তারিখ (+৯০ দিন)</label>
-                  <input
-                    type="date"
-                    name="nextEligibleDate"
-                    defaultValue={editingDonor?.nextEligibleDate || ''}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none bg-rose-50/50"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">সর্বশেষ রক্তদানের তারিখ</label>
+                <input
+                  type="date"
+                  name="lastDonationDate"
+                  defaultValue={editingDonor?.lastDonationDate || ''}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  * রক্তদানের তারিখ দিলে পরবর্তী সম্ভাব্য উপযুক্ত তারিখ ব্যাকগ্রাউন্ডে স্বয়ংক্রিয়ভাবে ৬ মাস (১৮০ দিন) পর নির্ধারণ হবে।
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -3996,7 +3994,7 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
               রক্তদান সম্পন্ন রেকর্ড করুন
             </h3>
             <p className="text-xs text-slate-600 mb-4">
-              <strong>{loggingDonationDonor.name}</strong> ({loggingDonationDonor.bloodGroup}) এর আজকের রক্তদানের তারিখ ও স্বয়ংক্রিয় +৯০ দিন সেট করুন।
+              <strong>{loggingDonationDonor.name}</strong> ({loggingDonationDonor.bloodGroup}) এর রক্তদানের তারিখ লিপিবদ্ধ করুন (স্বয়ংক্রিয়ভাবে ৬ মাস / ১৮০ দিন পর পরবর্তী তারিখ নির্ধারিত হবে)।
             </p>
 
             <form

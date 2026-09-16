@@ -14,20 +14,21 @@ export function formatTaka(amount: number): string {
 
 export const toBengaliCurrency = formatTaka;
 
-// Calculate Next Eligible Donation Date (+90 days from last donation date)
+// Calculate Next Eligible Donation Date (+6 months / 180 days from last donation date)
 export function calculateNextEligibleDate(lastDateStr: string): string {
   if (!lastDateStr) return '';
   try {
     const date = new Date(lastDateStr);
     if (isNaN(date.getTime())) return '';
-    date.setDate(date.getDate() + 90);
+    // 6-month (180 days) interval
+    date.setDate(date.getDate() + 180);
     return date.toISOString().split('T')[0];
   } catch {
     return '';
   }
 }
 
-// Check if donor is currently eligible
+// Check if donor is currently eligible (based on 6-month / 180 days interval from last donation)
 export function isDonorEligible(donor: BloodDonor): { eligible: boolean; daysRemaining: number } {
   if (!donor.lastDonationDate) {
     return { eligible: true, daysRemaining: 0 };
@@ -36,15 +37,17 @@ export function isDonorEligible(donor: BloodDonor): { eligible: boolean; daysRem
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const eligibleDate = donor.nextEligibleDate 
-    ? new Date(donor.nextEligibleDate) 
-    : new Date(calculateNextEligibleDate(donor.lastDonationDate));
+  // Automatically calculate 6 months (180 days) from last donation date
+  const autoNextDateStr = calculateNextEligibleDate(donor.lastDonationDate);
+  const eligibleDate = autoNextDateStr
+    ? new Date(autoNextDateStr)
+    : (donor.nextEligibleDate ? new Date(donor.nextEligibleDate) : null);
   
-  eligibleDate.setHours(0, 0, 0, 0);
-
-  if (isNaN(eligibleDate.getTime())) {
+  if (!eligibleDate || isNaN(eligibleDate.getTime())) {
     return { eligible: true, daysRemaining: 0 };
   }
+
+  eligibleDate.setHours(0, 0, 0, 0);
 
   const diffTime = eligibleDate.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));

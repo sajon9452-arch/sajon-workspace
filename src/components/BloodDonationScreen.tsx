@@ -64,21 +64,9 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
   const [donorPhone, setDonorPhone] = useState('');
   const [donorBloodGroup, setDonorBloodGroup] = useState<BloodGroup>('O+');
   const [lastDonationDate, setLastDonationDate] = useState('');
-  const [nextEligibleDate, setNextEligibleDate] = useState('');
   const [area, setArea] = useState('পতেঙ্গা, চট্টগ্রাম');
   const [formError, setFormError] = useState('');
   const [editingDonor, setEditingDonor] = useState<BloodDonor | null>(null);
-
-  // Auto-calculate Next Eligible Date (+90 days) when LastDonationDate changes
-  const handleLastDateChange = (val: string) => {
-    setLastDonationDate(val);
-    if (val) {
-      const computedNext = calculateNextEligibleDate(val);
-      setNextEligibleDate(computedNext);
-    } else {
-      setNextEligibleDate('');
-    }
-  };
 
   // Filtered Donors List
   const filteredDonors = useMemo(() => {
@@ -108,7 +96,6 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
     setDonorPhone(donor.phone);
     setDonorBloodGroup(donor.bloodGroup);
     setLastDonationDate(donor.lastDonationDate || '');
-    setNextEligibleDate(donor.nextEligibleDate || '');
     setArea(donor.area || 'পতেঙ্গা, চট্টগ্রাম');
     // Scroll to form
     const formElem = document.getElementById('donor-registration-form');
@@ -126,7 +113,8 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
       return;
     }
 
-    const calculatedNext = nextEligibleDate || (lastDonationDate ? calculateNextEligibleDate(lastDonationDate) : '');
+    // Automatically calculate next eligible date by adding 6 months (180 days) in background
+    const calculatedNext = lastDonationDate ? calculateNextEligibleDate(lastDonationDate) : '';
 
     if (editingDonor && onEditDonor) {
       onEditDonor({
@@ -156,7 +144,6 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
     setDonorPhone('');
     setDonorBloodGroup('O+');
     setLastDonationDate('');
-    setNextEligibleDate('');
     setArea('পতেঙ্গা, চট্টগ্রাম');
     setFormError('');
     setSubmitSuccess(true);
@@ -371,14 +358,14 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
                         {/* Eligibility Status badge */}
                         <div className="mt-1">
                           {eligibility.eligible ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              রক্তদানে প্রস্তুত (Eligible)
+                              প্রস্তুত আছেন (Eligible)
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-xs font-semibold border border-amber-200">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-900 text-xs font-bold border border-amber-200">
                               <Clock className="w-3.5 h-3.5 text-amber-600" />
-                              অপেক্ষমান ({toBengaliNumber(eligibility.daysRemaining)} দিন বাকি)
+                              ৬ মাসের অপেক্ষমান ({toBengaliNumber(eligibility.daysRemaining)} দিন বাকি)
                             </span>
                           )}
                         </div>
@@ -402,10 +389,10 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
                       </span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 block">পরবর্তী সম্ভাব্য তারিখ (+৯০ দিন):</span>
+                      <span className="text-[10px] text-slate-500 block">পরবর্তী সম্ভাব্য তারিখ (৬ মাস):</span>
                       <span className="font-semibold text-rose-700 flex items-center gap-1 mt-0.5">
                         <Calendar className="w-3 h-3 text-rose-400" />
-                        {donor.nextEligibleDate ? formatBengaliDate(donor.nextEligibleDate) : calculateNextEligibleDate(donor.lastDonationDate) ? formatBengaliDate(calculateNextEligibleDate(donor.lastDonationDate)) : 'প্রস্তুত'}
+                        {donor.lastDonationDate ? formatBengaliDate(calculateNextEligibleDate(donor.lastDonationDate)) : (donor.nextEligibleDate ? formatBengaliDate(donor.nextEligibleDate) : 'প্রস্তুত')}
                       </span>
                     </div>
                   </div>
@@ -576,22 +563,15 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
                   type="date"
                   id="donor-form-last-date"
                   value={lastDonationDate}
-                  onChange={(e) => handleLastDateChange(e.target.value)}
+                  onChange={(e) => setLastDonationDate(e.target.value)}
                   className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 focus:outline-none font-sans"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  পরবর্তী সম্ভাব্য তারিখ (NextEligibleDate)
-                </label>
-                <input
-                  type="date"
-                  id="donor-form-next-date"
-                  value={nextEligibleDate}
-                  onChange={(e) => setNextEligibleDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 focus:outline-none font-sans bg-rose-50/50 text-rose-900"
-                />
+                {lastDonationDate && (
+                  <p className="mt-1 text-[11px] text-emerald-700 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                    <span>পরবর্তী সম্ভাব্য তারিখ (স্বয়ংক্রিয় ৬ মাস): {formatBengaliDate(calculateNextEligibleDate(lastDonationDate))}</span>
+                  </p>
+                )}
               </div>
             </div>
 
@@ -610,7 +590,7 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
 
             <div className="pt-2 flex items-center justify-between">
               <p className="text-[11px] text-slate-500">
-                * রক্তদানের তারিখ দিলে পরবর্তী উপযুক্ত তারিখ স্বয়ংক্রিয়ভাবে (+৯০ দিন) তৈরি হবে।
+                * রক্তদানের তারিখ দিলে পরবর্তী উপযুক্ত তারিখ স্বয়ংক্রিয়ভাবে ব্যাকগ্রাউন্ডে ৬ মাস (১৮০ দিন) হিসেবে গণনা হবে।
               </p>
 
               <div className="flex items-center gap-2">
@@ -622,9 +602,8 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
                       setDonorName('');
                       setDonorPhone('');
                       setLastDonationDate('');
-                      setNextEligibleDate('');
                     }}
-                    className="px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                    className="px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
                   >
                     বাতিল
                   </button>
