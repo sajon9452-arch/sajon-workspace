@@ -80,9 +80,9 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   const [category, setCategory] = useState<'মাসিক চাঁদা' | 'এককালীন অনুদান' | 'জরুরি সাহায্য' | 'খরচ'>('মাসিক চাঁদা');
   const [formError, setFormError] = useState('');
 
-  // Payment Gateway Selection & Direct Subscription State
+  // Payment Gateway Selection & Direct Subscription State (Default: null - collapsed by default)
   const paymentConfig = passedPaymentConfig || loadPaymentSettings();
-  const [selectedGateway, setSelectedGateway] = useState<'bkash' | 'nagad' | 'rocket'>('bkash');
+  const [selectedGateway, setSelectedGateway] = useState<'bkash' | 'nagad' | 'rocket' | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Quick Deposit/Subscription Form State
@@ -102,6 +102,10 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   // Submits user subscription as PENDING verification
   const handleQuickDepositSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedGateway) {
+      alert('অনুগ্রহ করে একটি পেমেন্ট মেথড (বিকাশ / নগদ / রকেট) নির্বাচন করুন');
+      return;
+    }
     if (!depositMemberName.trim()) {
       alert('অনুগ্রহ করে আপনার নাম লিখুন');
       return;
@@ -725,19 +729,32 @@ export const FundScreen: React.FC<FundScreenProps> = ({
         </div>
 
         <div className="p-5 sm:p-6 space-y-6">
-          {/* Brand Gateway Selection Tabs (Clean & Modern Style) */}
+          {/* Brand Gateway Selection Tabs (Prominently Visible Default State) */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-2">
-              পেমেন্ট মেথড নির্বাচন করুন (Select Method):
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-bold text-slate-700">
+                পেমেন্ট মেথড নির্বাচন করুন (Select Payment Method):
+              </label>
+              {selectedGateway && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedGateway(null)}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>বন্ধ করুন (Collapse)</span>
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-3 gap-3 sm:gap-4">
               {/* bKash Tab */}
               <button
                 type="button"
-                onClick={() => setSelectedGateway('bkash')}
-                className={`p-3 sm:p-4 rounded-2xl border-2 transition text-left flex flex-col justify-between relative overflow-hidden cursor-pointer ${
+                id="select-gateway-bkash-btn"
+                onClick={() => setSelectedGateway(selectedGateway === 'bkash' ? null : 'bkash')}
+                className={`p-3.5 sm:p-4 rounded-2xl border-2 transition text-left flex flex-col justify-between relative overflow-hidden cursor-pointer ${
                   selectedGateway === 'bkash'
-                    ? 'border-pink-600 bg-pink-50/70 shadow-md shadow-pink-500/10'
+                    ? 'border-pink-600 bg-pink-50/80 shadow-md shadow-pink-500/15 ring-2 ring-pink-500/20'
                     : 'border-slate-200 bg-white hover:border-pink-300 hover:bg-pink-50/20'
                 }`}
               >
@@ -745,22 +762,31 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                   <span className="w-7 h-7 rounded-xl bg-pink-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
                     bK
                   </span>
-                  {selectedGateway === 'bkash' && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-pink-600 ring-4 ring-pink-200" />
+                  {selectedGateway === 'bkash' ? (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-pink-600 text-white text-[9px] font-bold">
+                      <Check className="w-2.5 h-2.5" />
+                      <span>নির্বাচিত</span>
+                    </span>
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-slate-300" />
                   )}
                 </div>
                 <div className="mt-3">
                   <div className="font-black text-sm sm:text-base text-slate-900">বিকাশ (bKash)</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {selectedGateway === 'bkash' ? 'সক্রিয় ও উন্মুক্ত' : 'ক্লিক করে তথ্য দেখুন'}
+                  </div>
                 </div>
               </button>
 
               {/* Nagad Tab */}
               <button
                 type="button"
-                onClick={() => setSelectedGateway('nagad')}
-                className={`p-3 sm:p-4 rounded-2xl border-2 transition text-left flex flex-col justify-between relative overflow-hidden cursor-pointer ${
+                id="select-gateway-nagad-btn"
+                onClick={() => setSelectedGateway(selectedGateway === 'nagad' ? null : 'nagad')}
+                className={`p-3.5 sm:p-4 rounded-2xl border-2 transition text-left flex flex-col justify-between relative overflow-hidden cursor-pointer ${
                   selectedGateway === 'nagad'
-                    ? 'border-orange-500 bg-orange-50/70 shadow-md shadow-orange-500/10'
+                    ? 'border-orange-500 bg-orange-50/80 shadow-md shadow-orange-500/15 ring-2 ring-orange-500/20'
                     : 'border-slate-200 bg-white hover:border-orange-300 hover:bg-orange-50/20'
                 }`}
               >
@@ -768,22 +794,31 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                   <span className="w-7 h-7 rounded-xl bg-orange-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
                     নগদ
                   </span>
-                  {selectedGateway === 'nagad' && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-orange-600 ring-4 ring-orange-200" />
+                  {selectedGateway === 'nagad' ? (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-orange-600 text-white text-[9px] font-bold">
+                      <Check className="w-2.5 h-2.5" />
+                      <span>নির্বাচিত</span>
+                    </span>
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-slate-300" />
                   )}
                 </div>
                 <div className="mt-3">
                   <div className="font-black text-sm sm:text-base text-slate-900">নগদ (Nagad)</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {selectedGateway === 'nagad' ? 'সক্রিয় ও উন্মুক্ত' : 'ক্লিক করে তথ্য দেখুন'}
+                  </div>
                 </div>
               </button>
 
               {/* Rocket Tab */}
               <button
                 type="button"
-                onClick={() => setSelectedGateway('rocket')}
-                className={`p-3 sm:p-4 rounded-2xl border-2 transition text-left flex flex-col justify-between relative overflow-hidden cursor-pointer ${
+                id="select-gateway-rocket-btn"
+                onClick={() => setSelectedGateway(selectedGateway === 'rocket' ? null : 'rocket')}
+                className={`p-3.5 sm:p-4 rounded-2xl border-2 transition text-left flex flex-col justify-between relative overflow-hidden cursor-pointer ${
                   selectedGateway === 'rocket'
-                    ? 'border-purple-600 bg-purple-50/70 shadow-md shadow-purple-500/10'
+                    ? 'border-purple-600 bg-purple-50/80 shadow-md shadow-purple-500/15 ring-2 ring-purple-500/20'
                     : 'border-slate-200 bg-white hover:border-purple-300 hover:bg-purple-50/20'
                 }`}
               >
@@ -791,311 +826,373 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                   <span className="w-7 h-7 rounded-xl bg-purple-700 text-white font-black text-xs flex items-center justify-center shadow-xs">
                     রকেট
                   </span>
-                  {selectedGateway === 'rocket' && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-purple-600 ring-4 ring-purple-200" />
+                  {selectedGateway === 'rocket' ? (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-purple-700 text-white text-[9px] font-bold">
+                      <Check className="w-2.5 h-2.5" />
+                      <span>নির্বাচিত</span>
+                    </span>
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-slate-300" />
                   )}
                 </div>
                 <div className="mt-3">
                   <div className="font-black text-sm sm:text-base text-slate-900">রকেট (Rocket)</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {selectedGateway === 'rocket' ? 'সক্রিয় ও উন্মুক্ত' : 'ক্লিক করে তথ্য দেখুন'}
+                  </div>
                 </div>
               </button>
             </div>
           </div>
 
-          {/* Selected Gateway Detail Card & Number */}
-          {selectedGateway === 'bkash' && (
-            <div className="p-5 rounded-2xl bg-pink-50/80 border border-pink-200 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-0.5 rounded bg-pink-600 text-white font-bold text-xs">
-                      বিকাশ একাউন্ট
-                    </span>
-                    <span className="text-xs font-semibold text-pink-900">
-                      উদ্দেশ্য: <strong>মাসিক চাঁদা</strong>
-                    </span>
-                  </div>
-                  {paymentConfig.bkashNumber ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl sm:text-2xl font-mono font-black text-pink-950 tracking-wider">
-                        {paymentConfig.bkashNumber}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-200 text-pink-900">
-                        {paymentConfig.bkashType || 'Personal'}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-xs font-semibold text-pink-800/80 mt-1">
-                      অ্যাডমিন এখনো বিকাশ নম্বর যুক্ত করেননি (এডমিন প্যানেল থেকে সেট করুন)
-                    </div>
-                  )}
-                </div>
-
-                {paymentConfig.bkashNumber && (
-                  <button
-                    type="button"
-                    id="copy-bkash-number-btn"
-                    onClick={() => handleCopyNumber(paymentConfig.bkashNumber, 'bkash')}
-                    className={`flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-xs rounded-xl shadow-xs transition-all duration-200 cursor-pointer self-start sm:self-auto ${
-                      copiedField === 'bkash'
-                        ? 'bg-emerald-600 text-white ring-2 ring-emerald-400 scale-105'
-                        : 'bg-pink-600 hover:bg-pink-700 active:scale-95 text-white'
-                    }`}
-                  >
-                    {copiedField === 'bkash' ? (
-                      <>
-                        <Check className="w-4 h-4 text-white animate-bounce" />
-                        <span>নম্বর কপি হয়েছে!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4" />
-                        <span>নম্বর কপি করুন</span>
-                      </>
-                    )}
-                  </button>
-                )}
+          {/* DEFAULT STATE ON PAGE LOAD: When no payment method is selected */}
+          {!selectedGateway && (
+            <div className="py-8 px-6 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center flex flex-col items-center justify-center animate-fadeIn">
+              <div className="w-12 h-12 rounded-2xl bg-white shadow-2xs border border-slate-200 flex items-center justify-center text-slate-600 mb-2.5">
+                <CreditCard className="w-6 h-6" />
               </div>
-
-              <div className="text-xs text-slate-600 bg-white/80 p-3 rounded-xl border border-pink-100 space-y-1">
-                <div className="font-bold text-pink-950 flex items-center gap-1.5">
-                  <Smartphone className="w-3.5 h-3.5 text-pink-600" />
-                  <span>পেমেন্ট ও চাঁদা পাঠানোর নিয়মাবলী:</span>
-                </div>
-                <p>
-                  {paymentConfig.bkashInstructions || 'আপনার বিকাশ অ্যাপ থেকে উপরের নম্বরে Send Money করুন। রেফারেন্সে আপনার নাম বা মেম্বার আইডি লিখুন এবং সফল ট্রানজেকশনের TrxID নিচে সাবমিট করুন।'}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {selectedGateway === 'nagad' && (
-            <div className="p-5 rounded-2xl bg-orange-50/80 border border-orange-200 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-0.5 rounded bg-orange-600 text-white font-bold text-xs">
-                      নগদ একাউন্ট
-                    </span>
-                    <span className="text-xs font-semibold text-orange-900">
-                      উদ্দেশ্য: <strong>মাসিক চাঁদা</strong>
-                    </span>
-                  </div>
-                  {paymentConfig.nagadNumber ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl sm:text-2xl font-mono font-black text-orange-950 tracking-wider">
-                        {paymentConfig.nagadNumber}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-200 text-orange-900">
-                        {paymentConfig.nagadType || 'Personal'}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-xs font-semibold text-orange-800/80 mt-1">
-                      অ্যাডমিন এখনো নগদ নম্বর যুক্ত করেননি (এডমিন প্যানেল থেকে সেট করুন)
-                    </div>
-                  )}
-                </div>
-
-                {paymentConfig.nagadNumber && (
-                  <button
-                    type="button"
-                    id="copy-nagad-number-btn"
-                    onClick={() => handleCopyNumber(paymentConfig.nagadNumber, 'nagad')}
-                    className={`flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-xs rounded-xl shadow-xs transition-all duration-200 cursor-pointer self-start sm:self-auto ${
-                      copiedField === 'nagad'
-                        ? 'bg-emerald-600 text-white ring-2 ring-emerald-400 scale-105'
-                        : 'bg-orange-600 hover:bg-orange-700 active:scale-95 text-white'
-                    }`}
-                  >
-                    {copiedField === 'nagad' ? (
-                      <>
-                        <Check className="w-4 h-4 text-white animate-bounce" />
-                        <span>নম্বর কপি হয়েছে!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4" />
-                        <span>নম্বর কপি করুন</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-
-              <div className="text-xs text-slate-600 bg-white/80 p-3 rounded-xl border border-orange-100 space-y-1">
-                <div className="font-bold text-orange-950 flex items-center gap-1.5">
-                  <Smartphone className="w-3.5 h-3.5 text-orange-600" />
-                  <span>পেমেন্ট ও চাঁদা পাঠানোর নিয়মাবলী:</span>
-                </div>
-                <p>
-                  {paymentConfig.nagadInstructions || 'নগদ অ্যাপ বা *167# ডায়াল করে Send Money করুন। সফল পেমেন্টের পর TrxID টি নিচের বক্সে লিখে সাবমিট করুন।'}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {selectedGateway === 'rocket' && (
-            <div className="p-5 rounded-2xl bg-purple-50/80 border border-purple-200 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-0.5 rounded bg-purple-700 text-white font-bold text-xs">
-                      রকেট একাউন্ট
-                    </span>
-                    <span className="text-xs font-semibold text-purple-900">
-                      উদ্দেশ্য: <strong>মাসিক চাঁদা</strong>
-                    </span>
-                  </div>
-                  {paymentConfig.rocketNumber ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl sm:text-2xl font-mono font-black text-purple-950 tracking-wider">
-                        {paymentConfig.rocketNumber}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200 text-purple-900">
-                        {paymentConfig.rocketType || 'Personal'}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-xs font-semibold text-purple-800/80 mt-1">
-                      অ্যাডমিন এখনো রকেট নম্বর যুক্ত করেননি (এডমিন প্যানেল থেকে সেট করুন)
-                    </div>
-                  )}
-                </div>
-
-                {paymentConfig.rocketNumber && (
-                  <button
-                    type="button"
-                    id="copy-rocket-number-btn"
-                    onClick={() => handleCopyNumber(paymentConfig.rocketNumber, 'rocket')}
-                    className={`flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-xs rounded-xl shadow-xs transition-all duration-200 cursor-pointer self-start sm:self-auto ${
-                      copiedField === 'rocket'
-                        ? 'bg-emerald-600 text-white ring-2 ring-emerald-400 scale-105'
-                        : 'bg-purple-700 hover:bg-purple-800 active:scale-95 text-white'
-                    }`}
-                  >
-                    {copiedField === 'rocket' ? (
-                      <>
-                        <Check className="w-4 h-4 text-white animate-bounce" />
-                        <span>নম্বর কপি হয়েছে!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4" />
-                        <span>নম্বর কপি করুন</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-
-              <div className="text-xs text-slate-600 bg-white/80 p-3 rounded-xl border border-purple-100 space-y-1">
-                <div className="font-bold text-purple-950 flex items-center gap-1.5">
-                  <Smartphone className="w-3.5 h-3.5 text-purple-600" />
-                  <span>পেমেন্ট ও চাঁদা পাঠানোর নিয়মাবলী:</span>
-                </div>
-                <p>
-                  {paymentConfig.rocketInstructions || 'রকেট একাউন্ট থেকে Send Money করার পর ফিরতি এসএমএসের TrxID নিচে যুক্ত করে সাবমিট করুন।'}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Quick Subscription / Deposit Verification Form */}
-          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
-            <div>
-              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Send className="w-4 h-4 text-emerald-600" />
-                টাকা পাঠানোর পর ট্রানজেকশন সাবমিট করুন (Transaction Verification)
-              </h4>
-              <p className="text-xs text-slate-500 mt-0.5">
-                মাসিক চাঁদা পরিশোধ নিশ্চিত করতে আপনার নাম, টাকার পরিমাণ এবং TrxID নিচে দিন:
+              <h4 className="text-sm font-bold text-slate-800">পেমেন্ট মেথড নির্বাচন করুন</h4>
+              <p className="text-xs text-slate-500 mt-1 max-w-md leading-relaxed">
+                মাসিক চাঁদা বা অনুদান পাঠাতে উপরের <strong>বিকাশ</strong>, <strong>নগদ</strong> অথবা <strong>রকেট</strong> অপশনে ক্লিক করুন। নির্বাচিত মেথডের একাউন্ট নম্বর, নিয়মাবলী ও ট্রানজেকশন সাবমিট ফর্ম নিচে প্রদর্শিত হবে।
               </p>
             </div>
+          )}
 
-            {depositSuccessMsg && (
-              <div className="p-3.5 rounded-xl bg-emerald-50 text-emerald-900 text-xs font-semibold border border-emerald-200 flex items-center gap-2 animate-fadeIn">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                <span>{depositSuccessMsg}</span>
-              </div>
-            )}
+          {/* DYNAMIC & EXCLUSIVE VIEW: Rendered ONLY when a payment method is selected */}
+          {selectedGateway && (
+            <div className="space-y-5 animate-fadeIn">
+              {/* 1. bKash Exclusive Details */}
+              {selectedGateway === 'bkash' && (
+                <div className="p-5 rounded-2xl bg-pink-50/80 border border-pink-200 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded bg-pink-600 text-white font-bold text-xs">
+                          বিকাশ একাউন্ট
+                        </span>
+                        <span className="text-xs font-semibold text-pink-900">
+                          উদ্দেশ্য: <strong>মাসিক চাঁদা / অনুদান</strong>
+                        </span>
+                      </div>
+                      {paymentConfig.bkashNumber ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl sm:text-2xl font-mono font-black text-pink-950 tracking-wider">
+                            {paymentConfig.bkashNumber}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-200 text-pink-900">
+                            {paymentConfig.bkashType || 'Personal'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-xs font-semibold text-pink-800/80 mt-1">
+                          অ্যাডমিন এখনো বিকাশ নম্বর যুক্ত করেননি (এডমিন প্যানেল থেকে সেট করুন)
+                        </div>
+                      )}
+                    </div>
 
-            <form onSubmit={handleQuickDepositSubmit} className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    আপনার পূর্ণ নাম (Member Name) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={depositMemberName}
-                    onChange={(e) => setDepositMemberName(e.target.value)}
-                    placeholder="যেমন: মোহাম্মদ সাহেদ আলম"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
+                    {paymentConfig.bkashNumber && (
+                      <button
+                        type="button"
+                        id="copy-bkash-number-btn"
+                        onClick={() => handleCopyNumber(paymentConfig.bkashNumber, 'bkash')}
+                        className={`flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-xs rounded-xl shadow-xs transition-all duration-200 cursor-pointer self-start sm:self-auto ${
+                          copiedField === 'bkash'
+                            ? 'bg-emerald-600 text-white ring-2 ring-emerald-400 scale-105'
+                            : 'bg-pink-600 hover:bg-pink-700 active:scale-95 text-white'
+                        }`}
+                      >
+                        {copiedField === 'bkash' ? (
+                          <>
+                            <Check className="w-4 h-4 text-white animate-bounce" />
+                            <span>নম্বর কপি হয়েছে!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            <span>নম্বর কপি করুন</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="text-xs text-slate-600 bg-white/80 p-3 rounded-xl border border-pink-100 space-y-1">
+                    <div className="font-bold text-pink-950 flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5 text-pink-600" />
+                      <span>বিকাশে পেমেন্ট ও চাঁদা পাঠানোর নিয়মাবলী:</span>
+                    </div>
+                    <p>
+                      {paymentConfig.bkashInstructions || 'আপনার বিকাশ অ্যাপ থেকে উপরের নম্বরে Send Money করুন। রেফারেন্সে আপনার নাম বা মেম্বার আইডি লিখুন এবং সফল ট্রানজেকশনের TrxID নিচে সাবমিট করুন।'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Nagad Exclusive Details */}
+              {selectedGateway === 'nagad' && (
+                <div className="p-5 rounded-2xl bg-orange-50/80 border border-orange-200 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded bg-orange-600 text-white font-bold text-xs">
+                          নগদ একাউন্ট
+                        </span>
+                        <span className="text-xs font-semibold text-orange-900">
+                          উদ্দেশ্য: <strong>মাসিক চাঁদা / অনুদান</strong>
+                        </span>
+                      </div>
+                      {paymentConfig.nagadNumber ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl sm:text-2xl font-mono font-black text-orange-950 tracking-wider">
+                            {paymentConfig.nagadNumber}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-200 text-orange-900">
+                            {paymentConfig.nagadType || 'Personal'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-xs font-semibold text-orange-800/80 mt-1">
+                          অ্যাডমিন এখনো নগদ নম্বর যুক্ত করেননি (এডমিন প্যানেল থেকে সেট করুন)
+                        </div>
+                      )}
+                    </div>
+
+                    {paymentConfig.nagadNumber && (
+                      <button
+                        type="button"
+                        id="copy-nagad-number-btn"
+                        onClick={() => handleCopyNumber(paymentConfig.nagadNumber, 'nagad')}
+                        className={`flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-xs rounded-xl shadow-xs transition-all duration-200 cursor-pointer self-start sm:self-auto ${
+                          copiedField === 'nagad'
+                            ? 'bg-emerald-600 text-white ring-2 ring-emerald-400 scale-105'
+                            : 'bg-orange-600 hover:bg-orange-700 active:scale-95 text-white'
+                        }`}
+                      >
+                        {copiedField === 'nagad' ? (
+                          <>
+                            <Check className="w-4 h-4 text-white animate-bounce" />
+                            <span>নম্বর কপি হয়েছে!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            <span>নম্বর কপি করুন</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="text-xs text-slate-600 bg-white/80 p-3 rounded-xl border border-orange-100 space-y-1">
+                    <div className="font-bold text-orange-950 flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5 text-orange-600" />
+                      <span>নগদে পেমেন্ট ও চাঁদা পাঠানোর নিয়মাবলী:</span>
+                    </div>
+                    <p>
+                      {paymentConfig.nagadInstructions || 'নগদ অ্যাপ বা *167# ডায়াল করে Send Money করুন। সফল পেমেন্টের পর TrxID টি নিচের বক্সে লিখে সাবমিট করুন।'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. Rocket Exclusive Details */}
+              {selectedGateway === 'rocket' && (
+                <div className="p-5 rounded-2xl bg-purple-50/80 border border-purple-200 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded bg-purple-700 text-white font-bold text-xs">
+                          রকেট একাউন্ট
+                        </span>
+                        <span className="text-xs font-semibold text-purple-900">
+                          উদ্দেশ্য: <strong>মাসিক চাঁদা / অনুদান</strong>
+                        </span>
+                      </div>
+                      {paymentConfig.rocketNumber ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl sm:text-2xl font-mono font-black text-purple-950 tracking-wider">
+                            {paymentConfig.rocketNumber}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200 text-purple-900">
+                            {paymentConfig.rocketType || 'Personal'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-xs font-semibold text-purple-800/80 mt-1">
+                          অ্যাডমিন এখনো রকেট নম্বর যুক্ত করেননি (এডমিন প্যানেল থেকে সেট করুন)
+                        </div>
+                      )}
+                    </div>
+
+                    {paymentConfig.rocketNumber && (
+                      <button
+                        type="button"
+                        id="copy-rocket-number-btn"
+                        onClick={() => handleCopyNumber(paymentConfig.rocketNumber, 'rocket')}
+                        className={`flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-xs rounded-xl shadow-xs transition-all duration-200 cursor-pointer self-start sm:self-auto ${
+                          copiedField === 'rocket'
+                            ? 'bg-emerald-600 text-white ring-2 ring-emerald-400 scale-105'
+                            : 'bg-purple-700 hover:bg-purple-800 active:scale-95 text-white'
+                        }`}
+                      >
+                        {copiedField === 'rocket' ? (
+                          <>
+                            <Check className="w-4 h-4 text-white animate-bounce" />
+                            <span>নম্বর কপি হয়েছে!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            <span>নম্বর কপি করুন</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="text-xs text-slate-600 bg-white/80 p-3 rounded-xl border border-purple-100 space-y-1">
+                    <div className="font-bold text-purple-950 flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5 text-purple-600" />
+                      <span>রকেটে পেমেন্ট ও চাঁদা পাঠানোর নিয়মাবলী:</span>
+                    </div>
+                    <p>
+                      {paymentConfig.rocketInstructions || 'রকেট একাউন্ট থেকে Send Money করার পর ফিরতি এসএমএসের TrxID নিচে যুক্ত করে সাবমিট করুন।'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Transaction Verification & Deposit Submission Form (Customized for Chosen Gateway) */}
+              <div className={`p-5 rounded-2xl border space-y-4 shadow-xs transition-all ${
+                selectedGateway === 'bkash' 
+                  ? 'bg-pink-50/40 border-pink-200/90' 
+                  : selectedGateway === 'nagad'
+                  ? 'bg-orange-50/40 border-orange-200/90'
+                  : 'bg-purple-50/40 border-purple-200/90'
+              }`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3 border-slate-200/80">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Send className={`w-4 h-4 ${
+                        selectedGateway === 'bkash' ? 'text-pink-600' : selectedGateway === 'nagad' ? 'text-orange-600' : 'text-purple-700'
+                      }`} />
+                      <span>
+                        {selectedGateway === 'bkash' ? 'বিকাশ (bKash)' : selectedGateway === 'nagad' ? 'নগদ (Nagad)' : 'রকেট (Rocket)'} ট্রানজেকশন সাবমিট ও ভেরিফিকেশন
+                      </span>
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      টাকা পাঠানো সম্পন্ন হলে আপনার নাম, টাকার পরিমাণ এবং ফিরতি মেসেজের TrxID নিচে দিন:
+                    </p>
+                  </div>
+                  <span className={`self-start sm:self-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    selectedGateway === 'bkash' ? 'bg-pink-100 text-pink-800' : selectedGateway === 'nagad' ? 'bg-orange-100 text-orange-800' : 'bg-purple-100 text-purple-800'
+                  }`}>
+                    {selectedGateway === 'bkash' ? 'bKash Verification' : selectedGateway === 'nagad' ? 'Nagad Verification' : 'Rocket Verification'}
+                  </span>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    পরিশোধিত চাঁদার পরিমাণ (টাকা ৳) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="৫০০"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                </div>
-              </div>
+                {depositSuccessMsg && (
+                  <div className="p-3.5 rounded-xl bg-emerald-50 text-emerald-900 text-xs font-semibold border border-emerald-200 flex items-center gap-2 animate-fadeIn">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <span>{depositSuccessMsg}</span>
+                  </div>
+                )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    ট্রানজেকশন আইডি (TrxID) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={depositTrxId}
-                    onChange={(e) => setDepositTrxId(e.target.value)}
-                    placeholder="যেমন: 9J7X4K2P9Q"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono font-bold bg-white uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                </div>
+                <form onSubmit={handleQuickDepositSubmit} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        আপনার পূর্ণ নাম (Member Name) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={depositMemberName}
+                        onChange={(e) => setDepositMemberName(e.target.value)}
+                        placeholder="যেমন: মোহাম্মদ সাহেদ আলম"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    যে নম্বর থেকে পাঠিয়েছেন (Sender Mobile No)
-                  </label>
-                  <input
-                    type="text"
-                    value={depositSenderPhone}
-                    onChange={(e) => setDepositSenderPhone(e.target.value)}
-                    placeholder="018XXXXXXXX"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                </div>
-              </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        পরিশোধিত চাঁদার পরিমাণ (টাকা ৳) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        value={depositAmount}
+                        onChange={(e) => setDepositAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="৫০০"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                  </div>
 
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-[11px] text-slate-500">
-                  খাত: <strong>মাসিক চাঁদা</strong> ({selectedGateway.toUpperCase()})
-                </span>
-                <button
-                  type="submit"
-                  id="subscription-deposit-submit-btn"
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>মাসিক চাঁদা সাবমিট করুন</span>
-                </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        {selectedGateway === 'bkash' ? 'বিকাশ TrxID (Transaction ID) *' : selectedGateway === 'nagad' ? 'নগদ TrxID (Transaction ID) *' : 'রকেট TrxID (Transaction ID) *'}
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={depositTrxId}
+                        onChange={(e) => setDepositTrxId(e.target.value)}
+                        placeholder={selectedGateway === 'bkash' ? 'যেমন: 9J7X4K2P9Q' : selectedGateway === 'nagad' ? 'যেমন: 7K9X2M4P1Q' : 'যেমন: 8L5N3P7Q2R'}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono font-bold bg-white uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        {selectedGateway === 'bkash' ? 'যে বিকাশ নম্বর থেকে পাঠিয়েছেন (Sender Mobile)' : selectedGateway === 'nagad' ? 'যে নগদ নম্বর থেকে পাঠিয়েছেন (Sender Mobile)' : 'যে রকেট নম্বর থেকে পাঠিয়েছেন (Sender Mobile)'}
+                      </label>
+                      <input
+                        type="text"
+                        value={depositSenderPhone}
+                        onChange={(e) => setDepositSenderPhone(e.target.value)}
+                        placeholder="018XXXXXXXX"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-between pt-2 gap-3">
+                    <span className="text-[11px] text-slate-600">
+                      পেমেন্ট গেটওয়ে: <strong className="text-slate-900">{selectedGateway === 'bkash' ? 'বিকাশ (bKash)' : selectedGateway === 'nagad' ? 'নগদ (Nagad)' : 'রকেট (Rocket)'}</strong> | খাত: <strong>মাসিক চাঁদা</strong>
+                    </span>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGateway(null)}
+                        className="px-3 py-2 border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+                      >
+                        বন্ধ করুন
+                      </button>
+                      <button
+                        type="submit"
+                        id="subscription-deposit-submit-btn"
+                        className={`flex-1 sm:flex-none px-5 py-2 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          selectedGateway === 'bkash'
+                            ? 'bg-pink-600 hover:bg-pink-700'
+                            : selectedGateway === 'nagad'
+                            ? 'bg-orange-600 hover:bg-orange-700'
+                            : 'bg-purple-700 hover:bg-purple-800'
+                        }`}
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>
+                          {selectedGateway === 'bkash' ? 'বিকাশ চাঁদা সাবমিট করুন' : selectedGateway === 'nagad' ? 'নগদ চাঁদা সাবমিট করুন' : 'রকেট চাঁদা সাবমিট করুন'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </form>
               </div>
-            </form>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
