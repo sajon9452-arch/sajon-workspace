@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense, lazy } from 'react';
 import {
   ShieldCheck,
   Users,
@@ -62,7 +62,7 @@ import {
   OrganizationRule,
   CalendarMonthlyBanner
 } from '../types';
-import { AdminHomePageManager } from './AdminHomePageManager';
+const AdminHomePageManager = lazy(() => import('./AdminHomePageManager').then(m => ({ default: m.AdminHomePageManager })));
 import {
   toBengaliNumber,
   formatTaka,
@@ -3606,20 +3606,27 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
       {/* TAB: HOMEPAGE SETTINGS */}
       {activeTab === 'homepage' && (
-        <AdminHomePageManager
-          slides={homeSlides}
-          onUpdateSlides={onUpdateHomeSlides || (() => {})}
-          activities={humanitarianActivities}
-          onUpdateActivities={onUpdateHumanitarianActivities || (() => {})}
-          rules={organizationRules}
-          onUpdateRules={onUpdateOrganizationRules || (() => {})}
-          profile={profile}
-          onUpdateProfile={onUpdateProfile || (() => {})}
-          calendarBanners={calendarBanners}
-          onUpdateCalendarBanners={onUpdateCalendarBanners}
-          notifySuccess={notifySuccess}
-          notifyError={notifyError}
-        />
+        <Suspense fallback={
+          <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-slate-200">
+            <div className="w-8 h-8 border-3 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mb-2" />
+            <span className="text-xs font-semibold text-slate-500">হোমপেজ সেটিংস লোড হচ্ছে...</span>
+          </div>
+        }>
+          <AdminHomePageManager
+            slides={homeSlides}
+            onUpdateSlides={onUpdateHomeSlides || (() => {})}
+            activities={humanitarianActivities}
+            onUpdateActivities={onUpdateHumanitarianActivities || (() => {})}
+            rules={organizationRules}
+            onUpdateRules={onUpdateOrganizationRules || (() => {})}
+            profile={profile}
+            onUpdateProfile={onUpdateProfile || (() => {})}
+            calendarBanners={calendarBanners}
+            onUpdateCalendarBanners={onUpdateCalendarBanners}
+            notifySuccess={notifySuccess}
+            notifyError={notifyError}
+          />
+        </Suspense>
       )}
 
       {/* MEMBER MODAL (Add / Edit) */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { 
   ActiveScreen, 
   Member, 
@@ -59,19 +59,30 @@ import { fetchServerDatabase, syncKeyToServer } from './utils/serverApi';
 import { isDonorEligible, sortMembersOldestFirst } from './utils/helpers';
 import { Header } from './components/Header';
 import { HomeScreen } from './components/HomeScreen';
-import { MemberListScreen } from './components/MemberListScreen';
-import { BloodDonationScreen } from './components/BloodDonationScreen';
-import { NoticeScreen } from './components/NoticeScreen';
-import { FundScreen } from './components/FundScreen';
-import { CalendarScreen } from './components/CalendarScreen';
-import { SupportScreen } from './components/SupportScreen';
-import { AdminPanelScreen } from './components/AdminPanelScreen';
-import { AdminModal } from './components/AdminModal';
-import { EmergencyHelplineModal } from './components/EmergencyHelplineModal';
-import { SheetGuideModal } from './components/SheetGuideModal';
 import { BottomNav } from './components/BottomNav';
 import { OfflineStatusBanner } from './components/OfflineStatusBanner';
 import { HeartHandshake, MapPin, ShieldCheck, Heart } from 'lucide-react';
+
+// Code-split screens for instant initial landing load & smaller bundle chunks
+const MemberListScreen = lazy(() => import('./components/MemberListScreen').then(m => ({ default: m.MemberListScreen })));
+const BloodDonationScreen = lazy(() => import('./components/BloodDonationScreen').then(m => ({ default: m.BloodDonationScreen })));
+const NoticeScreen = lazy(() => import('./components/NoticeScreen').then(m => ({ default: m.NoticeScreen })));
+const FundScreen = lazy(() => import('./components/FundScreen').then(m => ({ default: m.FundScreen })));
+const CalendarScreen = lazy(() => import('./components/CalendarScreen').then(m => ({ default: m.CalendarScreen })));
+const SupportScreen = lazy(() => import('./components/SupportScreen').then(m => ({ default: m.SupportScreen })));
+const AdminPanelScreen = lazy(() => import('./components/AdminPanelScreen').then(m => ({ default: m.AdminPanelScreen })));
+
+// Code-split modals
+const AdminModal = lazy(() => import('./components/AdminModal').then(m => ({ default: m.AdminModal })));
+const EmergencyHelplineModal = lazy(() => import('./components/EmergencyHelplineModal').then(m => ({ default: m.EmergencyHelplineModal })));
+const SheetGuideModal = lazy(() => import('./components/SheetGuideModal').then(m => ({ default: m.SheetGuideModal })));
+
+const ScreenLoadingFallback = () => (
+  <div className="flex flex-col items-center justify-center py-20 px-4 min-h-[360px]">
+    <div className="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3" />
+    <span className="text-xs font-semibold text-slate-500">পেজ লোড হচ্ছে...</span>
+  </div>
+);
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>('home');
@@ -445,157 +456,159 @@ export default function App() {
 
       {/* Main Screen Content */}
       <main className="max-w-6xl w-full mx-auto px-4 py-6 flex-1">
-        {activeScreen === 'home' && (
-          <HomeScreen
-            profile={profile}
-            onNavigate={(screen) => {
-              if (screen === 'blood') {
+        <Suspense fallback={<ScreenLoadingFallback />}>
+          {activeScreen === 'home' && (
+            <HomeScreen
+              profile={profile}
+              onNavigate={(screen) => {
+                if (screen === 'blood') {
+                  setSelectedBloodGroupFilter('all');
+                }
+                setActiveScreen(screen);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onSelectBloodGroup={(bg) => {
+                setSelectedBloodGroupFilter(bg);
+                setActiveScreen('blood');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              donors={donors}
+              stats={stats}
+              latestNotice={latestNotice}
+              isAdmin={isAdmin}
+              openAdminModal={() => setIsAdminModalOpen(true)}
+              openEmergencyModal={() => setIsEmergencyModalOpen(true)}
+              homeSlides={homeSlides}
+              humanitarianActivities={humanitarianActivities}
+              organizationRules={organizationRules}
+              onNavigateAdminTab={(tab) => {
+                setAdminActiveTab(tab);
+                setActiveScreen('admin');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
+          )}
+
+          {activeScreen === 'members' && (
+            <MemberListScreen
+              members={members}
+              onAddMember={handleAddMember}
+              onEditMember={handleEditMember}
+              onDeleteMember={handleDeleteMember}
+              isAdmin={isAdmin}
+              onBack={() => setActiveScreen('home')}
+            />
+          )}
+
+          {activeScreen === 'blood' && (
+            <BloodDonationScreen
+              donors={donors}
+              initialBloodGroup={selectedBloodGroupFilter}
+              onAddDonor={handleAddDonor}
+              onEditDonor={handleEditDonor}
+              onDeleteDonor={handleDeleteDonor}
+              isAdmin={isAdmin}
+              onBack={() => {
                 setSelectedBloodGroupFilter('all');
-              }
-              setActiveScreen(screen);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onSelectBloodGroup={(bg) => {
-              setSelectedBloodGroupFilter(bg);
-              setActiveScreen('blood');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            donors={donors}
-            stats={stats}
-            latestNotice={latestNotice}
-            isAdmin={isAdmin}
-            openAdminModal={() => setIsAdminModalOpen(true)}
-            openEmergencyModal={() => setIsEmergencyModalOpen(true)}
-            homeSlides={homeSlides}
-            humanitarianActivities={humanitarianActivities}
-            organizationRules={organizationRules}
-            onNavigateAdminTab={(tab) => {
-              setAdminActiveTab(tab);
-              setActiveScreen('admin');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-          />
-        )}
+                setActiveScreen('home');
+              }}
+            />
+          )}
 
-        {activeScreen === 'members' && (
-          <MemberListScreen
-            members={members}
-            onAddMember={handleAddMember}
-            onEditMember={handleEditMember}
-            onDeleteMember={handleDeleteMember}
-            isAdmin={isAdmin}
-            onBack={() => setActiveScreen('home')}
-          />
-        )}
+          {activeScreen === 'notices' && (
+            <NoticeScreen
+              notices={notices}
+              isAdmin={isAdmin}
+              onAddNotice={handleAddNotice}
+              onEditNotice={handleEditNotice}
+              onDeleteNotice={handleDeleteNotice}
+              onBack={() => setActiveScreen('home')}
+            />
+          )}
 
-        {activeScreen === 'blood' && (
-          <BloodDonationScreen
-            donors={donors}
-            initialBloodGroup={selectedBloodGroupFilter}
-            onAddDonor={handleAddDonor}
-            onEditDonor={handleEditDonor}
-            onDeleteDonor={handleDeleteDonor}
-            isAdmin={isAdmin}
-            onBack={() => {
-              setSelectedBloodGroupFilter('all');
-              setActiveScreen('home');
-            }}
-          />
-        )}
+          {activeScreen === 'fund' && (
+            <FundScreen
+              fundRecords={funds}
+              onAddFundRecord={handleAddFund}
+              onEditFundRecord={handleEditFund}
+              onDeleteFundRecord={handleDeleteFund}
+              onToggleStatus={handleToggleFundStatus}
+              manualTotalBalance={manualTotalBalance}
+              onUpdateManualTotalBalance={handleUpdateManualTotalBalance}
+              paymentConfig={paymentConfig}
+              isAdmin={isAdmin}
+              onBack={() => setActiveScreen('home')}
+            />
+          )}
 
-        {activeScreen === 'notices' && (
-          <NoticeScreen
-            notices={notices}
-            isAdmin={isAdmin}
-            onAddNotice={handleAddNotice}
-            onEditNotice={handleEditNotice}
-            onDeleteNotice={handleDeleteNotice}
-            onBack={() => setActiveScreen('home')}
-          />
-        )}
+          {activeScreen === 'calendar' && (
+            <CalendarScreen
+              profile={profile}
+              notices={notices}
+              humanitarianActivities={humanitarianActivities}
+              onBack={() => setActiveScreen('home')}
+              onNavigate={(screen) => setActiveScreen(screen)}
+              isAdmin={isAdmin}
+              calendarBanners={calendarBanners}
+              onUpdateCalendarBanners={handleUpdateCalendarBanners}
+            />
+          )}
 
-        {activeScreen === 'fund' && (
-          <FundScreen
-            fundRecords={funds}
-            onAddFundRecord={handleAddFund}
-            onEditFundRecord={handleEditFund}
-            onDeleteFundRecord={handleDeleteFund}
-            onToggleStatus={handleToggleFundStatus}
-            manualTotalBalance={manualTotalBalance}
-            onUpdateManualTotalBalance={handleUpdateManualTotalBalance}
-            paymentConfig={paymentConfig}
-            isAdmin={isAdmin}
-            onBack={() => setActiveScreen('home')}
-          />
-        )}
+          {activeScreen === 'support' && (
+            <SupportScreen
+              reports={supportReports}
+              profile={profile}
+              isAdmin={isAdmin}
+              onNavigateHome={() => setActiveScreen('home')}
+              onNavigateAdmin={() => setActiveScreen('admin')}
+              onBack={() => setActiveScreen('home')}
+            />
+          )}
 
-        {activeScreen === 'calendar' && (
-          <CalendarScreen
-            profile={profile}
-            notices={notices}
-            humanitarianActivities={humanitarianActivities}
-            onBack={() => setActiveScreen('home')}
-            onNavigate={(screen) => setActiveScreen(screen)}
-            isAdmin={isAdmin}
-            calendarBanners={calendarBanners}
-            onUpdateCalendarBanners={handleUpdateCalendarBanners}
-          />
-        )}
-
-        {activeScreen === 'support' && (
-          <SupportScreen
-            reports={supportReports}
-            profile={profile}
-            isAdmin={isAdmin}
-            onNavigateHome={() => setActiveScreen('home')}
-            onNavigateAdmin={() => setActiveScreen('admin')}
-            onBack={() => setActiveScreen('home')}
-          />
-        )}
-
-        {activeScreen === 'admin' && (
-          <AdminPanelScreen
-            profile={profile}
-            members={members}
-            donors={donors}
-            notices={notices}
-            funds={funds}
-            supportReports={supportReports}
-            onAddSupportReport={handleAddSupportReport}
-            onEditSupportReport={handleEditSupportReport}
-            onDeleteSupportReport={handleDeleteSupportReport}
-            setSupportReports={setSupportReports}
-            paymentConfig={paymentConfig}
-            onUpdatePaymentConfig={handleUpdatePaymentConfig}
-            onUpdateProfile={handleUpdateProfile}
-            onAddMember={handleAddMember}
-            onEditMember={handleEditMember}
-            onDeleteMember={handleDeleteMember}
-            onAddDonor={handleAddDonor}
-            onEditDonor={handleEditDonor}
-            onDeleteDonor={handleDeleteDonor}
-            onAddNotice={handleAddNotice}
-            onEditNotice={handleEditNotice}
-            onDeleteNotice={handleDeleteNotice}
-            onAddFund={handleAddFund}
-            onEditFund={handleEditFund}
-            onDeleteFund={handleDeleteFund}
-            onToggleFundStatus={handleToggleFundStatus}
-            onResetAll={handleResetData}
-            isAdmin={isAdmin}
-            setIsAdmin={setIsAdmin}
-            onBack={() => setActiveScreen('home')}
-            homeSlides={homeSlides}
-            onUpdateHomeSlides={handleUpdateHomeSlides}
-            humanitarianActivities={humanitarianActivities}
-            onUpdateHumanitarianActivities={handleUpdateHumanitarianActivities}
-            organizationRules={organizationRules}
-            onUpdateOrganizationRules={handleUpdateOrganizationRules}
-            calendarBanners={calendarBanners}
-            onUpdateCalendarBanners={handleUpdateCalendarBanners}
-            initialActiveTab={adminActiveTab}
-          />
-        )}
+          {activeScreen === 'admin' && (
+            <AdminPanelScreen
+              profile={profile}
+              members={members}
+              donors={donors}
+              notices={notices}
+              funds={funds}
+              supportReports={supportReports}
+              onAddSupportReport={handleAddSupportReport}
+              onEditSupportReport={handleEditSupportReport}
+              onDeleteSupportReport={handleDeleteSupportReport}
+              setSupportReports={setSupportReports}
+              paymentConfig={paymentConfig}
+              onUpdatePaymentConfig={handleUpdatePaymentConfig}
+              onUpdateProfile={handleUpdateProfile}
+              onAddMember={handleAddMember}
+              onEditMember={handleEditMember}
+              onDeleteMember={handleDeleteMember}
+              onAddDonor={handleAddDonor}
+              onEditDonor={handleEditDonor}
+              onDeleteDonor={handleDeleteDonor}
+              onAddNotice={handleAddNotice}
+              onEditNotice={handleEditNotice}
+              onDeleteNotice={handleDeleteNotice}
+              onAddFund={handleAddFund}
+              onEditFund={handleEditFund}
+              onDeleteFund={handleDeleteFund}
+              onToggleFundStatus={handleToggleFundStatus}
+              onResetAll={handleResetData}
+              isAdmin={isAdmin}
+              setIsAdmin={setIsAdmin}
+              onBack={() => setActiveScreen('home')}
+              homeSlides={homeSlides}
+              onUpdateHomeSlides={handleUpdateHomeSlides}
+              humanitarianActivities={humanitarianActivities}
+              onUpdateHumanitarianActivities={handleUpdateHumanitarianActivities}
+              organizationRules={organizationRules}
+              onUpdateOrganizationRules={handleUpdateOrganizationRules}
+              calendarBanners={calendarBanners}
+              onUpdateCalendarBanners={handleUpdateCalendarBanners}
+              initialActiveTab={adminActiveTab}
+            />
+          )}
+        </Suspense>
       </main>
 
       {/* Footer UI */}
@@ -651,37 +664,45 @@ export default function App() {
       />
 
       {/* Modals */}
-      <AdminModal
-        isOpen={isAdminModalOpen}
-        onClose={() => setIsAdminModalOpen(false)}
-        onSuccessLogin={() => {
-          setIsAdmin(true);
-          setActiveScreen('admin');
-        }}
-      />
+      <Suspense fallback={null}>
+        {isAdminModalOpen && (
+          <AdminModal
+            isOpen={isAdminModalOpen}
+            onClose={() => setIsAdminModalOpen(false)}
+            onSuccessLogin={() => {
+              setIsAdmin(true);
+              setActiveScreen('admin');
+            }}
+          />
+        )}
 
-      <EmergencyHelplineModal
-        isOpen={isEmergencyModalOpen}
-        onClose={() => setIsEmergencyModalOpen(false)}
-        profile={profile}
-        onUpdateProfile={(updatedProfile) => {
-          setProfile(updatedProfile);
-          saveOrgProfile(updatedProfile);
-        }}
-        isAdmin={isAdmin}
-        onNavigateToAdmin={() => {
-          if (isAdmin) {
-            setActiveScreen('admin');
-          } else {
-            setIsAdminModalOpen(true);
-          }
-        }}
-      />
+        {isEmergencyModalOpen && (
+          <EmergencyHelplineModal
+            isOpen={isEmergencyModalOpen}
+            onClose={() => setIsEmergencyModalOpen(false)}
+            profile={profile}
+            onUpdateProfile={(updatedProfile) => {
+              setProfile(updatedProfile);
+              saveOrgProfile(updatedProfile);
+            }}
+            isAdmin={isAdmin}
+            onNavigateToAdmin={() => {
+              if (isAdmin) {
+                setActiveScreen('admin');
+              } else {
+                setIsAdminModalOpen(true);
+              }
+            }}
+          />
+        )}
 
-      <SheetGuideModal
-        isOpen={isSheetGuideOpen}
-        onClose={() => setIsSheetGuideOpen(false)}
-      />
+        {isSheetGuideOpen && (
+          <SheetGuideModal
+            isOpen={isSheetGuideOpen}
+            onClose={() => setIsSheetGuideOpen(false)}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }
