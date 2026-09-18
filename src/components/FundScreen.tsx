@@ -91,31 +91,60 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   const [depositTrxId, setDepositTrxId] = useState('');
   const [depositSenderPhone, setDepositSenderPhone] = useState('');
   const [depositSuccessMsg, setDepositSuccessMsg] = useState('');
+  const [depositErrorMsg, setDepositErrorMsg] = useState('');
 
   const handleCopyNumber = (num: string, gatewayKey: string) => {
     if (!num) return;
-    navigator.clipboard.writeText(num);
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(num).catch(() => {
+          fallbackCopyText(num);
+        });
+      } else {
+        fallbackCopyText(num);
+      }
+    } catch {
+      fallbackCopyText(num);
+    }
     setCopiedField(gatewayKey);
     setTimeout(() => setCopiedField(null), 2500);
+  };
+
+  const fallbackCopyText = (text: string) => {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      document.execCommand('copy');
+      textArea.remove();
+    } catch {
+      // Ignore if document is restricted
+    }
   };
 
   // Submits user subscription as PENDING verification
   const handleQuickDepositSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setDepositErrorMsg('');
     if (!selectedGateway) {
-      alert('অনুগ্রহ করে একটি পেমেন্ট মেথড (বিকাশ / নগদ / রকেট) নির্বাচন করুন');
+      setDepositErrorMsg('অনুগ্রহ করে একটি পেমেন্ট মেথড (বিকাশ / নগদ / রকেট) নির্বাচন করুন');
       return;
     }
     if (!depositMemberName.trim()) {
-      alert('অনুগ্রহ করে আপনার নাম লিখুন');
+      setDepositErrorMsg('অনুগ্রহ করে আপনার নাম লিখুন');
       return;
     }
     if (!depositAmount || Number(depositAmount) <= 0) {
-      alert('সঠিক চাঁদার পরিমাণ লিখুন');
+      setDepositErrorMsg('সঠিক চাঁদার পরিমাণ লিখুন');
       return;
     }
     if (!depositTrxId.trim()) {
-      alert('অনুগ্রহ করে Transaction ID (TrxID) লিখুন');
+      setDepositErrorMsg('অনুগ্রহ করে Transaction ID (TrxID) লিখুন');
       return;
     }
 
@@ -1095,6 +1124,13 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                   <div className="p-3.5 rounded-xl bg-emerald-50 text-emerald-900 text-xs font-semibold border border-emerald-200 flex items-center gap-2 animate-fadeIn">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                     <span>{depositSuccessMsg}</span>
+                  </div>
+                )}
+
+                {depositErrorMsg && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 text-rose-900 text-xs font-semibold border border-rose-200 flex items-center gap-2 animate-fadeIn">
+                    <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                    <span>{depositErrorMsg}</span>
                   </div>
                 )}
 

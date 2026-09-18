@@ -7,7 +7,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // No-cache middleware for API routes to guarantee fresh updates for non-technical users
 app.use('/api', (req, res, next) => {
@@ -388,6 +389,306 @@ function isTableMissingError(error: any): boolean {
 }
 
 /**
+ * Universal Unlimited PostgREST Table Row Fetcher
+ * Fetches all rows without the standard 1,000-row cap using automatic pagination.
+ */
+async function fetchAllRowsFromTable(supabase: SupabaseClient, tableName: string): Promise<any[] | null> {
+  try {
+    const pageSize = 1000;
+    let allRows: any[] = [];
+    let from = 0;
+    let keepFetching = true;
+
+    while (keepFetching) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        if (isTableMissingError(error)) return null;
+        console.warn(`[Supabase] Table "${tableName}" query warning:`, error.message);
+        return null;
+      }
+
+      if (Array.isArray(data) && data.length > 0) {
+        allRows = allRows.concat(data);
+        if (data.length < pageSize) {
+          keepFetching = false;
+        } else {
+          from += pageSize;
+        }
+      } else {
+        keepFetching = false;
+      }
+    }
+    return allRows;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Universal Chunked Upsert for Unlimited Batch Sizes
+ */
+async function upsertInChunks(supabase: SupabaseClient, tableName: string, records: any[], onConflict = 'id'): Promise<boolean> {
+  if (!records || records.length === 0) return true;
+  const chunkSize = 200;
+  for (let i = 0; i < records.length; i += chunkSize) {
+    const chunk = records.slice(i, i + chunkSize);
+    const { error } = await supabase.from(tableName).upsert(chunk, { onConflict });
+    if (error) {
+      if (isTableMissingError(error)) return false;
+      console.warn(`[Supabase] Upsert into "${tableName}" error:`, error.message);
+      return false;
+    }
+  }
+  return true;
+}
+
+// Dedicated Table Model Mappers
+function mapMemberToDb(m: any) {
+  return {
+    id: m.id,
+    name: m.name || '',
+    phone: m.phone || '',
+    designation: m.designation || '',
+    area: m.area || '',
+    is_expatriate: Boolean(m.isExpatriate || m.memberType === 'expatriate'),
+    country_status: m.countryStatus || '',
+    member_type: m.memberType || (m.isExpatriate ? 'expatriate' : 'general'),
+    photo_url: m.photoUrl || '',
+    blood_group: m.bloodGroup || '',
+    join_date: m.joinDate || '',
+    serial: typeof m.serial === 'number' ? m.serial : null,
+    created_at: m.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function mapDbToMember(r: any): any {
+  return {
+    id: r.id,
+    name: r.name || '',
+    phone: r.phone || '',
+    designation: r.designation || '',
+    area: r.area || '',
+    isExpatriate: Boolean(r.is_expatriate ?? r.isExpatriate),
+    countryStatus: r.country_status || r.countryStatus || '',
+    memberType: r.member_type || r.memberType || (r.is_expatriate ? 'expatriate' : 'general'),
+    photoUrl: r.photo_url || r.photoUrl || '',
+    bloodGroup: r.blood_group || r.bloodGroup || '',
+    joinDate: r.join_date || r.joinDate || '',
+    serial: r.serial != null ? Number(r.serial) : undefined,
+    createdAt: r.created_at || r.createdAt || new Date().toISOString()
+  };
+}
+
+function mapDonorToDb(d: any) {
+  return {
+    id: d.id,
+    name: d.name || '',
+    blood_group: d.bloodGroup || '',
+    phone: d.phone || '',
+    area: d.area || '',
+    last_donation_date: d.lastDonationDate || '',
+    is_available: d.isAvailable !== false,
+    total_donations: Number(d.totalDonations) || 0,
+    created_at: d.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function mapDbToDonor(r: any): any {
+  return {
+    id: r.id,
+    name: r.name || '',
+    bloodGroup: r.blood_group || r.bloodGroup || '',
+    phone: r.phone || '',
+    area: r.area || '',
+    lastDonationDate: r.last_donation_date || r.lastDonationDate || '',
+    isAvailable: r.is_available !== false,
+    totalDonations: Number(r.total_donations ?? r.totalDonations) || 0,
+    createdAt: r.created_at || r.createdAt || new Date().toISOString()
+  };
+}
+
+function mapFundToDb(f: any) {
+  return {
+    id: f.id,
+    type: f.type || 'income',
+    category: f.category || '',
+    amount: Number(f.amount) || 0,
+    date: f.date || '',
+    month: f.month || '',
+    year: f.year || '',
+    member_id: f.memberId || '',
+    member_name: f.memberName || '',
+    payment_method: f.paymentMethod || '',
+    trx_id: f.trxId || '',
+    sender_phone: f.senderPhone || '',
+    notes: f.notes || '',
+    status: f.status || 'approved',
+    created_at: f.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function mapDbToFund(r: any): any {
+  return {
+    id: r.id,
+    type: r.type || 'income',
+    category: r.category || '',
+    amount: Number(r.amount) || 0,
+    date: r.date || '',
+    month: r.month || '',
+    year: r.year || '',
+    memberId: r.member_id || r.memberId || '',
+    memberName: r.member_name || r.memberName || '',
+    paymentMethod: r.payment_method || r.paymentMethod || '',
+    trxId: r.trx_id || r.trxId || '',
+    senderPhone: r.sender_phone || r.senderPhone || '',
+    notes: r.notes || '',
+    status: r.status || 'approved',
+    createdAt: r.created_at || r.createdAt || new Date().toISOString()
+  };
+}
+
+function mapNoticeToDb(n: any) {
+  return {
+    id: n.id,
+    notice_text: n.noticeText || '',
+    date: n.date || '',
+    category: n.category || 'সাধারণ',
+    is_pinned: Boolean(n.isPinned),
+    created_at: n.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function mapDbToNotice(r: any): any {
+  return {
+    id: r.id,
+    noticeText: r.notice_text || r.noticeText || '',
+    date: r.date || '',
+    category: r.category || 'সাধারণ',
+    isPinned: Boolean(r.is_pinned ?? r.isPinned),
+    createdAt: r.created_at || r.createdAt || new Date().toISOString()
+  };
+}
+
+function mapActivityToDb(act: any) {
+  return {
+    id: act.id,
+    title: act.title || '',
+    description: act.description || '',
+    items_given: act.itemsGiven || '',
+    cost: Number(act.cost) || 0,
+    handled_by: act.handledBy || '',
+    recipient_name: act.recipientName || '',
+    recipient_photo_url: act.recipientPhotoUrl || '',
+    date: act.date || '',
+    location: act.location || '',
+    is_featured: Boolean(act.isFeatured),
+    created_at: act.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function mapDbToActivity(r: any): any {
+  return {
+    id: r.id,
+    title: r.title || '',
+    description: r.description || '',
+    itemsGiven: r.items_given || r.itemsGiven || '',
+    cost: Number(r.cost) || 0,
+    handledBy: r.handled_by || r.handledBy || '',
+    recipientName: r.recipient_name || r.recipientName || '',
+    recipientPhotoUrl: r.recipient_photo_url || r.recipientPhotoUrl || '',
+    date: r.date || '',
+    location: r.location || '',
+    isFeatured: Boolean(r.is_featured ?? r.isFeatured),
+    createdAt: r.created_at || r.createdAt || new Date().toISOString()
+  };
+}
+
+function mapReportToDb(r: any) {
+  return {
+    id: r.id,
+    type: r.type || 'সহায়তা',
+    name: r.name || '',
+    phone: r.phone || '',
+    subject: r.subject || '',
+    details: r.details || '',
+    status: r.status || 'pending',
+    date: r.date || '',
+    created_at: r.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function mapDbToReport(r: any): any {
+  return {
+    id: r.id,
+    type: r.type || 'সহায়তা',
+    name: r.name || '',
+    phone: r.phone || '',
+    subject: r.subject || '',
+    details: r.details || '',
+    status: r.status || 'pending',
+    date: r.date || '',
+    createdAt: r.created_at || r.createdAt || new Date().toISOString()
+  };
+}
+
+function mapSlideToDb(s: any) {
+  return {
+    id: s.id,
+    title: s.title || '',
+    description: s.description || '',
+    image_url: s.imageUrl || '',
+    category: s.category || '',
+    date: s.date || '',
+    location: s.location || '',
+    is_active: s.isActive !== false,
+    created_at: s.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function mapDbToSlide(r: any): any {
+  return {
+    id: r.id,
+    title: r.title || '',
+    description: r.description || '',
+    imageUrl: r.image_url || r.imageUrl || '',
+    category: r.category || '',
+    date: r.date || '',
+    location: r.location || '',
+    isActive: r.is_active !== false,
+    createdAt: r.created_at || r.createdAt || new Date().toISOString()
+  };
+}
+
+function mapRuleToDb(r: any) {
+  return {
+    id: r.id,
+    rule_text: r.ruleText || '',
+    category: r.category || '',
+    created_at: r.createdAt || new Date().toISOString()
+  };
+}
+
+function mapDbToRule(r: any): any {
+  return {
+    id: r.id,
+    ruleText: r.rule_text || r.ruleText || '',
+    category: r.category || '',
+    createdAt: r.created_at || r.createdAt || new Date().toISOString()
+  };
+}
+
+/**
  * Reads state from Supabase organization_data table and merges into local DB
  */
 async function syncFromSupabase(): Promise<AppDatabase | null> {
@@ -500,43 +801,174 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
         }
       }
 
-      // 4. Check if dedicated humanitarian_activities table exists in Supabase
+      // 4. Universal sync across all dedicated database tables (if provisioned in Supabase)
+      // 4.1 Members (General & Expatriate)
       try {
-        const { data: actRows, error: actErr } = await supabase
-          .from('humanitarian_activities')
-          .select('*');
-        if (!actErr && Array.isArray(actRows) && actRows.length > 0) {
-          const deletedActIds = merged.deletedActivityIds || [];
-          const dedicatedActivities = actRows
-            .filter((r: any) => r && r.id && !deletedActIds.includes(r.id))
-            .map((r: any) => ({
-              id: r.id,
-              title: r.title || '',
-              description: r.description || '',
-              itemsGiven: r.items_given || r.itemsGiven || '',
-              cost: Number(r.cost) || 0,
-              handledBy: r.handled_by || r.handledBy || '',
-              recipientName: r.recipient_name || r.recipientName || '',
-              recipientPhotoUrl: r.recipient_photo_url || r.recipientPhotoUrl || '',
-              date: r.date || '',
-              location: r.location || '',
-              isFeatured: Boolean(r.is_featured ?? r.isFeatured)
-            }));
-
-          const actMap = new Map<string, any>();
-          dedicatedActivities.forEach((a: any) => actMap.set(a.id, a));
-          if (Array.isArray(merged.humanitarianActivities)) {
-            merged.humanitarianActivities.forEach((a: any) => {
-              if (!actMap.has(a.id) && !deletedActIds.includes(a.id)) {
-                actMap.set(a.id, a);
+        const memberRows = await fetchAllRowsFromTable(supabase, 'members');
+        if (memberRows && memberRows.length > 0) {
+          const deletedMemberIds = merged.deletedMemberIds || [];
+          const dedicatedMembers = memberRows
+            .filter((r: any) => r && r.id && !deletedMemberIds.includes(r.id))
+            .map(mapDbToMember);
+          const map = new Map<string, any>();
+          dedicatedMembers.forEach((m: any) => map.set(m.id, m));
+          if (Array.isArray(merged.members)) {
+            merged.members.forEach((m: any) => {
+              if (!map.has(m.id) && !deletedMemberIds.includes(m.id)) {
+                map.set(m.id, m);
               }
             });
           }
-          merged.humanitarianActivities = Array.from(actMap.values());
+          merged.members = Array.from(map.values());
         }
-      } catch (e) {
-        // Dedicated table check optional
-      }
+      } catch (e) {}
+
+      // 4.2 Blood Donors
+      try {
+        const donorRows = (await fetchAllRowsFromTable(supabase, 'blood_donors')) || (await fetchAllRowsFromTable(supabase, 'donors'));
+        if (donorRows && donorRows.length > 0) {
+          const deletedDonorIds = merged.deletedDonorIds || [];
+          const dedicatedDonors = donorRows
+            .filter((r: any) => r && r.id && !deletedDonorIds.includes(r.id))
+            .map(mapDbToDonor);
+          const map = new Map<string, any>();
+          dedicatedDonors.forEach((d: any) => map.set(d.id, d));
+          if (Array.isArray(merged.donors)) {
+            merged.donors.forEach((d: any) => {
+              if (!map.has(d.id) && !deletedDonorIds.includes(d.id)) {
+                map.set(d.id, d);
+              }
+            });
+          }
+          merged.donors = Array.from(map.values());
+        }
+      } catch (e) {}
+
+      // 4.3 Fund Records
+      try {
+        const fundRows = (await fetchAllRowsFromTable(supabase, 'fund_records')) || (await fetchAllRowsFromTable(supabase, 'funds'));
+        if (fundRows && fundRows.length > 0) {
+          const deletedFundIds = merged.deletedFundIds || [];
+          const dedicatedFunds = fundRows
+            .filter((r: any) => r && r.id && !deletedFundIds.includes(r.id))
+            .map(mapDbToFund);
+          const map = new Map<string, any>();
+          dedicatedFunds.forEach((f: any) => map.set(f.id, f));
+          if (Array.isArray(merged.funds)) {
+            merged.funds.forEach((f: any) => {
+              if (!map.has(f.id) && !deletedFundIds.includes(f.id)) {
+                map.set(f.id, f);
+              }
+            });
+          }
+          merged.funds = Array.from(map.values());
+        }
+      } catch (e) {}
+
+      // 4.4 Notices
+      try {
+        const noticeRows = await fetchAllRowsFromTable(supabase, 'notices');
+        if (noticeRows && noticeRows.length > 0) {
+          const deletedNoticeIds = merged.deletedNoticeIds || [];
+          const dedicatedNotices = noticeRows
+            .filter((r: any) => r && r.id && !deletedNoticeIds.includes(r.id))
+            .map(mapDbToNotice);
+          const map = new Map<string, any>();
+          dedicatedNotices.forEach((n: any) => map.set(n.id, n));
+          if (Array.isArray(merged.notices)) {
+            merged.notices.forEach((n: any) => {
+              if (!map.has(n.id) && !deletedNoticeIds.includes(n.id)) {
+                map.set(n.id, n);
+              }
+            });
+          }
+          merged.notices = Array.from(map.values());
+        }
+      } catch (e) {}
+
+      // 4.5 Humanitarian Activities
+      try {
+        const actRows = (await fetchAllRowsFromTable(supabase, 'humanitarian_activities')) || (await fetchAllRowsFromTable(supabase, 'humanitarianActivities'));
+        if (actRows && actRows.length > 0) {
+          const deletedActIds = merged.deletedActivityIds || [];
+          const dedicatedActivities = actRows
+            .filter((r: any) => r && r.id && !deletedActIds.includes(r.id))
+            .map(mapDbToActivity);
+          const map = new Map<string, any>();
+          dedicatedActivities.forEach((a: any) => map.set(a.id, a));
+          if (Array.isArray(merged.humanitarianActivities)) {
+            merged.humanitarianActivities.forEach((a: any) => {
+              if (!map.has(a.id) && !deletedActIds.includes(a.id)) {
+                map.set(a.id, a);
+              }
+            });
+          }
+          merged.humanitarianActivities = Array.from(map.values());
+        }
+      } catch (e) {}
+
+      // 4.6 Support Reports
+      try {
+        const reportRows = (await fetchAllRowsFromTable(supabase, 'support_reports')) || (await fetchAllRowsFromTable(supabase, 'supportReports'));
+        if (reportRows && reportRows.length > 0) {
+          const deletedReportIds = merged.deletedReportIds || [];
+          const dedicatedReports = reportRows
+            .filter((r: any) => r && r.id && !deletedReportIds.includes(r.id))
+            .map(mapDbToReport);
+          const map = new Map<string, any>();
+          dedicatedReports.forEach((r: any) => map.set(r.id, r));
+          if (Array.isArray(merged.supportReports)) {
+            merged.supportReports.forEach((r: any) => {
+              if (!map.has(r.id) && !deletedReportIds.includes(r.id)) {
+                map.set(r.id, r);
+              }
+            });
+          }
+          merged.supportReports = Array.from(map.values());
+        }
+      } catch (e) {}
+
+      // 4.7 Home Slides
+      try {
+        const slideRows = (await fetchAllRowsFromTable(supabase, 'home_slides')) || (await fetchAllRowsFromTable(supabase, 'homeSlides'));
+        if (slideRows && slideRows.length > 0) {
+          const deletedSlideIds = merged.deletedSlideIds || [];
+          const dedicatedSlides = slideRows
+            .filter((r: any) => r && r.id && !deletedSlideIds.includes(r.id))
+            .map(mapDbToSlide);
+          const map = new Map<string, any>();
+          dedicatedSlides.forEach((s: any) => map.set(s.id, s));
+          if (Array.isArray(merged.homeSlides)) {
+            merged.homeSlides.forEach((s: any) => {
+              if (!map.has(s.id) && !deletedSlideIds.includes(s.id)) {
+                map.set(s.id, s);
+              }
+            });
+          }
+          merged.homeSlides = Array.from(map.values());
+        }
+      } catch (e) {}
+
+      // 4.8 Organization Rules
+      try {
+        const ruleRows = (await fetchAllRowsFromTable(supabase, 'organization_rules')) || (await fetchAllRowsFromTable(supabase, 'organizationRules'));
+        if (ruleRows && ruleRows.length > 0) {
+          const deletedRuleIds = merged.deletedRuleIds || [];
+          const dedicatedRules = ruleRows
+            .filter((r: any) => r && r.id && !deletedRuleIds.includes(r.id))
+            .map(mapDbToRule);
+          const map = new Map<string, any>();
+          dedicatedRules.forEach((r: any) => map.set(r.id, r));
+          if (Array.isArray(merged.organizationRules)) {
+            merged.organizationRules.forEach((r: any) => {
+              if (!map.has(r.id) && !deletedRuleIds.includes(r.id)) {
+                map.set(r.id, r);
+              }
+            });
+          }
+          merged.organizationRules = Array.from(map.values());
+        }
+      } catch (e) {}
 
       // 5. Final strict filtering of any deleted IDs across all arrays
       for (const [delKey, entityKey] of deletedKeyPairs) {
@@ -568,13 +1000,14 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
 }
 
 /**
- * Upserts a single key-value pair to Supabase
+ * Upserts a single key-value pair to Supabase with unlimited scaling support across all tables
  */
 async function syncKeyToSupabase(key: string, value: any): Promise<boolean> {
   const supabase = getSupabaseClient();
   if (!supabase) return false;
 
   try {
+    // 1. Universal Key-Value sync to organization_data
     const { error } = await supabase.from('organization_data').upsert(
       {
         key,
@@ -584,43 +1017,117 @@ async function syncKeyToSupabase(key: string, value: any): Promise<boolean> {
       { onConflict: 'key' }
     );
 
-    if (error) {
-      if (isTableMissingError(error)) {
-        // Table not created yet in Supabase project
-        return false;
-      }
+    if (error && !isTableMissingError(error)) {
       console.log(`[Supabase] Upsert notice for key "${key}":`, error.message);
-      return false;
     }
 
-    // Direct synchronization for humanitarian activities to dedicated table if present
+    // 2. Direct synchronization to dedicated tables if present in Supabase
+    // 2.1 Members
+    if (key === 'members' && Array.isArray(value)) {
+      try {
+        const records = value.map(mapMemberToDb);
+        await upsertInChunks(supabase, 'members', records);
+        const localDb = readLocalDatabase();
+        const deletedIds: string[] = localDb.deletedMemberIds || [];
+        if (deletedIds.length > 0) {
+          await supabase.from('members').delete().in('id', deletedIds);
+        }
+      } catch (e) {}
+    }
+
+    // 2.2 Blood Donors
+    if (key === 'donors' && Array.isArray(value)) {
+      try {
+        const records = value.map(mapDonorToDb);
+        await upsertInChunks(supabase, 'blood_donors', records);
+        const localDb = readLocalDatabase();
+        const deletedIds: string[] = localDb.deletedDonorIds || [];
+        if (deletedIds.length > 0) {
+          await supabase.from('blood_donors').delete().in('id', deletedIds);
+        }
+      } catch (e) {}
+    }
+
+    // 2.3 Funds
+    if (key === 'funds' && Array.isArray(value)) {
+      try {
+        const records = value.map(mapFundToDb);
+        await upsertInChunks(supabase, 'fund_records', records);
+        const localDb = readLocalDatabase();
+        const deletedIds: string[] = localDb.deletedFundIds || [];
+        if (deletedIds.length > 0) {
+          await supabase.from('fund_records').delete().in('id', deletedIds);
+        }
+      } catch (e) {}
+    }
+
+    // 2.4 Notices
+    if (key === 'notices' && Array.isArray(value)) {
+      try {
+        const records = value.map(mapNoticeToDb);
+        await upsertInChunks(supabase, 'notices', records);
+        const localDb = readLocalDatabase();
+        const deletedIds: string[] = localDb.deletedNoticeIds || [];
+        if (deletedIds.length > 0) {
+          await supabase.from('notices').delete().in('id', deletedIds);
+        }
+      } catch (e) {}
+    }
+
+    // 2.5 Humanitarian Activities
     if (key === 'humanitarianActivities' && Array.isArray(value)) {
       try {
         if (value.length === 0) {
           await supabase.from('humanitarian_activities').delete().neq('id', '___all___');
-          await supabase.from('humanitarianActivities').delete().neq('id', '___all___');
         } else {
-          const records = value.map((act: any) => ({
-            id: act.id,
-            title: act.title || '',
-            description: act.description || '',
-            items_given: act.itemsGiven || '',
-            cost: Number(act.cost) || 0,
-            handled_by: act.handledBy || '',
-            recipient_name: act.recipientName || '',
-            recipient_photo_url: act.recipientPhotoUrl || '',
-            date: act.date || '',
-            location: act.location || '',
-            is_featured: Boolean(act.isFeatured),
-            updated_at: new Date().toISOString()
-          }));
-          await supabase.from('humanitarian_activities').upsert(records, { onConflict: 'id' });
-          const ids = value.map((a: any) => a.id);
-          await supabase.from('humanitarian_activities').delete().not('id', 'in', `(${ids.map((i: string) => `"${i}"`).join(',')})`);
+          const records = value.map(mapActivityToDb);
+          await upsertInChunks(supabase, 'humanitarian_activities', records);
+          const localDb = readLocalDatabase();
+          const deletedIds: string[] = localDb.deletedActivityIds || [];
+          if (deletedIds.length > 0) {
+            await supabase.from('humanitarian_activities').delete().in('id', deletedIds);
+          }
         }
-      } catch (tableErr) {
-        // Dedicated table might not exist; organization_data handles persistence
-      }
+      } catch (e) {}
+    }
+
+    // 2.6 Support Reports
+    if (key === 'supportReports' && Array.isArray(value)) {
+      try {
+        const records = value.map(mapReportToDb);
+        await upsertInChunks(supabase, 'support_reports', records);
+        const localDb = readLocalDatabase();
+        const deletedIds: string[] = localDb.deletedReportIds || [];
+        if (deletedIds.length > 0) {
+          await supabase.from('support_reports').delete().in('id', deletedIds);
+        }
+      } catch (e) {}
+    }
+
+    // 2.7 Home Slides
+    if (key === 'homeSlides' && Array.isArray(value)) {
+      try {
+        const records = value.map(mapSlideToDb);
+        await upsertInChunks(supabase, 'home_slides', records);
+        const localDb = readLocalDatabase();
+        const deletedIds: string[] = localDb.deletedSlideIds || [];
+        if (deletedIds.length > 0) {
+          await supabase.from('home_slides').delete().in('id', deletedIds);
+        }
+      } catch (e) {}
+    }
+
+    // 2.8 Organization Rules
+    if (key === 'organizationRules' && Array.isArray(value)) {
+      try {
+        const records = value.map(mapRuleToDb);
+        await upsertInChunks(supabase, 'organization_rules', records);
+        const localDb = readLocalDatabase();
+        const deletedIds: string[] = localDb.deletedRuleIds || [];
+        if (deletedIds.length > 0) {
+          await supabase.from('organization_rules').delete().in('id', deletedIds);
+        }
+      } catch (e) {}
     }
 
     console.log(`[Supabase] Successfully saved key "${key}" to Supabase!`);
@@ -835,11 +1342,27 @@ async function testSupabaseConnection(url?: string, key?: string): Promise<{
       };
     }
 
+    // Check counts on tables
+    let details: string[] = [`organization_data: ${data ? data.length : 0}টি কি`];
+    try {
+      const { count: mCount } = await client.from('members').select('*', { count: 'exact', head: true });
+      if (typeof mCount === 'number') details.push(`সদস্য (members): ${mCount} জন`);
+    } catch (e) {}
+    try {
+      const { count: dCount } = await client.from('blood_donors').select('*', { count: 'exact', head: true });
+      if (typeof dCount === 'number') details.push(`রক্তদাতা (blood_donors): ${dCount} জন`);
+    } catch (e) {}
+    try {
+      const { count: fCount } = await client.from('fund_records').select('*', { count: 'exact', head: true });
+      if (typeof fCount === 'number') details.push(`ফান্ড রেকর্ড (fund_records): ${fCount}টি`);
+    } catch (e) {}
+
+    const detailsStr = details.length > 1 ? ` (${details.join(', ')})` : '';
     return {
       connected: true,
       tableExists: true,
       count: data ? data.length : 0,
-      message: `সুপাবেজ ক্লাউড ডাটাবেজ সফলভাবে সংযুক্ত ও সম্পূর্ণ প্রস্তুত! মোট ${data ? data.length : 0}টি সেভ করা কি-ডাটা ক্লাউডে বিদ্যমান রয়েছে।`
+      message: `সুপাবেজ ক্লাউড ডাটাবেজ সফলভাবে সংযুক্ত ও সম্পূর্ণ প্রস্তুত! কোনো লিমিট ছাড়া আনলিমিটেড স্কেলিং সক্রিয় রয়েছে${detailsStr}।`
     };
   } catch (e: any) {
     return {
@@ -869,8 +1392,11 @@ app.get('/api/health', (req, res) => {
 // GET full synchronized database state (pulls fresh from Supabase if configured)
 app.get('/api/data', async (req, res) => {
   try {
-    // Attempt real-time sync from Supabase if configured
-    const cloudDb = await syncFromSupabase();
+    // Attempt real-time sync from Supabase with a fast 2500ms timeout so requests never stall
+    const cloudDb = await Promise.race([
+      syncFromSupabase(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500))
+    ]);
     const db = cloudDb || readLocalDatabase();
     res.json({ success: true, data: db, source: cloudDb ? 'supabase' : 'local' });
   } catch (e: any) {

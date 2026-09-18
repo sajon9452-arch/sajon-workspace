@@ -72,6 +72,39 @@ export function notifyDataChange(key: string, data?: any): void {
 }
 
 /**
+ * Resilient Local Storage Setter
+ * Prevents browser QuotaExceededError from interrupting app execution or stopping cloud persistence.
+ * If quota limit is hit, creates a lightweight local representation while the memory and backend retain 100% full fidelity.
+ */
+export function safeSetLocalStorage(key: string, data: any): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const serialized = JSON.stringify(data);
+    localStorage.setItem(key, serialized);
+  } catch (err: any) {
+    console.warn(`[Storage] Local storage quota limit reached for "${key}". Retaining full data in memory and cloud database.`);
+    try {
+      if (Array.isArray(data)) {
+        // Strip heavy base64 strings (>2000 chars) for local caching fallback
+        const compact = data.map((item: any) => {
+          if (item && typeof item === 'object') {
+            const copy = { ...item };
+            if (typeof copy.photoUrl === 'string' && copy.photoUrl.length > 2000) copy.photoUrl = '';
+            if (typeof copy.imageUrl === 'string' && copy.imageUrl.length > 2000) copy.imageUrl = '';
+            if (typeof copy.recipientPhotoUrl === 'string' && copy.recipientPhotoUrl.length > 2000) copy.recipientPhotoUrl = '';
+            return copy;
+          }
+          return item;
+        });
+        localStorage.setItem(key, JSON.stringify(compact));
+      }
+    } catch (compactErr) {
+      // Memory state and backend API are authoritative
+    }
+  }
+}
+
+/**
  * Reconciles an entity array in storage non-destructively:
  * 1. Unions incoming server data with local changes by unique ID.
  * 2. Filters out any items whose IDs are in the deleted ID blacklist.
@@ -126,7 +159,7 @@ function reconcileEntityStorageList<T extends { id: string }>(
   const changed = currentJson !== newJson;
 
   if (changed) {
-    localStorage.setItem(storageKey, newJson);
+    safeSetLocalStorage(storageKey, merged);
   }
 
   return { merged, changed, hasLocalAdditions };
@@ -398,8 +431,8 @@ export function loadOrgProfile(): OrganizationProfile {
 
 export function saveOrgProfile(profile: OrganizationProfile): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
     notifyDataChange(STORAGE_KEYS.PROFILE, profile);
+    safeSetLocalStorage(STORAGE_KEYS.PROFILE, profile);
     syncKeyToServer('profile', profile);
   } catch (e) {
     console.error('Error saving org profile', e);
@@ -469,8 +502,8 @@ export function saveMembers(members: Member[]): void {
     const deletedIds = loadDeletedMemberIds();
     const filtered = members.filter(m => !deletedIds.includes(m.id));
     const sorted = sortMembersOldestFirst(filtered);
-    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(sorted));
     notifyDataChange(STORAGE_KEYS.MEMBERS, sorted);
+    safeSetLocalStorage(STORAGE_KEYS.MEMBERS, sorted);
     syncKeyToServer('members', sorted);
   } catch (e) {
     console.error('Error saving members', e);
@@ -539,8 +572,8 @@ export function saveDonors(donors: BloodDonor[]): void {
   try {
     const deletedIds = loadDeletedDonorIds();
     const filtered = donors.filter(d => !deletedIds.includes(d.id));
-    localStorage.setItem(STORAGE_KEYS.DONORS, JSON.stringify(filtered));
     notifyDataChange(STORAGE_KEYS.DONORS, filtered);
+    safeSetLocalStorage(STORAGE_KEYS.DONORS, filtered);
     syncKeyToServer('donors', filtered);
   } catch (e) {
     console.error('Error saving donors', e);
@@ -609,8 +642,8 @@ export function saveNotices(notices: Notice[]): void {
   try {
     const deletedIds = loadDeletedNoticeIds();
     const filtered = notices.filter(n => !deletedIds.includes(n.id));
-    localStorage.setItem(STORAGE_KEYS.NOTICES, JSON.stringify(filtered));
     notifyDataChange(STORAGE_KEYS.NOTICES, filtered);
+    safeSetLocalStorage(STORAGE_KEYS.NOTICES, filtered);
     syncKeyToServer('notices', filtered);
   } catch (e) {
     console.error('Error saving notices', e);
@@ -679,8 +712,8 @@ export function saveFunds(funds: FundRecord[]): void {
   try {
     const deletedIds = loadDeletedFundIds();
     const filtered = funds.filter(f => !deletedIds.includes(f.id));
-    localStorage.setItem(STORAGE_KEYS.FUNDS, JSON.stringify(filtered));
     notifyDataChange(STORAGE_KEYS.FUNDS, filtered);
+    safeSetLocalStorage(STORAGE_KEYS.FUNDS, filtered);
     syncKeyToServer('funds', filtered);
   } catch (e) {
     console.error('Error saving funds', e);
@@ -703,12 +736,12 @@ export function loadManualTotalBalance(): number | null {
 
 export function saveManualTotalBalance(amount: number | null): void {
   try {
+    notifyDataChange(STORAGE_KEYS.TOTAL_ORG_BALANCE, amount);
     if (amount === null) {
       localStorage.removeItem(STORAGE_KEYS.TOTAL_ORG_BALANCE);
     } else {
-      localStorage.setItem(STORAGE_KEYS.TOTAL_ORG_BALANCE, amount.toString());
+      safeSetLocalStorage(STORAGE_KEYS.TOTAL_ORG_BALANCE, amount.toString());
     }
-    notifyDataChange(STORAGE_KEYS.TOTAL_ORG_BALANCE, amount);
     syncKeyToServer('manualTotalBalance', amount);
   } catch (e) {
     console.error('Error saving manual total balance', e);
@@ -746,8 +779,8 @@ export function loadPaymentSettings(): PaymentGatewayConfig {
 
 export function savePaymentSettings(settings: PaymentGatewayConfig): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.PAYMENT_SETTINGS, JSON.stringify(settings));
     notifyDataChange(STORAGE_KEYS.PAYMENT_SETTINGS, settings);
+    safeSetLocalStorage(STORAGE_KEYS.PAYMENT_SETTINGS, settings);
     syncKeyToServer('paymentConfig', settings);
   } catch (e) {
     console.error('Error saving payment settings', e);
@@ -816,8 +849,8 @@ export function saveSupportReports(reports: SupportReportItem[]): void {
   try {
     const deletedIds = loadDeletedReportIds();
     const filtered = reports.filter(r => !deletedIds.includes(r.id));
-    localStorage.setItem(STORAGE_KEYS.SUPPORT_REPORTS, JSON.stringify(filtered));
     notifyDataChange(STORAGE_KEYS.SUPPORT_REPORTS, filtered);
+    safeSetLocalStorage(STORAGE_KEYS.SUPPORT_REPORTS, filtered);
     syncKeyToServer('supportReports', filtered);
   } catch (e) {
     console.error('Error saving support reports', e);
@@ -872,8 +905,8 @@ export function loadHomeSlides(): HomeSlide[] {
 
 export function saveHomeSlides(slides: HomeSlide[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, JSON.stringify(slides));
     notifyDataChange(STORAGE_KEYS.HOME_SLIDES, slides);
+    safeSetLocalStorage(STORAGE_KEYS.HOME_SLIDES, slides);
     syncKeyToServer('homeSlides', slides);
   } catch (e) {
     console.error('Error saving home slides', e);
@@ -898,8 +931,8 @@ export function loadCalendarBanners(): Record<number, CalendarMonthlyBanner> {
 
 export function saveCalendarBanners(banners: Record<number, CalendarMonthlyBanner>): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.CALENDAR_BANNERS, JSON.stringify(banners));
     notifyDataChange(STORAGE_KEYS.CALENDAR_BANNERS, banners);
+    safeSetLocalStorage(STORAGE_KEYS.CALENDAR_BANNERS, banners);
     syncKeyToServer('calendarBanners', banners);
   } catch (e) {
     console.error('Error saving calendar banners', e);
@@ -969,8 +1002,8 @@ export function saveHumanitarianActivities(activities: HumanitarianActivity[]): 
   try {
     const deletedIds = loadDeletedActivityIds();
     const filtered = activities.filter(a => !deletedIds.includes(a.id));
-    localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, JSON.stringify(filtered));
     notifyDataChange(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, filtered);
+    safeSetLocalStorage(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, filtered);
     syncKeyToServer('humanitarianActivities', filtered);
   } catch (e) {
     console.error('Error saving humanitarian activities', e);
@@ -1039,8 +1072,8 @@ export function saveOrganizationRules(rules: OrganizationRule[]): void {
   try {
     const deletedIds = loadDeletedRuleIds();
     const filtered = rules.filter(r => !deletedIds.includes(r.id));
-    localStorage.setItem(STORAGE_KEYS.ORGANIZATION_RULES, JSON.stringify(filtered));
     notifyDataChange(STORAGE_KEYS.ORGANIZATION_RULES, filtered);
+    safeSetLocalStorage(STORAGE_KEYS.ORGANIZATION_RULES, filtered);
     syncKeyToServer('organizationRules', filtered);
   } catch (e) {
     console.error('Error saving organization rules', e);

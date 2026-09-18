@@ -55,7 +55,12 @@ export const NoticeScreen: React.FC<NoticeScreenProps> = ({
     setEditingNotice(n);
     setNoticeText(n.noticeText);
     setNoticeDate(n.date);
-    setNoticeCategory(n.category || 'সাধারণ');
+    const cat = n.category;
+    if (cat === 'জরুরি' || cat === 'সাধারণ' || cat === 'কার্যক্রম' || cat === 'রক্তদান') {
+      setNoticeCategory(cat);
+    } else {
+      setNoticeCategory('সাধারণ');
+    }
     setIsPinned(Boolean(n.isPinned));
     setIsAddModalOpen(true);
   };
