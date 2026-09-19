@@ -264,3 +264,43 @@ export function getMemberPhotoUrl(member?: Partial<Member> | null): string {
 
   return trimmed;
 }
+
+/**
+ * Clean up fund description and category to prevent duplicate or overlapping text
+ * (e.g. preventing duplicate "মাসিক চাঁদা" when description already is "মাসিক নিয়মিত চাঁদা")
+ */
+export function getCleanFundDescription(record: {
+  description?: string;
+  category?: string;
+}): {
+  primaryText: string;
+  showCategoryBadge: boolean;
+  categoryBadgeText: string;
+} {
+  const desc = (record.description || '').trim();
+  const cat = (record.category || '').trim();
+
+  if (!desc) {
+    return {
+      primaryText: cat || 'মাসিক নিয়মিত চাঁদা',
+      showCategoryBadge: false,
+      categoryBadgeText: '',
+    };
+  }
+
+  const isMonthlyDesc = desc.includes('মাসিক') || desc.includes('চাঁদা');
+  const isMonthlyCat = cat.includes('মাসিক') || cat.includes('চাঁদা');
+
+  const isRedundant =
+    !cat ||
+    desc.toLowerCase() === cat.toLowerCase() ||
+    (isMonthlyDesc && isMonthlyCat) ||
+    desc.includes(cat) ||
+    cat.includes(desc);
+
+  return {
+    primaryText: desc,
+    showCategoryBadge: !isRedundant,
+    categoryBadgeText: cat,
+  };
+}

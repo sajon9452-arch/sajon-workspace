@@ -113,12 +113,12 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-rose-100 animate-scaleUp overflow-y-auto max-h-[90vh]">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-rose-100 animate-scaleUp max-h-[92vh] flex flex-col my-auto overflow-hidden">
         {/* Modal Header */}
-        <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+        <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
               <TrendingDown className="w-5 h-5" />
             </div>
             <div>
@@ -132,19 +132,19 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-xl hover:bg-slate-100 transition"
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-xl hover:bg-slate-100 transition cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {error && (
-          <div className="mt-3 p-2.5 rounded-xl bg-rose-50 text-rose-800 text-xs font-semibold border border-rose-200">
+          <div className="mt-3 p-2.5 rounded-xl bg-rose-50 text-rose-800 text-xs font-semibold border border-rose-200 shrink-0">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+        <form onSubmit={handleSubmit} className="space-y-4 mt-3 overflow-y-auto pr-1 flex-1">
           {/* Reason / Description */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
@@ -264,18 +264,18 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             </div>
           </div>
 
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+          <div className="pt-3 border-t border-slate-100 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+              className="px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition text-center cursor-pointer"
             >
               বাতিল
             </button>
             <button
               type="submit"
               id="submit-expense-breakdown-btn"
-              className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+              className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Check className="w-4 h-4" />
               <span>{initialData ? 'আপডেট সম্পন্ন করুন' : 'খরচের বিবরণ সংরক্ষণ করুন'}</span>
