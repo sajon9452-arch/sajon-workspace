@@ -36,8 +36,12 @@ import { DueSmsModal } from './DueSmsModal';
 import { 
   triggerDirectSimSms, 
   generatePaidConfirmationSms, 
+  generateDirectSimPaidSms,
+  generateDirectSimDueSms,
   resolveMemberPhone,
-  buildDirectSimSmsUrl 
+  buildDirectSimSmsUrl,
+  extractArrearsMonthCount,
+  ARREARS_MONTH_OPTIONS
 } from '../utils/smsHelper';
 
 interface FundScreenProps {
@@ -89,6 +93,11 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [category, setCategory] = useState<'মাসিক চাঁদা' | 'এককালীন অনুদান' | 'জরুরি সাহায্য' | 'খরচ'>('মাসিক চাঁদা');
   const [formError, setFormError] = useState('');
+  const [formMonth, setFormMonth] = useState('মার্চ ২০২৬');
+  const [formPhone, setFormPhone] = useState('');
+  const [arrearsMonthCount, setArrearsMonthCount] = useState<number>(1);
+  const [pastMonthsText, setPastMonthsText] = useState<string>('');
+  const [modalSmsNotice, setModalSmsNotice] = useState<string | null>(null);
 
   // Payment Gateway Selection & Direct Subscription State (Default: null - collapsed by default)
   const paymentConfig = passedPaymentConfig || loadPaymentSettings();
@@ -122,6 +131,76 @@ export const FundScreen: React.FC<FundScreenProps> = ({
     month?: string;
     memberId?: string;
   } | null>(null);
+
+  // Computed Live SMS Preview for Fund Modal
+  const currentModalSmsPreview = useMemo(() => {
+    const moneyVal = amount !== '' ? amount : 0;
+    const nameVal = memberName.trim() || '[সদস্যের নাম]';
+    if (status === 'Paid') {
+      return generateDirectSimPaidSms({
+        memberName: nameVal,
+        months: formMonth.trim() || 'চলতি',
+        money: moneyVal
+      });
+    }
+    if (status === 'Due') {
+      return generateDirectSimDueSms({
+        memberName: nameVal,
+        money: moneyVal,
+        monthCount: arrearsMonthCount,
+        pastMonthsText: pastMonthsText.trim()
+      });
+    }
+    return '';
+  }, [memberName, amount, status, formMonth, arrearsMonthCount, pastMonthsText]);
+
+  // Handle direct SMS click from modal
+  const handleSendDirectSmsFromModal = () => {
+    if (!memberName.trim()) {
+      setFormError('অনুগ্রহ করে সদস্যের নাম লিখুন');
+      return;
+    }
+
+    const resolvedPhone = formPhone.trim() || resolveMemberPhone({ memberName: memberName.trim() }, allMembers);
+    const moneyVal = amount !== '' ? amount : 0;
+
+    let smsText = '';
+    if (status === 'Paid') {
+      smsText = generateDirectSimPaidSms({
+        memberName: memberName.trim(),
+        months: formMonth.trim() || 'চলতি',
+        money: moneyVal
+      });
+    } else if (status === 'Due') {
+      smsText = generateDirectSimDueSms({
+        memberName: memberName.trim(),
+        money: moneyVal,
+        monthCount: arrearsMonthCount,
+        pastMonthsText: pastMonthsText.trim()
+      });
+    } else {
+      smsText = generateDirectSimPaidSms({
+        memberName: memberName.trim(),
+        months: formMonth.trim() || 'চলতি',
+        money: moneyVal
+      });
+    }
+
+    // Trigger Direct SIM SMS intent
+    triggerDirectSimSms(resolvedPhone, smsText);
+
+    // Also copy to clipboard for user convenience
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(smsText).catch(() => {});
+    }
+
+    setModalSmsNotice(
+      resolvedPhone
+        ? `${resolvedPhone} নম্বরে সরাসরি SIM SMS অ্যাপ চালু হয়েছে এবং মেসেজ কপি হয়েছে`
+        : 'সরাসরি SIM SMS অ্যাপ চালু হয়েছে এবং মেসেজ ক্লিপবোর্ডে কপি হয়েছে'
+    );
+    setTimeout(() => setModalSmsNotice(null), 5000);
+  };
 
   const handleApproveOrTogglePaid = (record: FundRecord, targetStatus?: PaymentStatus) => {
     const nextStatus: PaymentStatus = targetStatus || (record.status === 'Paid' ? 'Due' : 'Paid');
@@ -376,6 +455,12 @@ export const FundScreen: React.FC<FundScreenProps> = ({
     setDescription(rec.description || '');
     setDate(rec.date);
     setCategory((rec.category as any) || 'মাসিক চাঁদা');
+    setFormMonth(rec.month || rec.description || 'মার্চ ২০২৬');
+    setFormPhone(rec.phone || resolveMemberPhone(rec, allMembers) || '');
+    const parsedArrears = extractArrearsMonthCount(rec);
+    setArrearsMonthCount(parsedArrears.monthCount);
+    setPastMonthsText(parsedArrears.pastMonthsText);
+    setModalSmsNotice(null);
     setIsAddModalOpen(true);
   };
 
@@ -398,6 +483,8 @@ export const FundScreen: React.FC<FundScreenProps> = ({
         status,
         description: description.trim(),
         date,
+        month: formMonth.trim() || undefined,
+        phone: formPhone.trim() || undefined,
         category
       });
     } else {
@@ -407,6 +494,8 @@ export const FundScreen: React.FC<FundScreenProps> = ({
         status,
         description: description.trim() || 'মাসিক অনুদান',
         date,
+        month: formMonth.trim() || undefined,
+        phone: formPhone.trim() || undefined,
         category
       });
     }
@@ -417,6 +506,11 @@ export const FundScreen: React.FC<FundScreenProps> = ({
     setDescription('মাসিক নিয়মিত চাঁদা');
     setDate(new Date().toISOString().split('T')[0]);
     setCategory('মাসিক চাঁদা');
+    setFormMonth('মার্চ ২০২৬');
+    setFormPhone('');
+    setArrearsMonthCount(1);
+    setPastMonthsText('');
+    setModalSmsNotice(null);
     setEditingRecord(null);
     setFormError('');
     setIsAddModalOpen(false);
@@ -501,6 +595,11 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                 setDescription('মাসিক নিয়মিত চাঁদা');
                 setDate(new Date().toISOString().split('T')[0]);
                 setCategory('মাসিক চাঁদা');
+                setFormMonth('মার্চ ২০২৬');
+                setFormPhone('');
+                setArrearsMonthCount(1);
+                setPastMonthsText('');
+                setModalSmsNotice(null);
                 setIsAddModalOpen(true);
               }}
               id="fund-add-entry-btn"
@@ -1809,7 +1908,14 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                   type="text"
                   required
                   value={memberName}
-                  onChange={(e) => setMemberName(e.target.value)}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setMemberName(name);
+                    if (!formPhone) {
+                      const matched = resolveMemberPhone({ memberName: name }, allMembers);
+                      if (matched) setFormPhone(matched);
+                    }
+                  }}
                   placeholder="যেমন: মো: কামরুল ইসলাম"
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none"
                 />
@@ -1837,7 +1943,21 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                   </label>
                   <select
                     value={status}
-                    onChange={(e) => setStatus(e.target.value as PaymentStatus)}
+                    onChange={(e) => {
+                      const newStatus = e.target.value as PaymentStatus;
+                      setStatus(newStatus);
+                      if (newStatus === 'Due') {
+                        const parsed = extractArrearsMonthCount({
+                          month: formMonth,
+                          description: description,
+                          amount: amount
+                        });
+                        if (parsed.monthCount > 1) {
+                          setArrearsMonthCount(parsed.monthCount);
+                          setPastMonthsText(parsed.pastMonthsText);
+                        }
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none bg-white font-bold"
                   >
                     <option value="Paid">Paid (পরিশোধিত)</option>
@@ -1847,6 +1967,143 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                   </select>
                 </div>
               </div>
+
+              {/* Month / Year and Phone Number Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    মাস / সাল (Month)
+                  </label>
+                  <input
+                    type="text"
+                    value={formMonth}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormMonth(val);
+                      if (status === 'Due') {
+                        const parsed = extractArrearsMonthCount({ month: val });
+                        if (parsed.monthCount > 1) {
+                          setArrearsMonthCount(parsed.monthCount);
+                          setPastMonthsText(parsed.pastMonthsText);
+                        }
+                      }
+                    }}
+                    placeholder="যেমন: মার্চ ২০২৬"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    মোবাইল নম্বর (SIM SMS)
+                  </label>
+                  <input
+                    type="tel"
+                    value={formPhone}
+                    onChange={(e) => setFormPhone(e.target.value)}
+                    placeholder="01711-XXXXXX"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Due Status Dynamic Arrears Selection */}
+              {status === 'Due' && (
+                <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                      <span>বকেয়া মাসের সংখ্যা ও রিমাইন্ডার হিসাব</span>
+                    </label>
+                    <span className="text-[10px] font-bold text-amber-800 bg-white px-2 py-0.5 rounded-full border border-amber-300 shadow-2xs">
+                      {arrearsMonthCount === 1 ? '১ মাস (রানিং)' : `মোট ${toBengaliNumber(arrearsMonthCount)} মাস`}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        বকেয়া মাস নির্বাচন
+                      </label>
+                      <select
+                        value={arrearsMonthCount}
+                        onChange={(e) => {
+                          const count = Number(e.target.value);
+                          setArrearsMonthCount(count);
+                          if (count > 1) {
+                            setPastMonthsText(toBengaliNumber(count - 1));
+                          } else {
+                            setPastMonthsText('');
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-bold focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-none"
+                      >
+                        <option value={1}>১ মাস (শুধুমাত্র রানিং মাস)</option>
+                        {ARREARS_MONTH_OPTIONS.filter(n => n > 1).map(n => (
+                          <option key={n} value={n}>
+                            {toBengaliNumber(n)} মাস (রানিং + গত {toBengaliNumber(n - 1)} মাস)
+                          </option>
+                        ))}
+                        {!ARREARS_MONTH_OPTIONS.includes(arrearsMonthCount) && arrearsMonthCount > 1 && (
+                          <option value={arrearsMonthCount}>
+                            {toBengaliNumber(arrearsMonthCount)} মাস (রানিং + গত {toBengaliNumber(arrearsMonthCount - 1)} মাস)
+                          </option>
+                        )}
+                      </select>
+                    </div>
+
+                    {arrearsMonthCount > 1 && (
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          অতীত মাসের সংখ্যা / নাম
+                        </label>
+                        <input
+                          type="text"
+                          value={pastMonthsText}
+                          onChange={(e) => setPastMonthsText(e.target.value)}
+                          placeholder={toBengaliNumber(arrearsMonthCount - 1)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-none font-medium"
+                          title="টেমপ্লেটে 'গত [Months] মাস সহ' হিসেবে প্রদর্শিত হবে"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-amber-900 leading-relaxed bg-amber-100/70 p-2 rounded-lg">
+                    {arrearsMonthCount === 1 ? (
+                      <span>ℹ️ ১ মাস বকেয়া থাকায় রানিং মাসের সিঙ্গেল টেমপ্লেট প্রযোজ্য হবে।</span>
+                    ) : (
+                      <span>ℹ️ ১ মাসের বেশি বকেয়া থাকায় রানিং মাস এবং গত <strong>{pastMonthsText || toBengaliNumber(arrearsMonthCount - 1)}</strong> মাস সহ বকেয়া টেমপ্লেট প্রযোজ্য হবে।</span>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {/* Live Direct SIM SMS Message Preview */}
+              {(status === 'Paid' || status === 'Due') && currentModalSmsPreview && (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                    <span className="flex items-center gap-1.5 text-emerald-800">
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>মেসেজ প্রিভিউ (Direct SIM SMS):</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {currentModalSmsPreview.length} অক্ষর
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700 leading-relaxed font-sans bg-white p-2.5 rounded-lg border border-slate-200 select-all shadow-2xs">
+                    {currentModalSmsPreview}
+                  </p>
+                </div>
+              )}
+
+              {/* In-Modal Feedback Notice */}
+              {modalSmsNotice && (
+                <div className="p-2.5 bg-emerald-50 text-emerald-800 text-xs font-bold rounded-xl border border-emerald-200 flex items-center justify-between animate-fadeIn">
+                  <span>✓ {modalSmsNotice}</span>
+                  <button type="button" onClick={() => setModalSmsNotice(null)} className="text-emerald-600 hover:text-emerald-800 font-bold ml-2">✕</button>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1892,6 +2149,16 @@ export const FundScreen: React.FC<FundScreenProps> = ({
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleSendDirectSmsFromModal}
+                  id="fund-send-sms-btn"
+                  className="px-3.5 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                  title="সরাসরি মোবাইলের SIM SMS অ্যাপে মেসেজ পাঠান"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>এসএমএস পাঠান</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => { setIsAddModalOpen(false); setEditingRecord(null); }}

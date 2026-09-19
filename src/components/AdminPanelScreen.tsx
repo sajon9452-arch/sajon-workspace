@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Suspense, lazy } from 'react';
 import {
   ShieldCheck,
   Users,
@@ -110,7 +110,11 @@ import { DueSmsModal } from './DueSmsModal';
 import {
   triggerDirectSimSms,
   generatePaidConfirmationSms,
-  resolveMemberPhone
+  generateDirectSimPaidSms,
+  generateDirectSimDueSms,
+  resolveMemberPhone,
+  extractArrearsMonthCount,
+  ARREARS_MONTH_OPTIONS
 } from '../utils/smsHelper';
 
 interface AdminPanelScreenProps {
@@ -327,6 +331,124 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     month?: string;
     memberId?: string;
   } | null>(null);
+
+  // Fund Modal States for SIM SMS & Form Management
+  const [fundFormMemberName, setFundFormMemberName] = useState('');
+  const [fundFormAmount, setFundFormAmount] = useState<number | ''>(1000);
+  const [fundFormStatus, setFundFormStatus] = useState<PaymentStatus>('Paid');
+  const [fundFormMonth, setFundFormMonth] = useState('মার্চ ২০২৬');
+  const [fundFormPhone, setFundFormPhone] = useState('');
+  const [fundFormNotes, setFundFormNotes] = useState('');
+  const [fundArrearsMonthCount, setFundArrearsMonthCount] = useState<number>(1);
+  const [fundPastMonthsText, setFundPastMonthsText] = useState<string>('');
+  const [fundModalSmsNotice, setFundModalSmsNotice] = useState<string | null>(null);
+
+  const lastLoadedFundIdRef = useRef<string | null>(null);
+  const lastAddFundOpenRef = useRef<boolean>(false);
+
+  // Sync Fund Form states when opening edit or add
+  useEffect(() => {
+    if (editingFund && editingFund.id !== lastLoadedFundIdRef.current) {
+      lastLoadedFundIdRef.current = editingFund.id;
+      lastAddFundOpenRef.current = false;
+
+      const parsedArrears = extractArrearsMonthCount(editingFund);
+      setFundFormMemberName(editingFund.memberName || '');
+      setFundFormAmount(editingFund.amount || 1000);
+      setFundFormStatus(editingFund.status || 'Paid');
+      setFundFormMonth(editingFund.month || 'মার্চ ২০২৬');
+      setFundFormPhone(editingFund.phone || resolveMemberPhone(editingFund, members) || '');
+      setFundFormNotes(editingFund.notes || '');
+      setFundArrearsMonthCount(parsedArrears.monthCount);
+      setFundPastMonthsText(parsedArrears.pastMonthsText);
+      setFundModalSmsNotice(null);
+    } else if (isAddFundOpen && !lastAddFundOpenRef.current) {
+      lastAddFundOpenRef.current = true;
+      lastLoadedFundIdRef.current = null;
+
+      setFundFormMemberName('');
+      setFundFormAmount(1000);
+      setFundFormStatus('Paid');
+      setFundFormMonth('মার্চ ২০২৬');
+      setFundFormPhone('');
+      setFundFormNotes('');
+      setFundArrearsMonthCount(1);
+      setFundPastMonthsText('');
+      setFundModalSmsNotice(null);
+    } else if (!editingFund && !isAddFundOpen) {
+      lastLoadedFundIdRef.current = null;
+      lastAddFundOpenRef.current = false;
+    }
+  }, [editingFund, isAddFundOpen, members]);
+
+  // Computed Live SMS Preview for Admin Fund Modal
+  const currentAdminFundSmsPreview = useMemo(() => {
+    const moneyVal = fundFormAmount !== '' ? Number(fundFormAmount) : 0;
+    const nameVal = fundFormMemberName.trim() || '[সদস্যের নাম]';
+    if (fundFormStatus === 'Paid') {
+      return generateDirectSimPaidSms({
+        memberName: nameVal,
+        months: fundFormMonth.trim() || 'চলতি',
+        money: moneyVal
+      });
+    }
+    if (fundFormStatus === 'Due') {
+      return generateDirectSimDueSms({
+        memberName: nameVal,
+        money: moneyVal,
+        monthCount: fundArrearsMonthCount,
+        pastMonthsText: fundPastMonthsText.trim()
+      });
+    }
+    return '';
+  }, [fundFormMemberName, fundFormAmount, fundFormStatus, fundFormMonth, fundArrearsMonthCount, fundPastMonthsText]);
+
+  // Direct SIM SMS Trigger from Admin Fund Modal
+  const handleSendDirectSmsFromAdminModal = () => {
+    if (!fundFormMemberName.trim()) {
+      notifyError('অনুগ্রহ করে সদস্যের নাম লিখুন');
+      return;
+    }
+
+    const resolvedPhone = fundFormPhone.trim() || resolveMemberPhone({ memberName: fundFormMemberName.trim() }, members);
+    const moneyVal = fundFormAmount !== '' ? Number(fundFormAmount) : 0;
+
+    let smsText = '';
+    if (fundFormStatus === 'Paid') {
+      smsText = generateDirectSimPaidSms({
+        memberName: fundFormMemberName.trim(),
+        months: fundFormMonth.trim() || 'চলতি',
+        money: moneyVal
+      });
+    } else if (fundFormStatus === 'Due') {
+      smsText = generateDirectSimDueSms({
+        memberName: fundFormMemberName.trim(),
+        money: moneyVal,
+        monthCount: fundArrearsMonthCount,
+        pastMonthsText: fundPastMonthsText.trim()
+      });
+    } else {
+      smsText = generateDirectSimPaidSms({
+        memberName: fundFormMemberName.trim(),
+        months: fundFormMonth.trim() || 'চলতি',
+        money: moneyVal
+      });
+    }
+
+    triggerDirectSimSms(resolvedPhone, smsText);
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(smsText).catch(() => {});
+    }
+
+    setFundModalSmsNotice(
+      resolvedPhone
+        ? `${resolvedPhone} নম্বরে সরাসরি SIM SMS অ্যাপ চালু হয়েছে এবং মেসেজ কপি হয়েছে`
+        : 'সরাসরি SIM SMS অ্যাপ চালু হয়েছে এবং মেসেজ ক্লিপবোর্ডে কপি হয়েছে'
+    );
+    notifySuccess('সরাসরি SIM SMS অ্যাপ চালু হয়েছে');
+    setTimeout(() => setFundModalSmsNotice(null), 5000);
+  };
 
   useEffect(() => {
     setEditProfileData(profile);
@@ -4136,7 +4258,15 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                   type="text"
                   name="memberName"
                   required
-                  defaultValue={editingFund?.memberName || ''}
+                  value={fundFormMemberName}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setFundFormMemberName(name);
+                    if (!fundFormPhone) {
+                      const matched = resolveMemberPhone({ memberName: name }, members);
+                      if (matched) setFundFormPhone(matched);
+                    }
+                  }}
                   placeholder="যেমন: মোহাম্মদ সাহেদুল আলম"
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-teal-500/20 focus:outline-none"
                 />
@@ -4149,9 +4279,10 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                     type="number"
                     name="amount"
                     required
-                    defaultValue={editingFund?.amount || '1000'}
+                    value={fundFormAmount}
+                    onChange={(e) => setFundFormAmount(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="1000"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-mono focus:outline-none"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-mono focus:outline-none font-bold"
                   />
                 </div>
 
@@ -4159,7 +4290,22 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                   <label className="block text-xs font-semibold text-slate-700 mb-1">স্ট্যাটাস *</label>
                   <select
                     name="status"
-                    defaultValue={editingFund?.status || 'Paid'}
+                    value={fundFormStatus}
+                    onChange={(e) => {
+                      const newStatus = e.target.value as PaymentStatus;
+                      setFundFormStatus(newStatus);
+                      if (newStatus === 'Due') {
+                        const parsed = extractArrearsMonthCount({
+                          month: fundFormMonth,
+                          notes: fundFormNotes,
+                          amount: fundFormAmount
+                        });
+                        if (parsed.monthCount > 1) {
+                          setFundArrearsMonthCount(parsed.monthCount);
+                          setFundPastMonthsText(parsed.pastMonthsText);
+                        }
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-bold bg-white"
                   >
                     <option value="Paid">Paid (পরিশোধিত)</option>
@@ -4176,8 +4322,19 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                   <input
                     type="text"
                     name="month"
-                    defaultValue={editingFund?.month || 'চলতি মাস'}
-                    placeholder="যেমন: আগস্ট ২০২৬"
+                    value={fundFormMonth}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFundFormMonth(val);
+                      if (fundFormStatus === 'Due') {
+                        const parsed = extractArrearsMonthCount({ month: val });
+                        if (parsed.monthCount > 1) {
+                          setFundArrearsMonthCount(parsed.monthCount);
+                          setFundPastMonthsText(parsed.pastMonthsText);
+                        }
+                      }
+                    }}
+                    placeholder="যেমন: মার্চ ২০২৬"
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none"
                   />
                 </div>
@@ -4185,21 +4342,121 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">ফোন নম্বর (ঐচ্ছিক)</label>
                   <input
-                    type="text"
+                    type="tel"
                     name="phone"
-                    defaultValue={editingFund?.phone || ''}
+                    value={fundFormPhone}
+                    onChange={(e) => setFundFormPhone(e.target.value)}
                     placeholder="01811-XXXXXX"
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-mono focus:outline-none"
                   />
                 </div>
               </div>
 
+              {/* Due Status Arrears Months Selection */}
+              {fundFormStatus === 'Due' && (
+                <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                      <span>বকেয়া মাসের সংখ্যা ও রিমাইন্ডার হিসাব</span>
+                    </label>
+                    <span className="text-[10px] font-bold text-amber-800 bg-white px-2 py-0.5 rounded-full border border-amber-300">
+                      {fundArrearsMonthCount === 1 ? '১ মাস (রানিং)' : `মোট ${toBengaliNumber(fundArrearsMonthCount)} মাস`}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        বকেয়া মাস নির্বাচন
+                      </label>
+                      <select
+                        value={fundArrearsMonthCount}
+                        onChange={(e) => {
+                          const count = Number(e.target.value);
+                          setFundArrearsMonthCount(count);
+                          if (count > 1) {
+                            setFundPastMonthsText(toBengaliNumber(count - 1));
+                          } else {
+                            setFundPastMonthsText('');
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-bold focus:outline-none"
+                      >
+                        <option value={1}>১ মাস (শুধুমাত্র রানিং মাস)</option>
+                        {ARREARS_MONTH_OPTIONS.filter(n => n > 1).map(n => (
+                          <option key={n} value={n}>
+                            {toBengaliNumber(n)} মাস (রানিং + গত {toBengaliNumber(n - 1)} মাস)
+                          </option>
+                        ))}
+                        {!ARREARS_MONTH_OPTIONS.includes(fundArrearsMonthCount) && fundArrearsMonthCount > 1 && (
+                          <option value={fundArrearsMonthCount}>
+                            {toBengaliNumber(fundArrearsMonthCount)} মাস (রানিং + গত {toBengaliNumber(fundArrearsMonthCount - 1)} মাস)
+                          </option>
+                        )}
+                      </select>
+                    </div>
+
+                    {fundArrearsMonthCount > 1 && (
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          অতীত মাসের সংখ্যা / নাম
+                        </label>
+                        <input
+                          type="text"
+                          value={fundPastMonthsText}
+                          onChange={(e) => setFundPastMonthsText(e.target.value)}
+                          placeholder={toBengaliNumber(fundArrearsMonthCount - 1)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none font-medium"
+                          title="টেমপ্লেটে 'গত [Months] মাস সহ' হিসেবে প্রদর্শিত হবে"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-amber-900 leading-relaxed bg-amber-100/70 p-2 rounded-lg">
+                    {fundArrearsMonthCount === 1 ? (
+                      <span>ℹ️ ১ মাস বকেয়া থাকায় রানিং মাসের সিঙ্গেল টেমপ্লেট প্রযোজ্য হবে।</span>
+                    ) : (
+                      <span>ℹ️ ১ মাসের বেশি বকেয়া থাকায় রানিং মাস এবং গত <strong>{fundPastMonthsText || toBengaliNumber(fundArrearsMonthCount - 1)}</strong> মাস সহ বকেয়া টেমপ্লেট প্রযোজ্য হবে।</span>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {/* Live Direct SIM SMS Message Preview */}
+              {(fundFormStatus === 'Paid' || fundFormStatus === 'Due') && currentAdminFundSmsPreview && (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                    <span className="flex items-center gap-1.5 text-teal-800">
+                      <MessageSquare className="w-3.5 h-3.5 text-teal-600" />
+                      <span>মেসেজ প্রিভিউ (Direct SIM SMS):</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {currentAdminFundSmsPreview.length} অক্ষর
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700 leading-relaxed font-sans bg-white p-2.5 rounded-lg border border-slate-200 select-all shadow-2xs">
+                    {currentAdminFundSmsPreview}
+                  </p>
+                </div>
+              )}
+
+              {/* In-Modal Feedback Notice */}
+              {fundModalSmsNotice && (
+                <div className="p-2.5 bg-teal-50 text-teal-800 text-xs font-bold rounded-xl border border-teal-200 flex items-center justify-between animate-fadeIn">
+                  <span>✓ {fundModalSmsNotice}</span>
+                  <button type="button" onClick={() => setFundModalSmsNotice(null)} className="text-teal-600 hover:text-teal-800 font-bold ml-2">✕</button>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">নোট / মন্তব্য</label>
                 <input
                   type="text"
                   name="notes"
-                  defaultValue={editingFund?.notes || ''}
+                  value={fundFormNotes}
+                  onChange={(e) => setFundFormNotes(e.target.value)}
                   placeholder="যেমন: নগদ / বিকাশ মারফত জমা"
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none"
                 />
@@ -4208,14 +4465,24 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
+                  onClick={handleSendDirectSmsFromAdminModal}
+                  id="admin-fund-send-sms-btn"
+                  className="px-3.5 py-2 text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-300 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                  title="সরাসরি মোবাইলের SIM SMS অ্যাপে মেসেজ পাঠান"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-teal-600" />
+                  <span>এসএমএস পাঠান</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => { setIsAddFundOpen(false); setEditingFund(null); }}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
                 >
                   বাতিল
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-xs"
+                  className="px-5 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-xs transition"
                 >
                   {editingFund ? 'আপডেট করুন' : 'সংরক্ষণ করুন'}
                 </button>
