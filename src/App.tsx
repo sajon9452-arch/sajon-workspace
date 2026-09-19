@@ -40,6 +40,7 @@ import {
   saveOrganizationRules,
   loadCalendarBanners,
   saveCalendarBanners,
+  loadDeletedMemberIds,
   recordDeletedMemberId,
   clearDeletedMemberId,
   recordDeletedDonorId,
@@ -134,6 +135,11 @@ export default function App() {
       if (serverData && isMounted) {
         populateLocalStorageFromServer(serverData, true);
         syncAllFromStorage();
+        if (Array.isArray(serverData.members) && serverData.members.length > 0) {
+          const deletedMemberIds = loadDeletedMemberIds();
+          const activeMembers = serverData.members.filter((m: any) => m && m.id && !deletedMemberIds.includes(m.id));
+          setMembers(sortMembersOldestFirst(activeMembers));
+        }
       }
     }).catch(() => {
       // Fallback seamlessly to local storage cache
@@ -529,6 +535,7 @@ export default function App() {
           {activeScreen === 'fund' && (
             <FundScreen
               fundRecords={funds}
+              members={members}
               onAddFundRecord={handleAddFund}
               onEditFundRecord={handleEditFund}
               onDeleteFundRecord={handleDeleteFund}

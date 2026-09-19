@@ -25,15 +25,24 @@ import {
   CreditCard,
   Clock,
   FileText,
-  Layers
+  Layers,
+  MessageSquare
 } from 'lucide-react';
-import { FundRecord, PaymentStatus, PaymentGatewayConfig } from '../types';
+import { FundRecord, PaymentStatus, PaymentGatewayConfig, Member } from '../types';
 import { toBengaliCurrency, toBengaliNumber, formatBengaliDate } from '../utils/helpers';
-import { loadPaymentSettings } from '../utils/storage';
+import { loadPaymentSettings, loadMembers } from '../utils/storage';
 import { ExpenseModal } from './ExpenseModal';
+import { DueSmsModal } from './DueSmsModal';
+import { 
+  triggerDirectSimSms, 
+  generatePaidConfirmationSms, 
+  resolveMemberPhone,
+  buildDirectSimSmsUrl 
+} from '../utils/smsHelper';
 
 interface FundScreenProps {
   fundRecords: FundRecord[];
+  members?: Member[];
   onAddFundRecord: (record: Omit<FundRecord, 'id'>) => void;
   onToggleStatus?: (id: string, newStatus: PaymentStatus) => void;
   onEditFundRecord?: (record: FundRecord) => void;
@@ -47,6 +56,7 @@ interface FundScreenProps {
 
 export const FundScreen: React.FC<FundScreenProps> = ({
   fundRecords,
+  members,
   onAddFundRecord,
   onToggleStatus,
   onEditFundRecord,
@@ -92,6 +102,58 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   const [depositSenderPhone, setDepositSenderPhone] = useState('');
   const [depositSuccessMsg, setDepositSuccessMsg] = useState('');
   const [depositErrorMsg, setDepositErrorMsg] = useState('');
+
+  // SMS Integration States: Paid Auto-Trigger & Due Manual Trigger
+  const allMembers = useMemo(() => {
+    return members && members.length > 0 ? members : loadMembers();
+  }, [members]);
+
+  const [paidSmsToast, setPaidSmsToast] = useState<{
+    memberName: string;
+    phone: string;
+    amount: number;
+    smsText: string;
+  } | null>(null);
+
+  const [dueSmsTarget, setDueSmsTarget] = useState<{
+    memberName: string;
+    phone?: string;
+    amount?: number;
+    month?: string;
+    memberId?: string;
+  } | null>(null);
+
+  const handleApproveOrTogglePaid = (record: FundRecord, targetStatus?: PaymentStatus) => {
+    const nextStatus: PaymentStatus = targetStatus || (record.status === 'Paid' ? 'Due' : 'Paid');
+    if (onToggleStatus) {
+      onToggleStatus(record.id, nextStatus);
+    }
+
+    // Auto-trigger Direct SIM SMS when payment is approved or marked as Paid
+    if (nextStatus === 'Paid') {
+      const memberPhone = resolveMemberPhone(record, allMembers);
+      const smsText = generatePaidConfirmationSms({
+        memberName: record.memberName,
+        amount: record.amount,
+        month: record.month,
+        trxId: record.trxId
+      });
+
+      if (memberPhone) {
+        triggerDirectSimSms(memberPhone, smsText);
+      }
+
+      setPaidSmsToast({
+        memberName: record.memberName,
+        phone: memberPhone,
+        amount: record.amount,
+        smsText
+      });
+      setTimeout(() => {
+        setPaidSmsToast(prev => prev?.memberName === record.memberName ? null : prev);
+      }, 9000);
+    }
+  };
 
   const handleCopyNumber = (num: string, gatewayKey: string) => {
     if (!num) return;
@@ -597,6 +659,45 @@ export const FundScreen: React.FC<FundScreenProps> = ({
         </div>
       </div>
 
+      {/* Paid Auto-Trigger SMS Feedback Notification Banner */}
+      {paidSmsToast && (
+        <div className="bg-emerald-50 border-2 border-emerald-400 text-emerald-950 p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+              <Check className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold">
+                {paidSmsToast.memberName}-এর পেমেন্ট সফলভাবে পেইড ও অনুমোদিত হয়েছে!
+              </p>
+              <p className="text-xs text-emerald-800 mt-0.5">
+                {paidSmsToast.phone 
+                  ? `সদস্যের নম্বরে (${paidSmsToast.phone}) সরাসরি SIM SMS মেসেজ ট্রিগার করা হয়েছে।` 
+                  : 'সদস্যের ফোন নম্বর প্রোফাইলে না থাকায় ম্যানুয়ালি এসএমএস পাঠান।'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            {paidSmsToast.phone && (
+              <button
+                onClick={() => triggerDirectSimSms(paidSmsToast.phone, paidSmsToast.smsText)}
+                className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-2xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition"
+                title="ডিভাইসের মেসেজ অ্যাপ পুনরায় ওপেন করুন"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>পুনরায় SMS পাঠান</span>
+              </button>
+            )}
+            <button
+              onClick={() => setPaidSmsToast(null)}
+              className="p-1.5 rounded-lg text-slate-500 hover:bg-emerald-100 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* PENDING TRANSACTIONS VERIFICATION ACTION CENTER (Visible when there are pending submissions) */}
       {stats.pendingCount > 0 && (
         <div id="pending-transactions-verification-section" className="bg-gradient-to-br from-amber-50 via-orange-50/50 to-amber-100/40 rounded-3xl p-5 sm:p-6 border-2 border-amber-300 shadow-sm space-y-4">
@@ -708,7 +809,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                       )}
                       {onToggleStatus && (
                         <button
-                          onClick={() => onToggleStatus(pRecord.id, 'Paid')}
+                          onClick={() => handleApproveOrTogglePaid(pRecord, 'Paid')}
                           className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer ml-auto"
                         >
                           <Check className="w-4 h-4" />
@@ -1531,11 +1632,28 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                       {isAdmin && (
                         <td className="py-3 px-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
+                            {record.status === 'Due' && (
+                              <button
+                                onClick={() => setDueSmsTarget({
+                                  memberName: record.memberName,
+                                  phone: resolveMemberPhone(record, allMembers),
+                                  amount: record.amount,
+                                  month: record.month,
+                                  memberId: record.memberId
+                                })}
+                                className="text-[11px] font-bold px-2 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition flex items-center gap-1 cursor-pointer"
+                                title="বকেয়া রিমাইন্ডার SIM SMS পাঠান (কাস্টম মাসসহ)"
+                              >
+                                <MessageSquare className="w-3 h-3" />
+                                <span>বকেয়া SMS</span>
+                              </button>
+                            )}
+
                             {onToggleStatus && record.status === 'Pending' && (
                               <button
-                                onClick={() => onToggleStatus(record.id, 'Paid')}
+                                onClick={() => handleApproveOrTogglePaid(record, 'Paid')}
                                 className="text-[11px] font-bold px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1 cursor-pointer"
-                                title="যাচাই সম্পন্ন করে পেইড করুন"
+                                title="যাচাই সম্পন্ন করে পেইড করুন ও অটো SMS পাঠান"
                               >
                                 <Check className="w-3 h-3" />
                                 <span>অনুমোদন</span>
@@ -1544,7 +1662,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
 
                             {onToggleStatus && record.status !== 'Expense' && record.status !== 'Pending' && (
                               <button
-                                onClick={() => onToggleStatus(record.id, record.status === 'Paid' ? 'Due' : 'Paid')}
+                                onClick={() => handleApproveOrTogglePaid(record, record.status === 'Paid' ? 'Due' : 'Paid')}
                                 className="text-[11px] font-semibold px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
                                 title="Paid বা Due পরিবর্তন করুন"
                               >
@@ -1820,6 +1938,14 @@ export const FundScreen: React.FC<FundScreenProps> = ({
               }
             : null
         }
+      />
+
+      {/* Due Reminder Direct SIM SMS Modal with Custom Months Selection */}
+      <DueSmsModal
+        isOpen={!!dueSmsTarget}
+        onClose={() => setDueSmsTarget(null)}
+        target={dueSmsTarget}
+        paymentConfig={paymentConfig}
       />
     </div>
   );

@@ -16,19 +16,25 @@ export default defineConfig(() => {
       include: ['react', 'react-dom', 'react-dom/client'],
     },
     build: {
-      chunkSizeWarningLimit: 800,
+      chunkSizeWarningLimit: 500,
       rollupOptions: {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
+              if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+                return 'vendor-react-core';
+              }
               if (id.includes('lucide-react')) {
                 return 'vendor-icons';
               }
               if (id.includes('motion')) {
                 return 'vendor-motion';
               }
-              if (id.includes('react') || id.includes('react-dom')) {
-                return 'vendor-react';
+              if (id.includes('@supabase')) {
+                return 'vendor-supabase';
+              }
+              if (id.includes('firebase')) {
+                return 'vendor-firebase';
               }
             }
           },

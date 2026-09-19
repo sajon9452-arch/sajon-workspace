@@ -22,7 +22,10 @@ import {
   Globe
 } from 'lucide-react';
 import { Member } from '../types';
-import { toBengaliNumber, sanitizePhone, sortMembersOldestFirst } from '../utils/helpers';
+import { toBengaliNumber, sanitizePhone, sortMembersOldestFirst, getMemberPhotoUrl } from '../utils/helpers';
+import { compressImageFile } from '../utils/imageCompressor';
+import { DueSmsModal } from './DueSmsModal';
+import { loadPaymentSettings } from '../utils/storage';
 
 interface MemberListScreenProps {
   members: Member[];
@@ -48,6 +51,8 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [zoomedMember, setZoomedMember] = useState<Member | null>(null);
+  const [dueSmsMember, setDueSmsMember] = useState<Member | null>(null);
+  const paymentConfig = useMemo(() => loadPaymentSettings(), []);
 
   // Close zoom modal on escape key press
   useEffect(() => {
@@ -74,19 +79,24 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
   const [countryStatus, setCountryStatus] = useState('');
   const [formError, setFormError] = useState('');
 
-  const handlePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setFormError('ছবির সাইজ সর্বোচ্চ ৫ মেগাবাইট হতে পারবে');
+      if (file.size > 10 * 1024 * 1024) {
+        setFormError('ছবির সাইজ সর্বোচ্চ ১০ মেগাবাইট হতে পারবে');
         return;
       }
       setFormError('');
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImageFile(file, { maxWidth: 800, maxHeight: 800, quality: 0.8 });
+        setPhotoUrl(compressed);
+      } catch (err) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPhotoUrl(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -163,7 +173,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
     setDesignation(m.designation);
     setPhone(m.phone);
     setArea(m.area || (isExp ? '' : 'পতেঙ্গা, চট্টগ্রাম'));
-    setPhotoUrl(m.photoUrl || '');
+    setPhotoUrl(getMemberPhotoUrl(m));
     setIsExpatriateForm(isExp);
     setCountryStatus(m.countryStatus || '');
     setFormError('');
@@ -199,12 +209,15 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
       return;
     }
 
+    const finalPhoto = photoUrl.trim() || '';
     const memberPayload = {
       name: name.trim(),
       designation: designation.trim(),
       phone: phone.trim(),
       area: area.trim() || (isExpatriateForm ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'),
-      photoUrl: photoUrl.trim() || '',
+      photoUrl: finalPhoto,
+      avatarUrl: finalPhoto,
+      photo_url: finalPhoto,
       isExpatriate: isExpatriateForm,
       memberType: (isExpatriateForm ? 'expatriate' : 'general') as 'expatriate' | 'general',
       countryStatus: isExpatriateForm ? countryStatus.trim() : undefined,
@@ -473,51 +486,71 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                     {/* Professional ID Card Body */}
                     <div className="flex items-start gap-4">
                       {/* Large ID Card Portrait Photo with Seniority Badge & Click-to-Zoom */}
-                      <div 
-                        onClick={() => {
-                          if (member.photoUrl) {
-                            setZoomedMember(member);
-                          }
-                        }}
-                        id={`member-photo-${member.id || idx}`}
-                        className={`w-20 h-24 sm:w-24 sm:h-28 rounded-xl bg-gradient-to-b from-slate-50 to-slate-100 border-2 border-emerald-500/30 text-emerald-800 flex flex-col items-center justify-center font-bold flex-shrink-0 overflow-hidden shadow-xs relative ${
-                          member.photoUrl ? 'cursor-pointer group/photo hover:border-emerald-500 transition-all active:scale-95' : ''
-                        }`}
-                        title={member.photoUrl ? `${member.name}-এর ছবি বড় করে দেখতে ক্লিক করুন` : member.name}
-                        role={member.photoUrl ? 'button' : undefined}
-                        aria-label={member.photoUrl ? `${member.name}-এর ছবি জুম করে দেখুন` : undefined}
-                      >
-                        {member.photoUrl ? (
-                          <>
-                            <img
-                              src={member.photoUrl}
-                              alt={member.name}
-                              className="w-full h-full object-cover group-hover/photo:scale-105 transition-transform duration-300"
-                              onError={(e) => {
-                                (e.target as HTMLElement).style.display = 'none';
-                              }}
-                            />
-                            {/* Subtle hover zoom overlay affordance */}
-                            <div className="absolute inset-0 bg-slate-950/25 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                              <div className="p-1.5 rounded-lg bg-black/60 text-white shadow-xs backdrop-blur-xs">
-                                <Maximize2 className="w-3.5 h-3.5" />
+                      {(() => {
+                        const photoSrc = getMemberPhotoUrl(member);
+                        return (
+                          <div 
+                            onClick={() => {
+                              if (photoSrc) {
+                                setZoomedMember(member);
+                              }
+                            }}
+                            id={`member-photo-${member.id || idx}`}
+                            className={`w-20 h-24 sm:w-24 sm:h-28 rounded-xl bg-gradient-to-b from-slate-50 to-slate-100 border-2 border-emerald-500/30 text-emerald-800 flex flex-col items-center justify-center font-bold flex-shrink-0 overflow-hidden shadow-xs relative ${
+                              photoSrc ? 'cursor-pointer group/photo hover:border-emerald-500 transition-all active:scale-95' : ''
+                            }`}
+                            title={photoSrc ? `${member.name}-এর ছবি বড় করে দেখতে ক্লিক করুন` : member.name}
+                            role={photoSrc ? 'button' : undefined}
+                            aria-label={photoSrc ? `${member.name}-এর ছবি জুম করে দেখুন` : undefined}
+                          >
+                            {photoSrc ? (
+                              <>
+                                <img
+                                  src={photoSrc}
+                                  alt={member.name}
+                                  className="w-full h-full object-cover group-hover/photo:scale-105 transition-transform duration-300"
+                                  onError={(e) => {
+                                    const img = e.target as HTMLImageElement;
+                                    if (member.id && !img.src.includes('/api/member-photo/')) {
+                                      img.src = `/api/member-photo/${encodeURIComponent(member.id)}`;
+                                    } else {
+                                      img.style.display = 'none';
+                                      const fallbackEl = img.parentElement?.querySelector('.fallback-initials') as HTMLElement;
+                                      if (fallbackEl) fallbackEl.style.display = 'flex';
+                                    }
+                                  }}
+                                />
+                                <div className="fallback-initials hidden flex-col items-center justify-center text-center p-2 absolute inset-0 bg-slate-50">
+                                  <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base font-black mb-1">
+                                    {member.name.charAt(0)}
+                                  </div>
+                                  <span className="text-[10px] font-bold text-slate-400">
+                                    {member.isExpatriate ? 'প্রবাসী' : 'সদস্য'}
+                                  </span>
+                                </div>
+                                {/* Subtle hover zoom overlay affordance */}
+                                <div className="absolute inset-0 bg-slate-950/25 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                  <div className="p-1.5 rounded-lg bg-black/60 text-white shadow-xs backdrop-blur-xs">
+                                    <Maximize2 className="w-3.5 h-3.5" />
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center text-center p-2">
+                                <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base font-black mb-1">
+                                  {member.name.charAt(0)}
+                                </div>
+                                <span className="text-[10px] font-bold text-slate-400">
+                                  {member.isExpatriate ? 'প্রবাসী' : 'সদস্য'}
+                                </span>
                               </div>
+                            )}
+                            <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/65 backdrop-blur-xs text-white text-[9px] font-bold rounded-md z-10">
+                              #{toBengaliNumber(serialNo)}
                             </div>
-                          </>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center text-center p-2">
-                            <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base font-black mb-1">
-                              {member.name.charAt(0)}
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-400">
-                              {member.isExpatriate ? 'প্রবাসী' : 'সদস্য'}
-                            </span>
                           </div>
-                        )}
-                        <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/65 backdrop-blur-xs text-white text-[9px] font-bold rounded-md z-10">
-                          #{toBengaliNumber(serialNo)}
-                        </div>
-                      </div>
+                        );
+                      })()}
                       
                       {/* Member Info Column */}
                       <div className="flex-1 min-w-0 flex flex-col justify-center space-y-2 py-0.5">
@@ -587,6 +620,17 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                               </button>
                             )}
                           </div>
+                        )}
+
+                        {isAdmin && (
+                          <button
+                            onClick={() => setDueSmsMember(member)}
+                            className="px-2 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition flex items-center gap-1 border border-amber-200 cursor-pointer shadow-2xs"
+                            title="বকেয়া চাঁদা রিমাইন্ডার SIM SMS পাঠান (কাস্টম মাসসহ)"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 text-amber-600" />
+                            <span className="text-[10px] hidden sm:inline">বকেয়া SMS</span>
+                          </button>
                         )}
 
                         <a
@@ -918,22 +962,31 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
 
             {/* Modal Body: Large High-Resolution Member Photo */}
             <div className="p-4 sm:p-5 flex-1 flex items-center justify-center bg-slate-950 overflow-hidden">
-              {zoomedMember.photoUrl ? (
-                <div className="relative w-full flex items-center justify-center max-h-[65vh]">
-                  <img
-                    src={zoomedMember.photoUrl}
-                    alt={zoomedMember.name}
-                    className="w-full h-auto max-h-[65vh] object-contain rounded-2xl select-none shadow-lg"
-                  />
-                </div>
-              ) : (
-                <div className="py-16 text-center text-slate-400">
-                  <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-3xl font-bold mx-auto mb-2">
-                    {zoomedMember.name.charAt(0)}
+              {(() => {
+                const zoomPhoto = getMemberPhotoUrl(zoomedMember);
+                return zoomPhoto ? (
+                  <div className="relative w-full flex items-center justify-center max-h-[65vh]">
+                    <img
+                      src={zoomPhoto}
+                      alt={zoomedMember.name}
+                      className="w-full h-auto max-h-[65vh] object-contain rounded-2xl select-none shadow-lg"
+                      onError={(e) => {
+                        const img = e.target as HTMLImageElement;
+                        if (zoomedMember.id && !img.src.includes('/api/member-photo/')) {
+                          img.src = `/api/member-photo/${encodeURIComponent(zoomedMember.id)}`;
+                        }
+                      }}
+                    />
                   </div>
-                  <p className="text-sm font-semibold text-slate-300">কোনো ছবি সংরক্ষিত নেই</p>
-                </div>
-              )}
+                ) : (
+                  <div className="py-16 text-center text-slate-400">
+                    <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-3xl font-bold mx-auto mb-2">
+                      {zoomedMember.name.charAt(0)}
+                    </div>
+                    <p className="text-sm font-semibold text-slate-300">কোনো ছবি সংরক্ষিত নেই</p>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Modal Footer: Location and Direct Contact Bar */}
@@ -956,6 +1009,18 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* Due Reminder Direct SIM SMS Modal with Custom Months Selection */}
+      <DueSmsModal
+        isOpen={!!dueSmsMember}
+        onClose={() => setDueSmsMember(null)}
+        target={dueSmsMember ? {
+          memberName: dueSmsMember.name,
+          phone: dueSmsMember.phone,
+          memberId: dueSmsMember.id
+        } : null}
+        paymentConfig={paymentConfig}
+      />
     </div>
   );
 };

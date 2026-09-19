@@ -28,6 +28,14 @@ export interface Member {
   bloodGroup?: BloodGroup; // BloodGroup (optional)
   area?: string;
   photoUrl?: string; // Photo URL
+  avatarUrl?: string; // Supabase avatar URL alias
+  avatar?: string; // Supabase avatar alias
+  avatar_url?: string;
+  photo_url?: string;
+  imageUrl?: string;
+  image_url?: string;
+  photo?: string;
+  image?: string;
   joinDate?: string;
   email?: string;
   status?: 'সক্রিয়' | 'স্থগিত';
@@ -89,6 +97,7 @@ export interface FundRecord {
   description?: string; // Particulars / Expense reason
   month?: string;
   phone?: string;
+  memberId?: string;
   category?: string;
   notes?: string;
   trxId?: string; // Transaction ID for verification

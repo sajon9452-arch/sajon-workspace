@@ -447,7 +447,73 @@ async function upsertInChunks(supabase: SupabaseClient, tableName: string, recor
 }
 
 // Dedicated Table Model Mappers
+function extractMemberPhoto(r: any, supabaseUrl?: string): string {
+  if (!r) return '';
+  let raw =
+    r.photo_url ||
+    r.photoUrl ||
+    r.avatar_url ||
+    r.avatarUrl ||
+    r.avatar ||
+    r.image_url ||
+    r.imageUrl ||
+    r.photo ||
+    r.image ||
+    r.profile_photo ||
+    r.profile_image ||
+    r.profile_pic ||
+    r.picture ||
+    r.file_url ||
+    r.file_path ||
+    '';
+
+  if (!raw) return '';
+  if (typeof raw === 'object') {
+    raw = raw.url || raw.path || raw.publicUrl || raw.name || '';
+  }
+  if (typeof raw !== 'string') return '';
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+
+  // 1. Data URLs and Blob URLs
+  if (trimmed.startsWith('data:image/') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+
+  // 2. Full HTTP/HTTPS URLs (including Supabase Storage)
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // 3. Supabase Storage Relative Paths
+  const base = (
+    supabaseUrl ||
+    process.env.SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    'https://quqzeiuaybmhzisivrud.supabase.co'
+  ).replace(/\/+$/, '');
+
+  if (trimmed.startsWith('/storage/v1/object/public/')) {
+    return `${base}${trimmed}`;
+  }
+  if (trimmed.startsWith('storage/v1/object/public/')) {
+    return `${base}/${trimmed}`;
+  }
+
+  if (trimmed.includes('/')) {
+    const clean = trimmed.replace(/^\/+/, '');
+    return `${base}/storage/v1/object/public/${clean}`;
+  }
+
+  if (/\.(jpe?g|png|webp|gif|avif)$/i.test(trimmed)) {
+    return `${base}/storage/v1/object/public/avatars/${trimmed}`;
+  }
+
+  return trimmed;
+}
+
 function mapMemberToDb(m: any) {
+  const photo = extractMemberPhoto(m);
   return {
     id: m.id,
     name: m.name || '',
@@ -457,7 +523,9 @@ function mapMemberToDb(m: any) {
     is_expatriate: Boolean(m.isExpatriate || m.memberType === 'expatriate'),
     country_status: m.countryStatus || '',
     member_type: m.memberType || (m.isExpatriate ? 'expatriate' : 'general'),
-    photo_url: m.photoUrl || '',
+    photo_url: photo,
+    avatar_url: photo,
+    avatar: photo,
     blood_group: m.bloodGroup || '',
     join_date: m.joinDate || '',
     serial: typeof m.serial === 'number' ? m.serial : null,
@@ -466,7 +534,8 @@ function mapMemberToDb(m: any) {
   };
 }
 
-function mapDbToMember(r: any): any {
+function mapDbToMember(r: any, supabaseUrl?: string): any {
+  const photo = extractMemberPhoto(r, supabaseUrl);
   return {
     id: r.id,
     name: r.name || '',
@@ -476,7 +545,8 @@ function mapDbToMember(r: any): any {
     isExpatriate: Boolean(r.is_expatriate ?? r.isExpatriate),
     countryStatus: r.country_status || r.countryStatus || '',
     memberType: r.member_type || r.memberType || (r.is_expatriate ? 'expatriate' : 'general'),
-    photoUrl: r.photo_url || r.photoUrl || '',
+    photoUrl: photo,
+    avatarUrl: photo,
     bloodGroup: r.blood_group || r.bloodGroup || '',
     joinDate: r.join_date || r.joinDate || '',
     serial: r.serial != null ? Number(r.serial) : undefined,
@@ -694,6 +764,8 @@ function mapDbToRule(r: any): any {
 async function syncFromSupabase(): Promise<AppDatabase | null> {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
+  const config = getSupabaseConfig();
+  const supabaseUrl = config?.url || '';
 
   try {
     const { data, error } = await supabase
@@ -809,13 +881,20 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
           const deletedMemberIds = merged.deletedMemberIds || [];
           const dedicatedMembers = memberRows
             .filter((r: any) => r && r.id && !deletedMemberIds.includes(r.id))
-            .map(mapDbToMember);
+            .map((r: any) => mapDbToMember(r, supabaseUrl));
           const map = new Map<string, any>();
           dedicatedMembers.forEach((m: any) => map.set(m.id, m));
           if (Array.isArray(merged.members)) {
             merged.members.forEach((m: any) => {
               if (!map.has(m.id) && !deletedMemberIds.includes(m.id)) {
                 map.set(m.id, m);
+              } else if (map.has(m.id)) {
+                const cloudM = map.get(m.id);
+                // If cloud member record has no photo, but local record has a valid photo, preserve it
+                if (!cloudM.photoUrl && m.photoUrl) {
+                  cloudM.photoUrl = m.photoUrl;
+                  cloudM.avatarUrl = m.photoUrl;
+                }
               }
             });
           }
@@ -1387,6 +1466,53 @@ app.get('/api/health', (req, res) => {
     serverTime: new Date().toISOString(),
     supabaseConfigured: Boolean(config && config.url && config.key)
   });
+});
+
+// Member profile picture streaming & proxy endpoint
+// Streams base64 data URLs as binary images or redirects to Supabase Storage
+app.get('/api/member-photo/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).send('Missing member ID');
+
+    const db = readLocalDatabase();
+    const members = Array.isArray(db.members) ? db.members : [];
+    const member = members.find((m: any) => m && m.id === id);
+
+    if (!member) {
+      return res.status(404).send('Member not found');
+    }
+
+    const photo = extractMemberPhoto(member);
+    if (!photo) {
+      return res.status(404).send('No photo available for this member');
+    }
+
+    // 1. Base64 Data URL -> Stream binary image buffer
+    if (photo.startsWith('data:image/')) {
+      const match = photo.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+      if (match) {
+        const mimeSubtype = match[1].toLowerCase();
+        const contentType = mimeSubtype === 'jpg' ? 'image/jpeg' : `image/${mimeSubtype}`;
+        const buffer = Buffer.from(match[2], 'base64');
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Length', buffer.length.toString());
+        res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+        return res.end(buffer);
+      }
+    }
+
+    // 2. HTTP/HTTPS or Supabase Public Storage URL -> 302 Redirect
+    if (/^https?:\/\//i.test(photo)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.redirect(302, photo);
+    }
+
+    // 3. Relative path -> Redirect
+    return res.redirect(302, photo);
+  } catch (err: any) {
+    res.status(500).send('Error retrieving member photo');
+  }
 });
 
 // GET full synchronized database state (pulls fresh from Supabase if configured)

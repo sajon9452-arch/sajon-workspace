@@ -46,7 +46,7 @@ import {
   ExternalLink,
   Globe
 } from 'lucide-react';
-import { ExpenseModal } from './ExpenseModal';
+const ExpenseModal = lazy(() => import('./ExpenseModal').then(m => ({ default: m.ExpenseModal })));
 import {
   Member,
   BloodDonor,
@@ -71,7 +71,8 @@ import {
   formatBengaliDate,
   sanitizePhone,
   getBloodGroupBadge,
-  sortMembersOldestFirst
+  sortMembersOldestFirst,
+  getMemberPhotoUrl
 } from '../utils/helpers';
 import {
   resetAllData,
@@ -105,6 +106,12 @@ import {
   syncAllFromSupabaseCloud,
   SupabaseStatusResponse
 } from '../utils/serverApi';
+import { DueSmsModal } from './DueSmsModal';
+import {
+  triggerDirectSimSms,
+  generatePaidConfirmationSms,
+  resolveMemberPhone
+} from '../utils/smsHelper';
 
 interface AdminPanelScreenProps {
   profile: OrganizationProfile;
@@ -251,7 +258,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       setMemberJoinDateInput(editingMember.joinDate || new Date().toISOString().split('T')[0]);
       setMemberEmailInput(editingMember.email || '');
       setMemberStatusInput(editingMember.status || 'সক্রিয়');
-      setMemberPhotoBase64(editingMember.photoUrl || '');
+      setMemberPhotoBase64(getMemberPhotoUrl(editingMember));
       setMemberIsExpatriateInput(Boolean(editingMember.isExpatriate || editingMember.memberType === 'expatriate'));
       setMemberCountryStatusInput(editingMember.countryStatus || '');
     } else {
@@ -313,6 +320,13 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlModal, setShowSqlModal] = useState(false);
+  const [dueSmsTarget, setDueSmsTarget] = useState<{
+    memberName: string;
+    phone?: string;
+    amount?: number;
+    month?: string;
+    memberId?: string;
+  } | null>(null);
 
   useEffect(() => {
     setEditProfileData(profile);
@@ -858,6 +872,17 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
         setFunds(prev => [newFund, ...prev]);
       }
       setIsAddFundOpen(false);
+      if (status === 'Paid') {
+        const targetPhone = phone.trim() || resolveMemberPhone({ memberName: memberName.trim() }, members);
+        if (targetPhone) {
+          const smsText = generatePaidConfirmationSms({
+            memberName: memberName.trim(),
+            amount,
+            month: month.trim()
+          });
+          triggerDirectSimSms(targetPhone, smsText);
+        }
+      }
       notifySuccess('নতুন ফান্ড এন্ট্রি যুক্ত হয়েছে এবং ব্যালেন্স স্বয়ংক্রিয়ভাবে আপডেট হয়েছে');
     }
   };
@@ -950,7 +975,26 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
         return f;
       }));
     }
-    notifySuccess(nextStatus === 'Paid' ? 'পেমেন্ট অনুমোদিত ও পরিশোধিত হিসেবে চিহ্নিত হয়েছে' : 'স্ট্যাটাস বকেয়া (Due) করা হয়েছে');
+
+    if (nextStatus === 'Paid') {
+      const memberPhone = resolveMemberPhone(target, members);
+      const smsText = generatePaidConfirmationSms({
+        memberName: target.memberName,
+        amount: target.amount,
+        month: target.month,
+        trxId: target.trxId
+      });
+      if (memberPhone) {
+        triggerDirectSimSms(memberPhone, smsText);
+      }
+      notifySuccess(
+        memberPhone
+          ? `পেমেন্ট অনুমোদিত হয়েছে এবং ${target.memberName}-এর নম্বরে (${memberPhone}) সরাসরি SIM SMS ট্রিগার করা হয়েছে`
+          : 'পেমেন্ট অনুমোদিত ও পরিশোধিত হিসেবে চিহ্নিত হয়েছে'
+      );
+    } else {
+      notifySuccess('স্ট্যাটাস বকেয়া (Due) করা হয়েছে');
+    }
   };
 
   const handleDeleteFund = (id: string, name: string) => {
@@ -1652,28 +1696,38 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                         </td>
                         <td className="p-3.5">
                           <div className="flex items-center gap-2.5">
-                            <div 
-                              onClick={() => {
-                                if (m.photoUrl) setZoomedMemberPhoto(m);
-                              }}
-                              className={`w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-800 flex items-center justify-center font-bold text-xs flex-shrink-0 overflow-hidden shadow-2xs ${
-                                m.photoUrl ? 'cursor-pointer hover:border-emerald-500 transition-all' : ''
-                              }`}
-                              title={m.photoUrl ? `${m.name}-এর ছবি বড় করে দেখতে ক্লিক করুন` : m.name}
-                            >
-                              {m.photoUrl ? (
-                                <img
-                                  src={m.photoUrl}
-                                  alt={m.name}
-                                  className="w-full h-full object-cover hover:scale-110 transition-transform duration-200"
-                                  onError={(e) => {
-                                    (e.target as HTMLElement).style.display = 'none';
+                            {(() => {
+                              const photoSrc = getMemberPhotoUrl(m);
+                              return (
+                                <div 
+                                  onClick={() => {
+                                    if (photoSrc) setZoomedMemberPhoto(m);
                                   }}
-                                />
-                              ) : (
-                                m.name.charAt(0)
-                              )}
-                            </div>
+                                  className={`w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-800 flex items-center justify-center font-bold text-xs flex-shrink-0 overflow-hidden shadow-2xs ${
+                                    photoSrc ? 'cursor-pointer hover:border-emerald-500 transition-all' : ''
+                                  }`}
+                                  title={photoSrc ? `${m.name}-এর ছবি বড় করে দেখতে ক্লিক করুন` : m.name}
+                                >
+                                  {photoSrc ? (
+                                    <img
+                                      src={photoSrc}
+                                      alt={m.name}
+                                      className="w-full h-full object-cover hover:scale-110 transition-transform duration-200"
+                                      onError={(e) => {
+                                        const img = e.target as HTMLImageElement;
+                                        if (m.id && !img.src.includes('/api/member-photo/')) {
+                                          img.src = `/api/member-photo/${encodeURIComponent(m.id)}`;
+                                        } else {
+                                          img.style.display = 'none';
+                                        }
+                                      }}
+                                    />
+                                  ) : (
+                                    m.name.charAt(0)
+                                  )}
+                                </div>
+                              );
+                            })()}
                             <div>
                               <div className="font-bold text-slate-900 flex items-center gap-1.5">
                                 <span>{m.name}</span>
@@ -2003,6 +2057,21 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                           </div>
                         </td>
                         <td className="p-3.5 text-right space-x-1.5">
+                          {f.status === 'Due' && (
+                            <button
+                              onClick={() => setDueSmsTarget({
+                                memberName: f.memberName,
+                                phone: resolveMemberPhone(f, members),
+                                amount: f.amount,
+                                month: f.month,
+                                memberId: f.memberId
+                              })}
+                              className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 transition cursor-pointer"
+                              title="বকেয়া রিমাইন্ডার SIM SMS পাঠান (কাস্টম মাসসহ)"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               if (f.status === 'Expense') {
@@ -4157,32 +4226,36 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       )}
 
       {/* EXPENSE MODAL (Add / Edit) */}
-      <ExpenseModal
-        isOpen={isExpenseModalOpen}
-        onClose={() => {
-          setIsExpenseModalOpen(false);
-          setEditingExpense(null);
-        }}
-        onSubmit={handleSaveExpense}
-        onSave={handleSaveExpense}
-        initialData={
-          editingExpense
-            ? {
-                description: editingExpense.description || '',
-                amount: editingExpense.amount,
-                disbursedTo: editingExpense.disbursedTo || editingExpense.memberName,
-                date: editingExpense.date,
-                category: editingExpense.category || 'ত্রাণ ও খাদ্য সহায়তা',
-                voucherNo: editingExpense.notes?.includes('ভাউচার:')
-                  ? editingExpense.notes.split('ভাউচার:')[1].split('-')[0].trim()
-                  : '',
-                notes: editingExpense.notes?.includes('ভাউচার:')
-                  ? (editingExpense.notes.split(' - ').length > 1 ? editingExpense.notes.split(' - ').slice(1).join(' - ').trim() : '')
-                  : (editingExpense.notes || '')
-              }
-            : null
-        }
-      />
+      {isExpenseModalOpen && (
+        <Suspense fallback={null}>
+          <ExpenseModal
+            isOpen={isExpenseModalOpen}
+            onClose={() => {
+              setIsExpenseModalOpen(false);
+              setEditingExpense(null);
+            }}
+            onSubmit={handleSaveExpense}
+            onSave={handleSaveExpense}
+            initialData={
+              editingExpense
+                ? {
+                    description: editingExpense.description || '',
+                    amount: editingExpense.amount,
+                    disbursedTo: editingExpense.disbursedTo || editingExpense.memberName,
+                    date: editingExpense.date,
+                    category: editingExpense.category || 'ত্রাণ ও খাদ্য সহায়তা',
+                    voucherNo: editingExpense.notes?.includes('ভাউচার:')
+                      ? editingExpense.notes.split('ভাউচার:')[1].split('-')[0].trim()
+                      : '',
+                    notes: editingExpense.notes?.includes('ভাউচার:')
+                      ? (editingExpense.notes.split(' - ').length > 1 ? editingExpense.notes.split(' - ').slice(1).join(' - ').trim() : '')
+                      : (editingExpense.notes || '')
+                  }
+                : null
+            }
+          />
+        </Suspense>
+      )}
 
       {/* NOTICE MODAL (Add / Edit) */}
       {(isAddNoticeOpen || editingNotice) && (
@@ -4548,17 +4621,41 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
               </button>
             </div>
             <div className="p-4 sm:p-5 flex-1 flex items-center justify-center bg-slate-950 overflow-hidden">
-              {zoomedMemberPhoto.photoUrl && (
-                <img
-                  src={zoomedMemberPhoto.photoUrl}
-                  alt={zoomedMemberPhoto.name}
-                  className="w-full h-auto max-h-[65vh] object-contain rounded-2xl select-none shadow-lg"
-                />
-              )}
+              {(() => {
+                const zoomPhoto = getMemberPhotoUrl(zoomedMemberPhoto);
+                return zoomPhoto ? (
+                  <img
+                    src={zoomPhoto}
+                    alt={zoomedMemberPhoto.name}
+                    className="w-full h-auto max-h-[65vh] object-contain rounded-2xl select-none shadow-lg"
+                    onError={(e) => {
+                      const img = e.target as HTMLImageElement;
+                      if (zoomedMemberPhoto.id && !img.src.includes('/api/member-photo/')) {
+                        img.src = `/api/member-photo/${encodeURIComponent(zoomedMemberPhoto.id)}`;
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="py-12 text-center text-slate-400">
+                    <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-2xl font-bold mx-auto mb-2">
+                      {zoomedMemberPhoto.name.charAt(0)}
+                    </div>
+                    <p className="text-sm font-medium text-slate-300">কোনো ছবি সংরক্ষিত নেই</p>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
       )}
+
+      {/* Due Reminder Direct SIM SMS Modal with Custom Months Selection */}
+      <DueSmsModal
+        isOpen={!!dueSmsTarget}
+        onClose={() => setDueSmsTarget(null)}
+        target={dueSmsTarget}
+        paymentConfig={paymentConfig}
+      />
     </div>
   );
 };

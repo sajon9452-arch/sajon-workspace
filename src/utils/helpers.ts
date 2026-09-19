@@ -178,3 +178,89 @@ export function sortMembersOldestFirst(members: Member[]): Member[] {
   });
 }
 
+/**
+ * Resolves the displayable profile image URL for a member.
+ * Supports:
+ * - Direct base64 / data URLs ('data:image/...')
+ * - Standard HTTP/HTTPS URLs (including public Supabase Storage URLs)
+ * - Supabase Storage relative paths (e.g. 'avatars/pic.jpg', 'members/pic.png', '/storage/v1/object/public/...')
+ * - All avatar/photo property aliases ('photoUrl', 'photo_url', 'avatarUrl', 'avatar_url', 'avatar', 'imageUrl', 'image_url', 'photo', 'image')
+ * - Dynamic fallback to server photo endpoint (/api/member-photo/:id) if available
+ */
+export function getMemberPhotoUrl(member?: Partial<Member> | null): string {
+  if (!member) return '';
+
+  const raw =
+    member.photoUrl ||
+    member.avatarUrl ||
+    member.avatar ||
+    member.avatar_url ||
+    member.photo_url ||
+    member.imageUrl ||
+    member.image_url ||
+    member.photo ||
+    member.image ||
+    (member as any).profile_photo ||
+    (member as any).profile_image ||
+    (member as any).picture ||
+    (member as any).file_url ||
+    (member as any).file_path ||
+    '';
+
+  if (!raw || typeof raw !== 'string') {
+    // If member has an ID, check if server has photo stored
+    if (member.id && !member.id.startsWith('temp-')) {
+      return `/api/member-photo/${encodeURIComponent(member.id)}`;
+    }
+    return '';
+  }
+
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    if (member.id && !member.id.startsWith('temp-')) {
+      return `/api/member-photo/${encodeURIComponent(member.id)}`;
+    }
+    return '';
+  }
+
+  // 1. Data URLs and Blob URLs
+  if (trimmed.startsWith('data:image/') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+
+  // 2. Direct server endpoint relative URL
+  if (trimmed.startsWith('/api/member-photo/')) {
+    return trimmed;
+  }
+
+  // 3. Full HTTP/HTTPS URLs (including Supabase Storage)
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // 4. Supabase Storage Relative Paths
+  const supabaseBase = (
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL) ||
+    'https://quqzeiuaybmhzisivrud.supabase.co'
+  ).replace(/\/+$/, '');
+
+  if (trimmed.startsWith('/storage/v1/object/public/')) {
+    return `${supabaseBase}${trimmed}`;
+  }
+  if (trimmed.startsWith('storage/v1/object/public/')) {
+    return `${supabaseBase}/${trimmed}`;
+  }
+
+  // Bucket path, e.g. 'avatars/xyz.jpg' or 'members/xyz.png'
+  if (trimmed.includes('/')) {
+    const clean = trimmed.replace(/^\/+/, '');
+    return `${supabaseBase}/storage/v1/object/public/${clean}`;
+  }
+
+  // Single file name like 'xyz.jpg' -> default to avatars bucket
+  if (/\.(jpe?g|png|webp|gif|avif)$/i.test(trimmed)) {
+    return `${supabaseBase}/storage/v1/object/public/avatars/${trimmed}`;
+  }
+
+  return trimmed;
+}

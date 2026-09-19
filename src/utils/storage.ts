@@ -72,6 +72,11 @@ export function notifyDataChange(key: string, data?: any): void {
 }
 
 /**
+ * In-Memory Member Entity Cache to prevent loss of image fidelity if localStorage hits quota
+ */
+let memoryMembersCache: Member[] | null = null;
+
+/**
  * Resilient Local Storage Setter
  * Prevents browser QuotaExceededError from interrupting app execution or stopping cloud persistence.
  * If quota limit is hit, creates a lightweight local representation while the memory and backend retain 100% full fidelity.
@@ -85,11 +90,17 @@ export function safeSetLocalStorage(key: string, data: any): void {
     console.warn(`[Storage] Local storage quota limit reached for "${key}". Retaining full data in memory and cloud database.`);
     try {
       if (Array.isArray(data)) {
-        // Strip heavy base64 strings (>2000 chars) for local caching fallback
+        // If quota limit reached, replace heavy base64 strings with server API photo endpoints
+        // instead of blanking them, so profile pictures still render seamlessly
         const compact = data.map((item: any) => {
           if (item && typeof item === 'object') {
             const copy = { ...item };
-            if (typeof copy.photoUrl === 'string' && copy.photoUrl.length > 2000) copy.photoUrl = '';
+            if (typeof copy.photoUrl === 'string' && copy.photoUrl.length > 2000) {
+              copy.photoUrl = copy.id ? `/api/member-photo/${encodeURIComponent(copy.id)}` : '';
+            }
+            if (typeof copy.avatarUrl === 'string' && copy.avatarUrl.length > 2000) {
+              copy.avatarUrl = copy.id ? `/api/member-photo/${encodeURIComponent(copy.id)}` : '';
+            }
             if (typeof copy.imageUrl === 'string' && copy.imageUrl.length > 2000) copy.imageUrl = '';
             if (typeof copy.recipientPhotoUrl === 'string' && copy.recipientPhotoUrl.length > 2000) copy.recipientPhotoUrl = '';
             return copy;
@@ -205,6 +216,11 @@ export function populateLocalStorageFromServer(
     const deletedRuleIds = reconcileDeletedIdStorage(serverDb.deletedRuleIds, STORAGE_KEYS.DELETED_RULE_IDS);
 
     // 2. Members (with strict ascending seniority sort)
+    if (Array.isArray(serverDb.members) && serverDb.members.length > 0) {
+      memoryMembersCache = sortMembersOldestFirst(
+        serverDb.members.filter((m: any) => m && m.id && !deletedMemberIds.includes(m.id))
+      );
+    }
     const membersRes = reconcileEntityStorageList(
       serverDb.members,
       STORAGE_KEYS.MEMBERS,
@@ -488,11 +504,28 @@ export function loadMembers(): Member[] {
     if (saved !== null) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        return sortMembersOldestFirst(parsed.filter(m => !deletedIds.includes(m.id)));
+        const merged = parsed.map((item: Member) => {
+          // If member has no photoUrl or has proxy endpoint, check if memoryMembersCache has high-fidelity photo
+          if (!item.photoUrl || item.photoUrl.startsWith('/api/')) {
+            const cached = memoryMembersCache?.find(c => c.id === item.id);
+            if (cached && (cached.photoUrl || cached.avatarUrl)) {
+              return {
+                ...item,
+                photoUrl: cached.photoUrl || cached.avatarUrl,
+                avatarUrl: cached.avatarUrl || cached.photoUrl
+              };
+            }
+          }
+          return item;
+        });
+        return sortMembersOldestFirst(merged.filter(m => !deletedIds.includes(m.id)));
       }
     }
   } catch (e) {
     console.error('Error loading members', e);
+  }
+  if (memoryMembersCache && memoryMembersCache.length > 0) {
+    return sortMembersOldestFirst(memoryMembersCache.filter(m => !deletedIds.includes(m.id)));
   }
   return sortMembersOldestFirst(INITIAL_MEMBERS.filter(m => !deletedIds.includes(m.id)));
 }
@@ -502,6 +535,7 @@ export function saveMembers(members: Member[]): void {
     const deletedIds = loadDeletedMemberIds();
     const filtered = members.filter(m => !deletedIds.includes(m.id));
     const sorted = sortMembersOldestFirst(filtered);
+    memoryMembersCache = sorted;
     notifyDataChange(STORAGE_KEYS.MEMBERS, sorted);
     safeSetLocalStorage(STORAGE_KEYS.MEMBERS, sorted);
     syncKeyToServer('members', sorted);
