@@ -27,8 +27,6 @@ import {
   FileText,
   Layers,
   MessageSquare,
-  LayoutGrid,
-  List,
   ExternalLink
 } from 'lucide-react';
 import { FundRecord, PaymentStatus, PaymentGatewayConfig, Member } from '../types';
@@ -77,7 +75,6 @@ export const FundScreen: React.FC<FundScreenProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentStatus>('all');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<FundRecord | null>(null);
 
@@ -1544,42 +1541,10 @@ export const FundScreen: React.FC<FundScreenProps> = ({
             })}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2.5 w-full sm:w-auto">
+          <div className="flex items-center gap-2.5">
             <span className="text-xs text-slate-500 font-medium">
               দেখানো হচ্ছে: <strong>{toBengaliNumber(filteredRecords.length)}</strong> টি রেকর্ড
             </span>
-
-            {/* View Mode Toggle: Cards vs Table */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setViewMode('cards')}
-                id="fund-viewmode-cards-btn"
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                  viewMode === 'cards'
-                    ? 'bg-white text-emerald-800 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                title="কার্ড ভিউ (মোবাইলের জন্য উপযোগী ও প্রশস্ত)"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>কার্ড ভিউ</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                id="fund-viewmode-table-btn"
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                  viewMode === 'table'
-                    ? 'bg-white text-emerald-800 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                title="টেবিল ভিউ"
-              >
-                <List className="w-3.5 h-3.5" />
-                <span>টেবিল ভিউ</span>
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -1615,7 +1580,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
             <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400 text-xs shadow-xs">
               এখনো কোনো খরচের বিবরণ পাওয়া যায়নি
             </div>
-          ) : viewMode === 'cards' ? (
+          ) : (
             /* Responsive Expense Cards Grid */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredRecords.map((rec, idx) => (
@@ -1704,102 +1669,6 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                 </div>
               ))}
             </div>
-          ) : (
-            /* Expense Detailed Table */
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm border-collapse">
-                  <thead>
-                    <tr className="bg-rose-50/60 border-b border-slate-200 text-xs font-bold text-slate-700">
-                      <th className="py-3 px-4">তারিখ</th>
-                      <th className="py-3 px-4">খরচের কারণ / বিবরণ</th>
-                      <th className="py-3 px-4">কার মাধ্যমে / দায়িত্বে</th>
-                      <th className="py-3 px-4">খাত / ক্যাটাগরি</th>
-                      <th className="py-3 px-4">ভাউচার / মেমো</th>
-                      <th className="py-3 px-4 text-right">পরিমাণ (টাকা ৳)</th>
-                      {isAdmin && <th className="py-3 px-4 text-right">অ্যাকশন</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredRecords.map((rec) => (
-                      <tr key={rec.id} className="hover:bg-rose-50/30 transition-colors">
-                        <td className="py-3 px-4 text-slate-600 text-xs whitespace-nowrap font-medium">
-                          {formatBengaliDate(rec.date)}
-                        </td>
-                        <td className="py-3 px-4 font-bold text-slate-900">
-                          <div className="flex flex-col">
-                            <span>{rec.description || 'সংগঠনের ব্যয়'}</span>
-                            {rec.notes && (
-                              <span className="text-[11px] text-slate-500 font-normal mt-0.5">
-                                {rec.notes}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-slate-700 text-xs font-semibold">
-                          <div className="flex items-center gap-1.5">
-                            <UserCheck className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{rec.disbursedTo || rec.memberName}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 text-[11px] font-bold border border-rose-200">
-                            {rec.category || 'অফিস পরিচালনা'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-xs font-mono text-slate-600">
-                          {rec.notes?.includes('ভাউচার:') ? (
-                            <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-bold text-[11px]">
-                              {rec.notes.split('ভাউচার:')[1].split('-')[0].trim()}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-right font-black font-mono text-rose-700 text-sm">
-                          - {toBengaliCurrency(rec.amount)}
-                        </td>
-                        {isAdmin && (
-                          <td className="py-3 px-4 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => handleOpenEditExpense(rec)}
-                                className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                                title="এডিট করুন"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              {onDeleteFundRecord && (
-                                <button
-                                  onClick={() => onDeleteFundRecord(rec.id)}
-                                  className="p-1 text-rose-600 hover:bg-rose-50 rounded"
-                                  title="মুছুন"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                  {filteredRecords.length > 0 && (
-                    <tfoot>
-                      <tr className="bg-rose-50/80 font-bold border-t-2 border-rose-200">
-                        <td colSpan={isAdmin ? 5 : 4} className="py-3 px-4 text-rose-950 text-xs">
-                          মোট খরচের পরিমাণ:
-                        </td>
-                        <td className="py-3 px-4 text-right font-black font-mono text-rose-800 text-sm">
-                          {toBengaliCurrency(stats.totalExpense)}
-                        </td>
-                        {isAdmin && <td></td>}
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-            </div>
           )}
         </div>
       ) : (
@@ -1808,7 +1677,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
           <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400 text-xs shadow-xs">
             কোনো রেকর্ড পাওয়া যায়নি
           </div>
-        ) : viewMode === 'cards' ? (
+        ) : (
           /* Responsive Fund Cards Grid (Matches Member Directory Design) */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredRecords.map((record, idx) => {
@@ -1985,7 +1854,8 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                     {/* Actions Footer - Fully Responsive, No Overflow */}
                     <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {record.status === 'Due' && (
+                        {/* Admin-only SMS Dispatch Actions for Due Records */}
+                        {isAdmin && record.status === 'Due' && (
                           <>
                             {/* Instant SIM SMS button using pre-saved phone number */}
                             <button
@@ -2020,7 +1890,8 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                           </>
                         )}
 
-                        {record.status === 'Paid' && (
+                        {/* Admin-only Payment Confirmation SMS */}
+                        {isAdmin && record.status === 'Paid' && (
                           <button
                             type="button"
                             onClick={() => handleDirectSimSmsForRecord(record)}
@@ -2057,6 +1928,30 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                             {record.status === 'Paid' ? 'Due করুন' : 'Paid করুন'}
                           </button>
                         )}
+
+                        {/* Regular User / Public View Status Badge (Strictly No SMS Buttons) */}
+                        {!isAdmin && (
+                          <div className="flex items-center gap-2 py-0.5">
+                            {record.status === 'Paid' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-xs font-bold">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>চাঁদা পরিশোধিত</span>
+                              </span>
+                            )}
+                            {record.status === 'Due' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/80 text-xs font-bold">
+                                <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                                <span>বকেয়া চাঁদা</span>
+                              </span>
+                            )}
+                            {record.status === 'Pending' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold">
+                                <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                                <span>যাচাই প্রক্রিয়াধীন</span>
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {isAdmin && (
@@ -2086,201 +1981,6 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                 </div>
               );
             })}
-          </div>
-        ) : (
-          /* Table View for Standard Funds */
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-700">
-                    <th className="py-3 px-4">সদস্য / এন্ট্রির নাম</th>
-                    <th className="py-3 px-4">বাবত / বিবরণ</th>
-                    <th className="py-3 px-4">তারিখ</th>
-                    <th className="py-3 px-4 text-right">পরিমাণ (টাকা)</th>
-                    <th className="py-3 px-4 text-center">স্ট্যাটাস</th>
-                    {isAdmin && <th className="py-3 px-4 text-right">অ্যাকশন</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredRecords.map((record, idx) => {
-                    const cleanDesc = getCleanFundDescription(record);
-                    const memberPhone = resolveMemberPhone(record, allMembers);
-                    const arrearsInfo = formatDynamicArrearsText(record);
-
-                    return (
-                      <tr key={record.id || idx} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-4 font-bold text-slate-900">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-7 h-7 rounded-lg text-xs font-black flex items-center justify-center ${
-                              record.status === 'Paid'
-                                ? 'bg-emerald-50 text-emerald-800'
-                                : record.status === 'Pending'
-                                ? 'bg-amber-100 text-amber-900'
-                                : record.status === 'Expense'
-                                ? 'bg-rose-100 text-rose-800'
-                                : 'bg-slate-100 text-slate-700'
-                            }`}>
-                              {record.memberName.charAt(0)}
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="truncate">{record.memberName}</span>
-                              {memberPhone && (
-                                <span className="text-[10px] text-emerald-700 font-mono font-semibold flex items-center gap-0.5">
-                                  <Smartphone className="w-2.5 h-2.5 text-emerald-500" />
-                                  {memberPhone}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="py-3 px-4 text-slate-600 text-xs">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="font-medium text-slate-800">
-                              {record.status === 'Due' && arrearsInfo.isMultiMonth
-                                ? arrearsInfo.formattedText
-                                : cleanDesc.primaryText}
-                            </span>
-                            {cleanDesc.showCategoryBadge && (
-                              <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-normal">
-                                {cleanDesc.categoryBadgeText}
-                              </span>
-                            )}
-                            {record.trxId && (
-                              <span className="text-[10px] font-mono bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.2 rounded font-bold">
-                                TrxID: {record.trxId}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="py-3 px-4 text-slate-500 text-xs whitespace-nowrap">
-                          {formatBengaliDate(record.date)}
-                        </td>
-
-                        <td className="py-3 px-4 text-right font-bold font-mono text-slate-900">
-                          {record.status === 'Expense' ? (
-                            <span className="text-rose-600">- {toBengaliCurrency(record.amount)}</span>
-                          ) : (
-                            toBengaliCurrency(record.amount)
-                          )}
-                        </td>
-
-                        <td className="py-3 px-4 text-center whitespace-nowrap">
-                          {record.status === 'Paid' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              Paid
-                            </span>
-                          ) : record.status === 'Pending' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-xs font-bold border border-amber-300">
-                              <Clock className="w-3 h-3 text-amber-600 animate-pulse" />
-                              Pending
-                            </span>
-                          ) : record.status === 'Due' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200">
-                              <AlertCircle className="w-3 h-3 text-amber-600" />
-                              Due
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 text-xs font-bold border border-rose-200">
-                              Expense
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Admin Only: Row actions */}
-                        {isAdmin && (
-                          <td className="py-3 px-4 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                              {record.status === 'Due' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDirectSimSmsForRecord(record)}
-                                    className="text-[11px] font-bold px-2 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition flex items-center gap-1 cursor-pointer"
-                                    title="সরাসরি SIM SMS পাঠান"
-                                  >
-                                    <Send className="w-3 h-3" />
-                                    <span>SIM SMS</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setDueSmsTarget({
-                                      memberName: record.memberName,
-                                      phone: memberPhone,
-                                      amount: record.amount,
-                                      month: record.month || arrearsInfo.formattedText,
-                                      memberId: record.memberId
-                                    })}
-                                    className="text-[11px] font-medium px-1.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1 cursor-pointer"
-                                    title="কাস্টমাইজ ও প্রিভিউ"
-                                  >
-                                    <MessageSquare className="w-3 h-3 text-slate-500" />
-                                  </button>
-                                </>
-                              )}
-
-                              {record.status === 'Paid' && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDirectSimSmsForRecord(record)}
-                                  className="text-[11px] font-bold px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition flex items-center gap-1 cursor-pointer"
-                                  title="পরিশোধ SMS পাঠান"
-                                >
-                                  <Send className="w-3 h-3 text-emerald-600" />
-                                  <span>SMS</span>
-                                </button>
-                              )}
-
-                              {onToggleStatus && record.status === 'Pending' && (
-                                <button
-                                  onClick={() => handleApproveOrTogglePaid(record, 'Paid')}
-                                  className="text-[11px] font-bold px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1 cursor-pointer"
-                                  title="যাচাই সম্পন্ন করে পেইড করুন ও অটো SMS পাঠান"
-                                >
-                                  <Check className="w-3 h-3" />
-                                  <span>অনুমোদন</span>
-                                </button>
-                              )}
-
-                              {onToggleStatus && record.status !== 'Expense' && record.status !== 'Pending' && (
-                                <button
-                                  onClick={() => handleApproveOrTogglePaid(record, record.status === 'Paid' ? 'Due' : 'Paid')}
-                                  className="text-[11px] font-semibold px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
-                                  title="Paid বা Due পরিবর্তন করুন"
-                                >
-                                  {record.status === 'Paid' ? 'Due করুন' : 'Paid করুন'}
-                                </button>
-                              )}
-
-                              <button
-                                onClick={() => handleOpenEdit(record)}
-                                className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                                title="এডিট"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              
-                              {onDeleteFundRecord && (
-                                <button
-                                  onClick={() => onDeleteFundRecord(record.id)}
-                                  className="p-1 text-red-600 hover:bg-red-50 rounded"
-                                  title="মুছুন"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
           </div>
         )
       )}

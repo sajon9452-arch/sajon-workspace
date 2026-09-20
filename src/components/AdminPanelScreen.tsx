@@ -44,7 +44,8 @@ import {
   Server,
   Code,
   ExternalLink,
-  Globe
+  Globe,
+  Send
 } from 'lucide-react';
 const ExpenseModal = lazy(() => import('./ExpenseModal').then(m => ({ default: m.ExpenseModal })));
 import {
@@ -114,6 +115,7 @@ import {
   generateDirectSimDueSms,
   resolveMemberPhone,
   extractArrearsMonthCount,
+  formatDynamicArrearsText,
   ARREARS_MONTH_OPTIONS
 } from '../utils/smsHelper';
 
@@ -2101,127 +2103,239 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                  <tr>
-                    <th className="p-3.5">সদস্যের নাম / বিবরণ</th>
-                    <th className="p-3.5">পরিমাণ (৳)</th>
-                    <th className="p-3.5">মাস/তারিখ</th>
-                    <th className="p-3.5">স্ট্যাটাস</th>
-                    <th className="p-3.5">নোট / TrxID</th>
-                    <th className="p-3.5 text-right">অ্যাকশন</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {funds
-                    .filter(f =>
-                      f.memberName.toLowerCase().includes(fundSearch.toLowerCase()) ||
-                      (f.month && f.month.toLowerCase().includes(fundSearch.toLowerCase())) ||
-                      (f.notes && f.notes.toLowerCase().includes(fundSearch.toLowerCase())) ||
-                      (f.trxId && f.trxId.toLowerCase().includes(fundSearch.toLowerCase()))
-                    )
-                    .map(f => (
-                      <tr key={f.id} className="hover:bg-slate-50/80 transition">
-                        <td className="p-3.5 font-bold text-slate-900">
-                          <div className="flex flex-col">
-                            <span>{f.memberName}</span>
-                            {f.category && (
-                              <span className="text-[10px] text-slate-400 font-normal">{f.category}</span>
+          {/* Card View Layout Exclusively */}
+          {(() => {
+            const filteredFunds = funds.filter(f =>
+              f.memberName.toLowerCase().includes(fundSearch.toLowerCase()) ||
+              (f.month && f.month.toLowerCase().includes(fundSearch.toLowerCase())) ||
+              (f.notes && f.notes.toLowerCase().includes(fundSearch.toLowerCase())) ||
+              (f.trxId && f.trxId.toLowerCase().includes(fundSearch.toLowerCase()))
+            );
+
+            if (filteredFunds.length === 0) {
+              return (
+                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400 text-xs shadow-xs">
+                  কোনো ফান্ড রেকর্ড পাওয়া যায়নি
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {filteredFunds.map(f => {
+                  const memberPhone = resolveMemberPhone(f, members);
+                  const arrearsInfo = formatDynamicArrearsText(f);
+
+                  return (
+                    <div
+                      key={f.id}
+                      className="bg-white rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all overflow-hidden flex flex-col justify-between"
+                    >
+                      {/* Status Strip */}
+                      <div
+                        className={`h-1.5 ${
+                          f.status === 'Paid'
+                            ? 'bg-gradient-to-r from-emerald-500 to-teal-600'
+                            : f.status === 'Pending'
+                            ? 'bg-gradient-to-r from-amber-400 to-amber-500'
+                            : f.status === 'Expense'
+                            ? 'bg-gradient-to-r from-rose-500 to-red-600'
+                            : 'bg-gradient-to-r from-amber-500 to-orange-500'
+                        }`}
+                      />
+
+                      <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                        {/* Member & Category Header */}
+                        <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-100">
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-bold text-slate-900 text-sm truncate">
+                              {f.memberName}
+                            </h4>
+                            {memberPhone && (
+                              <div className="flex items-center gap-1 text-[11px] text-emerald-700 font-mono font-semibold mt-0.5">
+                                <Smartphone className="w-3 h-3 text-emerald-500 shrink-0" />
+                                <span>{memberPhone}</span>
+                              </div>
                             )}
                           </div>
-                        </td>
-                        <td className="p-3.5 font-extrabold text-sm">
-                          {f.status === 'Expense' ? (
-                            <span className="text-rose-600 font-mono">- {formatTaka(f.amount)}</span>
-                          ) : (
-                            <span className="text-slate-900 font-mono">{formatTaka(f.amount)}</span>
+                          {f.category && (
+                            <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                              {f.category}
+                            </span>
                           )}
-                        </td>
-                        <td className="p-3.5 text-slate-600">{f.month || f.date}</td>
-                        <td className="p-3.5">
+                        </div>
+
+                        {/* Amount and Timing */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-xs text-slate-500">
+                            {f.status === 'Due' && arrearsInfo.isMultiMonth ? (
+                              <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block text-[11px]">
+                                {arrearsInfo.formattedText}
+                              </span>
+                            ) : (
+                              <span>{f.month || f.date}</span>
+                            )}
+                          </div>
+                          <div className="font-mono font-black text-sm">
+                            {f.status === 'Expense' ? (
+                              <span className="text-rose-600">- {formatTaka(f.amount)}</span>
+                            ) : (
+                              <span className="text-slate-900">{formatTaka(f.amount)}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* TrxID / Notes if present */}
+                        {(f.trxId || f.notes) && (
+                          <div className="text-[11px] bg-slate-50 p-2 rounded-xl border border-slate-100 flex flex-wrap items-center gap-1.5">
+                            {f.trxId && (
+                              <span className="font-mono text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded">
+                                TrxID: {f.trxId}
+                              </span>
+                            )}
+                            {f.notes && (
+                              <span className="text-slate-600 truncate">{f.notes}</span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Status Toggle Buttons */}
+                        <div className="pt-1">
                           {f.status === 'Pending' ? (
                             <button
+                              type="button"
                               onClick={() => handleToggleFundStatus(f.id)}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition bg-amber-50 text-amber-800 border-amber-300 hover:bg-emerald-600 hover:text-white cursor-pointer flex items-center gap-1 shadow-2xs"
+                              className="w-full py-1.5 rounded-xl text-xs font-bold border transition bg-amber-50 text-amber-800 border-amber-300 hover:bg-emerald-600 hover:text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
                               title="ক্লিক করে ট্রানজেকশন অনুমোদন (Approve) করুন"
                             >
-                              <Clock className="w-3 h-3 text-amber-600" />
+                              <Clock className="w-3.5 h-3.5 text-amber-600" />
                               <span>Pending (অনুমোদন করুন)</span>
                             </button>
                           ) : f.status === 'Expense' ? (
-                            <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold border bg-rose-50 text-rose-700 border-rose-200 inline-block">
+                            <span className="w-full py-1 rounded-xl text-xs font-bold border bg-rose-50 text-rose-700 border-rose-200 block text-center">
                               Expense (ব্যয়)
                             </span>
                           ) : (
                             <button
+                              type="button"
                               onClick={() => handleToggleFundStatus(f.id)}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                              className={`w-full py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer text-center ${
                                 f.status === 'Paid'
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                  : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                  : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
                               }`}
                               title="স্ট্যাটাস পরিবর্তন করতে ক্লিক করুন"
                             >
-                              {f.status === 'Paid' ? 'Paid (পরিশোধিত)' : 'Due (বকেয়া)'}
+                              {f.status === 'Paid' ? '✓ Paid (পরিশোধিত)' : '⚠ Due (বকেয়া)'}
                             </button>
                           )}
-                        </td>
-                        <td className="p-3.5 text-slate-500">
-                          <div className="flex flex-col gap-0.5">
-                            {f.trxId && (
-                              <span className="font-mono text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.2 rounded w-fit">
-                                TrxID: {f.trxId}
-                              </span>
+                        </div>
+
+                        {/* Admin Action Bar with Direct SMS */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                          <div className="flex items-center gap-1.5">
+                            {f.status === 'Due' && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const arrears = extractArrearsMonthCount(f);
+                                    const body = generateDirectSimDueSms({
+                                      memberName: f.memberName,
+                                      money: f.amount,
+                                      monthCount: arrears.monthCount,
+                                      pastMonthsText: arrears.pastMonthsText
+                                    });
+                                    if (memberPhone) {
+                                      triggerDirectSimSms(memberPhone, body);
+                                    } else {
+                                      setDueSmsTarget({
+                                        memberName: f.memberName,
+                                        phone: '',
+                                        amount: f.amount,
+                                        month: f.month || arrearsInfo.formattedText,
+                                        memberId: f.memberId
+                                      });
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                                  title="সরাসরি SIM SMS পাঠান"
+                                >
+                                  <Send className="w-3 h-3" />
+                                  <span>SIM SMS</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDueSmsTarget({
+                                    memberName: f.memberName,
+                                    phone: memberPhone,
+                                    amount: f.amount,
+                                    month: f.month || arrearsInfo.formattedText,
+                                    memberId: f.memberId
+                                  })}
+                                  className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+                                  title="কাস্টমাইজ ও প্রিভিউ"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                </button>
+                              </>
                             )}
-                            <span>{f.notes || '-'}</span>
+
+                            {f.status === 'Paid' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const body = generateDirectSimPaidSms({
+                                    memberName: f.memberName,
+                                    months: f.month || f.category || 'চলতি',
+                                    money: f.amount
+                                  });
+                                  if (memberPhone) {
+                                    triggerDirectSimSms(memberPhone, body);
+                                  }
+                                }}
+                                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition flex items-center gap-1 cursor-pointer"
+                                title="পরিশোধ নিশ্চিতকরণ SMS পাঠান"
+                              >
+                                <Send className="w-3 h-3 text-emerald-600" />
+                                <span>SMS</span>
+                              </button>
+                            )}
                           </div>
-                        </td>
-                        <td className="p-3.5 text-right space-x-1.5">
-                          {f.status === 'Due' && (
+
+                          <div className="flex items-center gap-1 ml-auto">
                             <button
-                              onClick={() => setDueSmsTarget({
-                                memberName: f.memberName,
-                                phone: resolveMemberPhone(f, members),
-                                amount: f.amount,
-                                month: f.month,
-                                memberId: f.memberId
-                              })}
-                              className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 transition cursor-pointer"
-                              title="বকেয়া রিমাইন্ডার SIM SMS পাঠান (কাস্টম মাসসহ)"
+                              type="button"
+                              onClick={() => {
+                                if (f.status === 'Expense') {
+                                  setEditingExpense(f);
+                                  setIsExpenseModalOpen(true);
+                                } else {
+                                  setEditingFund(f);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 transition cursor-pointer"
+                              title="এডিট"
                             >
-                              <MessageSquare className="w-3.5 h-3.5" />
+                              <Edit2 className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              if (f.status === 'Expense') {
-                                setEditingExpense(f);
-                                setIsExpenseModalOpen(true);
-                              } else {
-                                setEditingFund(f);
-                              }
-                            }}
-                            className="p-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 transition cursor-pointer"
-                            title="এডিট"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteFund(f.id, f.memberName)}
-                            className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition"
-                            title="ডিলিট"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteFund(f.id, f.memberName)}
+                              className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition cursor-pointer"
+                              title="ডিলিট"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

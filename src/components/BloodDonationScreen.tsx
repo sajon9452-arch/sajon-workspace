@@ -439,13 +439,15 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
                         )}
                       </button>
 
-                      <a
-                        href={`sms:${cleanPhone}`}
-                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition"
-                        title="এসএমএস পাঠান"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                      </a>
+                      {isAdmin && (
+                        <a
+                          href={`sms:${cleanPhone}`}
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition"
+                          title="এসএমএস পাঠান"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </a>
+                      )}
 
                       <a
                         href={`https://wa.me/${cleanPhone.replace('+', '')}`}
