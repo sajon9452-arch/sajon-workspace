@@ -247,7 +247,7 @@ export function extractArrearsMonthCount(record: {
 
   if (fullText) {
     // 1. "রানিং মাস সহ গত X মাস" or "রানিং মাস এবং গত X মাস"
-    // e.g. "রানিং মাস সহ গত ৪ মাসের" -> matches 4
+    // e.g. "রানিং মাস সহ গত ৩ মাস" -> 1 running + 3 past = 4 months total
     const runningWithPastMatch = fullText.match(
       /(?:রানিং|চলতি)\s*মাস[^\d০-৯a-zA-Z]*(?:ও|এবং|সহ)?[^\d০-৯a-zA-Z]*গত\s*([০-৯\d]+|এক|দুই|তিন|চার|পাঁচ|ছয়|ছয়|সাত|আট|নয়|নয়|দশ|এগার|এগারো|বার|বারো)\s*মাস/i
     );
@@ -255,14 +255,14 @@ export function extractArrearsMonthCount(record: {
       const parsed = parseBengaliOrEnglishNumber(runningWithPastMatch[1]);
       if (parsed && parsed >= 1 && parsed <= 36) {
         return {
-          monthCount: parsed,
-          pastMonthsText: parsed > 1 ? toBengaliNumber(parsed - 1) : ''
+          monthCount: parsed + 1,
+          pastMonthsText: toBengaliNumber(parsed)
         };
       }
     }
 
     // 2. "গত X মাস(ের)?"
-    // e.g. "গত ৪ মাসের বকেয়া", "গত ৩ মাস"
+    // e.g. "গত ৩ মাসের বকেয়া", "গত ৩ মাস"
     const pastMatch = fullText.match(
       /গত\s*([০-৯\d]+|এক|দুই|তিন|চার|পাঁচ|ছয়|ছয়|সাত|আট|নয়|নয়|দশ|এগার|এগারো|বার|বারো)\s*মাস/i
     );
@@ -270,8 +270,8 @@ export function extractArrearsMonthCount(record: {
       const parsed = parseBengaliOrEnglishNumber(pastMatch[1]);
       if (parsed && parsed >= 1 && parsed <= 36) {
         return {
-          monthCount: parsed,
-          pastMonthsText: parsed > 1 ? toBengaliNumber(parsed - 1) : ''
+          monthCount: parsed + 1,
+          pastMonthsText: toBengaliNumber(parsed)
         };
       }
     }
@@ -354,6 +354,75 @@ export function extractArrearsMonthCount(record: {
   return {
     monthCount: 1,
     pastMonthsText: ''
+  };
+}
+
+/**
+ * Dynamic Arrears Formatting:
+ * For multi-month dues, clearly formats and displays the text format as requested:
+ * e.g., "রানিং মাস সহ গত ৩ মাস" (or the exact corresponding month count) along with total amount.
+ */
+export function formatDynamicArrearsText(record: {
+  status?: string;
+  month?: string;
+  description?: string;
+  notes?: string;
+  amount?: number | string;
+}): {
+  formattedText: string;
+  monthCount: number;
+  pastMonthsText: string;
+  isMultiMonth: boolean;
+} {
+  const fullText = [record.month, record.description, record.notes].filter(Boolean).join(' ');
+
+  // 1. Check if user already provided explicit "রানিং মাস সহ গত X মাস"
+  const explicitMatch = fullText.match(
+    /(?:রানিং|চলতি)\s*মাস[^\d০-৯a-zA-Z]*(?:ও|এবং|সহ)[^\d০-৯a-zA-Z]*গত\s*([০-৯\d]+|এক|দুই|তিন|চার|পাঁচ|ছয়|ছয়|সাত|আট|নয়|নয়|দশ|এগার|এগারো|বার|বারো)\s*মাস/i
+  );
+  if (explicitMatch && explicitMatch[1]) {
+    const parsedNum = parseBengaliOrEnglishNumber(explicitMatch[1]);
+    const pastText = parsedNum !== null ? toBengaliNumber(parsedNum) : explicitMatch[1].trim();
+    return {
+      formattedText: `রানিং মাস সহ গত ${pastText} মাস`,
+      monthCount: parsedNum ? parsedNum + 1 : 2,
+      pastMonthsText: pastText,
+      isMultiMonth: true
+    };
+  }
+
+  // 2. Check if text has "গত X মাস"
+  const pastMatch = fullText.match(
+    /গত\s*([০-৯\d]+|এক|দুই|তিন|চার|পাঁচ|ছয়|ছয়|সাত|আট|নয়|নয়|দশ|এগার|এগারো|বার|বারো)\s*মাস/i
+  );
+  if (pastMatch && pastMatch[1]) {
+    const parsedNum = parseBengaliOrEnglishNumber(pastMatch[1]);
+    const pastText = parsedNum !== null ? toBengaliNumber(parsedNum) : pastMatch[1].trim();
+    return {
+      formattedText: `রানিং মাস সহ গত ${pastText} মাস`,
+      monthCount: parsedNum ? parsedNum + 1 : 2,
+      pastMonthsText: pastText,
+      isMultiMonth: true
+    };
+  }
+
+  // 3. Extract based on general extractor (including amount-based, month names, X months count)
+  const arrears = extractArrearsMonthCount(record);
+  if (arrears.monthCount > 1) {
+    const pastText = arrears.pastMonthsText || toBengaliNumber(arrears.monthCount - 1);
+    return {
+      formattedText: `রানিং মাস সহ গত ${pastText} মাস`,
+      monthCount: arrears.monthCount,
+      pastMonthsText: pastText,
+      isMultiMonth: true
+    };
+  }
+
+  return {
+    formattedText: 'রানিং মাসের চাঁদা',
+    monthCount: 1,
+    pastMonthsText: '',
+    isMultiMonth: false
   };
 }
 

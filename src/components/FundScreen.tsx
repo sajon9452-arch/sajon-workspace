@@ -28,7 +28,8 @@ import {
   Layers,
   MessageSquare,
   LayoutGrid,
-  List
+  List,
+  ExternalLink
 } from 'lucide-react';
 import { FundRecord, PaymentStatus, PaymentGatewayConfig, Member } from '../types';
 import { toBengaliCurrency, toBengaliNumber, formatBengaliDate, getCleanFundDescription } from '../utils/helpers';
@@ -43,6 +44,7 @@ import {
   resolveMemberPhone,
   buildDirectSimSmsUrl,
   extractArrearsMonthCount,
+  formatDynamicArrearsText,
   ARREARS_MONTH_OPTIONS
 } from '../utils/smsHelper';
 
@@ -546,6 +548,53 @@ export const FundScreen: React.FC<FundScreenProps> = ({
       onUpdateManualTotalBalance(null);
       setIsEditBalanceModalOpen(false);
     }
+  };
+
+  // Instant SIM SMS trigger directly from fund card or table row
+  const handleDirectSimSmsForRecord = (record: FundRecord) => {
+    const memberPhone = resolveMemberPhone(record, allMembers);
+    let smsText = '';
+
+    if (record.status === 'Paid') {
+      smsText = generateDirectSimPaidSms({
+        memberName: record.memberName,
+        months: record.month || record.description || 'চলতি',
+        money: record.amount
+      });
+    } else if (record.status === 'Due') {
+      const arrears = extractArrearsMonthCount(record);
+      smsText = generateDirectSimDueSms({
+        memberName: record.memberName,
+        money: record.amount,
+        monthCount: arrears.monthCount,
+        pastMonthsText: arrears.pastMonthsText
+      });
+    } else {
+      smsText = generateDirectSimPaidSms({
+        memberName: record.memberName,
+        months: record.month || record.description || 'চলতি',
+        money: record.amount
+      });
+    }
+
+    // Trigger direct native SIM SMS intent
+    triggerDirectSimSms(memberPhone, smsText);
+
+    // Copy to clipboard fallback
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(smsText).catch(() => {});
+    }
+
+    // Show feedback toast with full details
+    setPaidSmsToast({
+      memberName: record.memberName,
+      phone: memberPhone,
+      amount: record.amount,
+      smsText
+    });
+    setTimeout(() => {
+      setPaidSmsToast(prev => (prev?.memberName === record.memberName ? null : prev));
+    }, 9000);
   };
 
   return (
@@ -1765,6 +1814,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
             {filteredRecords.map((record, idx) => {
               const cleanDesc = getCleanFundDescription(record);
               const memberPhone = resolveMemberPhone(record, allMembers);
+              const arrearsInfo = formatDynamicArrearsText(record);
 
               return (
                 <div
@@ -1786,11 +1836,11 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                   />
 
                   <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3.5">
-                    {/* Top Row: Member Info + Status Badge */}
+                    {/* Top Row: Member Info + Direct Pre-saved Phone + Status Badge */}
                     <div className="flex items-start justify-between gap-2.5 pb-2.5 border-b border-slate-100">
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
                         <div
-                          className={`w-9 h-9 rounded-xl text-sm font-black flex items-center justify-center shrink-0 ${
+                          className={`w-9 h-9 rounded-xl text-sm font-black flex items-center justify-center shrink-0 mt-0.5 ${
                             record.status === 'Paid'
                               ? 'bg-emerald-100 text-emerald-800'
                               : record.status === 'Pending'
@@ -1802,21 +1852,27 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                         >
                           {record.memberName.charAt(0)}
                         </div>
-                        <div className="min-w-0">
-                          <h4 className="font-bold text-slate-900 text-sm truncate">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-slate-900 text-sm sm:text-base truncate leading-snug">
                             {record.memberName}
                           </h4>
-                          {record.phone ? (
-                            <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1">
-                              <Smartphone className="w-3 h-3 text-slate-400" />
-                              {record.phone}
-                            </span>
-                          ) : memberPhone ? (
-                            <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1">
-                              <Smartphone className="w-3 h-3 text-slate-400" />
-                              {memberPhone}
-                            </span>
-                          ) : null}
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            {memberPhone ? (
+                              <a
+                                href={`tel:${memberPhone}`}
+                                className="inline-flex items-center gap-1 text-xs font-mono font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200/90 shadow-2xs transition"
+                                title="সরাসরি ফোন বা SMS দিতে ক্লিক করুন"
+                              >
+                                <Smartphone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>{memberPhone}</span>
+                              </a>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
+                                <Smartphone className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span>নম্বর সংরক্ষিত নেই</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -1825,25 +1881,52 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                         {record.status === 'Paid' ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 shadow-2xs">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>পরিশোধিত (Paid)</span>
+                            <span>পরিশোধিত</span>
                           </span>
                         ) : record.status === 'Pending' ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-xs font-bold border border-amber-300 shadow-2xs">
                             <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                            <span>অপেক্ষমান (Pending)</span>
+                            <span>অপেক্ষমান</span>
                           </span>
                         ) : record.status === 'Due' ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200 shadow-2xs">
                             <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                            <span>বকেয়া (Due)</span>
+                            <span>বকেয়া</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 text-xs font-bold border border-rose-200 shadow-2xs">
-                            <span>ব্যয় (Expense)</span>
+                            <span>ব্যয়</span>
                           </span>
                         )}
                       </div>
                     </div>
+
+                    {/* Dynamic Arrears Highlight Box for Due Status */}
+                    {record.status === 'Due' && (
+                      <div className="bg-amber-50/90 border border-amber-200/90 rounded-xl p-3 space-y-1.5 shadow-2xs">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 text-xs sm:text-sm font-black text-amber-950">
+                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>{arrearsInfo.formattedText}</span>
+                          </div>
+                          <span className="text-xs sm:text-sm font-black font-mono text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-md border border-amber-300">
+                            মোট {toBengaliCurrency(record.amount)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-amber-800/90 pt-0.5 flex-wrap gap-1">
+                          <span className="font-semibold">
+                            {arrearsInfo.isMultiMonth
+                              ? `(সর্বমোট ${toBengaliNumber(arrearsInfo.monthCount)} মাসের চাঁদা বকেয়া)`
+                              : '(চলতি ১ মাসের চাঁদা বকেয়া)'}
+                          </span>
+                          {memberPhone && (
+                            <span className="font-mono text-[10px] text-amber-900 bg-amber-200/60 px-1.5 py-0.2 rounded font-bold">
+                              SMS প্রাপক: {memberPhone}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Description & Category - Clean without duplicate "মাসিক চাঁদা" */}
                     <div className="space-y-1.5">
@@ -1877,7 +1960,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                       <div className="space-y-0.5">
                         <span className="text-[10px] text-slate-400 block font-medium">তারিখ ও মাস</span>
                         <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span>{formatBengaliDate(record.date)}</span>
                           {record.month && record.month !== record.date && (
                             <span className="text-slate-400 text-[11px]">({record.month})</span>
@@ -1899,26 +1982,53 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                       </div>
                     </div>
 
-                    {/* Actions Footer */}
+                    {/* Actions Footer - Fully Responsive, No Overflow */}
                     <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {record.status === 'Due' && (
+                          <>
+                            {/* Instant SIM SMS button using pre-saved phone number */}
+                            <button
+                              type="button"
+                              id={`direct-sim-sms-btn-${record.id || idx}`}
+                              onClick={() => handleDirectSimSmsForRecord(record)}
+                              className="px-3 py-1.5 text-xs font-bold rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+                              title={`${memberPhone ? `${memberPhone}-এ ` : ''}সরাসরি SIM SMS পাঠান`}
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>সরাসরি SIM SMS</span>
+                            </button>
+
+                            {/* Customize / Preview SMS Modal */}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDueSmsTarget({
+                                  memberName: record.memberName,
+                                  phone: memberPhone,
+                                  amount: record.amount,
+                                  month: record.month || arrearsInfo.formattedText,
+                                  memberId: record.memberId,
+                                })
+                              }
+                              className="px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1 cursor-pointer shrink-0"
+                              title="মেসেজ কাস্টমাইজ বা প্রিভিউ করুন"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5 text-slate-500" />
+                              <span>কাস্টমাইজ</span>
+                            </button>
+                          </>
+                        )}
+
+                        {record.status === 'Paid' && (
                           <button
                             type="button"
-                            onClick={() =>
-                              setDueSmsTarget({
-                                memberName: record.memberName,
-                                phone: resolveMemberPhone(record, allMembers),
-                                amount: record.amount,
-                                month: record.month,
-                                memberId: record.memberId,
-                              })
-                            }
-                            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
-                            title="বকেয়া রিমাইন্ডার SIM SMS পাঠান"
+                            onClick={() => handleDirectSimSmsForRecord(record)}
+                            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+                            title={`${memberPhone ? `${memberPhone}-এ ` : ''}পরিশোধ নিশ্চিতকরণ SMS পাঠান`}
                           >
-                            <MessageSquare className="w-3.5 h-3.5" />
-                            <span>বকেয়া SMS পাঠান</span>
+                            <Send className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>SMS পাঠান</span>
                           </button>
                         )}
 
@@ -1926,7 +2036,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                           <button
                             type="button"
                             onClick={() => handleApproveOrTogglePaid(record, 'Paid')}
-                            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer shrink-0"
                           >
                             <Check className="w-3.5 h-3.5" />
                             <span>অনুমোদন</span>
@@ -1942,7 +2052,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                                 record.status === 'Paid' ? 'Due' : 'Paid'
                               )
                             }
-                            className="px-2.5 py-1.5 text-xs font-medium rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+                            className="px-2.5 py-1.5 text-xs font-medium rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer shrink-0"
                           >
                             {record.status === 'Paid' ? 'Due করুন' : 'Paid করুন'}
                           </button>
@@ -1950,7 +2060,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                       </div>
 
                       {isAdmin && (
-                        <div className="flex items-center gap-1 ml-auto">
+                        <div className="flex items-center gap-1 ml-auto shrink-0">
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(record)}
@@ -1995,6 +2105,9 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {filteredRecords.map((record, idx) => {
                     const cleanDesc = getCleanFundDescription(record);
+                    const memberPhone = resolveMemberPhone(record, allMembers);
+                    const arrearsInfo = formatDynamicArrearsText(record);
+
                     return (
                       <tr key={record.id || idx} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3 px-4 font-bold text-slate-900">
@@ -2010,11 +2123,12 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                             }`}>
                               {record.memberName.charAt(0)}
                             </div>
-                            <div className="flex flex-col">
-                              <span>{record.memberName}</span>
-                              {record.phone && (
-                                <span className="text-[10px] text-slate-400 font-mono font-normal">
-                                  {record.phone}
+                            <div className="flex flex-col min-w-0">
+                              <span className="truncate">{record.memberName}</span>
+                              {memberPhone && (
+                                <span className="text-[10px] text-emerald-700 font-mono font-semibold flex items-center gap-0.5">
+                                  <Smartphone className="w-2.5 h-2.5 text-emerald-500" />
+                                  {memberPhone}
                                 </span>
                               )}
                             </div>
@@ -2023,7 +2137,11 @@ export const FundScreen: React.FC<FundScreenProps> = ({
 
                         <td className="py-3 px-4 text-slate-600 text-xs">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="font-medium text-slate-800">{cleanDesc.primaryText}</span>
+                            <span className="font-medium text-slate-800">
+                              {record.status === 'Due' && arrearsInfo.isMultiMonth
+                                ? arrearsInfo.formattedText
+                                : cleanDesc.primaryText}
+                            </span>
                             {cleanDesc.showCategoryBadge && (
                               <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-normal">
                                 {cleanDesc.categoryBadgeText}
@@ -2075,21 +2193,44 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                         {/* Admin Only: Row actions */}
                         {isAdmin && (
                           <td className="py-3 px-4 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
                               {record.status === 'Due' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDirectSimSmsForRecord(record)}
+                                    className="text-[11px] font-bold px-2 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition flex items-center gap-1 cursor-pointer"
+                                    title="সরাসরি SIM SMS পাঠান"
+                                  >
+                                    <Send className="w-3 h-3" />
+                                    <span>SIM SMS</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDueSmsTarget({
+                                      memberName: record.memberName,
+                                      phone: memberPhone,
+                                      amount: record.amount,
+                                      month: record.month || arrearsInfo.formattedText,
+                                      memberId: record.memberId
+                                    })}
+                                    className="text-[11px] font-medium px-1.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1 cursor-pointer"
+                                    title="কাস্টমাইজ ও প্রিভিউ"
+                                  >
+                                    <MessageSquare className="w-3 h-3 text-slate-500" />
+                                  </button>
+                                </>
+                              )}
+
+                              {record.status === 'Paid' && (
                                 <button
-                                  onClick={() => setDueSmsTarget({
-                                    memberName: record.memberName,
-                                    phone: resolveMemberPhone(record, allMembers),
-                                    amount: record.amount,
-                                    month: record.month,
-                                    memberId: record.memberId
-                                  })}
-                                  className="text-[11px] font-bold px-2 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition flex items-center gap-1 cursor-pointer"
-                                  title="বকেয়া রিমাইন্ডার SIM SMS পাঠান (কাস্টম মাসসহ)"
+                                  type="button"
+                                  onClick={() => handleDirectSimSmsForRecord(record)}
+                                  className="text-[11px] font-bold px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition flex items-center gap-1 cursor-pointer"
+                                  title="পরিশোধ SMS পাঠান"
                                 >
-                                  <MessageSquare className="w-3 h-3" />
-                                  <span>বকেয়া SMS</span>
+                                  <Send className="w-3 h-3 text-emerald-600" />
+                                  <span>SMS</span>
                                 </button>
                               )}
 
@@ -2560,6 +2701,46 @@ export const FundScreen: React.FC<FundScreenProps> = ({
         target={dueSmsTarget}
         paymentConfig={paymentConfig}
       />
+
+      {/* Floating SIM SMS Feedback Toast */}
+      {paidSmsToast && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm w-[calc(100vw-2rem)] bg-slate-900 text-white rounded-2xl shadow-2xl p-4 border border-slate-700 animate-slideUp">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                <Check className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white">SIM SMS প্রস্তুত ও খোলা হয়েছে</h4>
+                <p className="text-[11px] text-slate-300">
+                  {paidSmsToast.memberName} ({paidSmsToast.phone || 'নম্বর ছাড়া'})
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setPaidSmsToast(null)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="mt-2.5 p-2 bg-slate-800/80 rounded-xl text-[11px] font-mono text-slate-300 border border-slate-700/60 line-clamp-3">
+            {paidSmsToast.smsText}
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+            <span>ক্লিপবোর্ডে কপি করা হয়েছে</span>
+            {paidSmsToast.phone && (
+              <a
+                href={`sms:${paidSmsToast.phone}?body=${encodeURIComponent(paidSmsToast.smsText)}`}
+                className="text-emerald-400 font-bold hover:underline flex items-center gap-1"
+              >
+                আবার খুলুন
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
