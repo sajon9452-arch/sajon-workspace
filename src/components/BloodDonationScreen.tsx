@@ -26,6 +26,7 @@ import {
   formatBengaliDate, 
   sanitizePhone 
 } from '../utils/helpers';
+import { triggerNativeCall, triggerNativeSms } from '../utils/nativeIntentHelper';
 
 interface BloodDonationScreenProps {
   donors: BloodDonor[];
@@ -440,13 +441,14 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
                       </button>
 
                       {isAdmin && (
-                        <a
-                          href={`sms:${cleanPhone}`}
-                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition"
-                          title="এসএমএস পাঠান"
+                        <button
+                          type="button"
+                          onClick={() => triggerNativeSms(cleanPhone, 'সিলেট মানব সেবা সংগঠন থেকে জরুরি রক্তের প্রয়োজনে যোগাযোগ করছি।')}
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition cursor-pointer"
+                          title="সরাসরি সিম থেকে এসএমএস পাঠান"
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
-                        </a>
+                        </button>
                       )}
 
                       <a
@@ -459,14 +461,16 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
                         <span className="font-bold text-xs">WA</span>
                       </a>
 
-                      <a
-                        href={`tel:${cleanPhone}`}
+                      <button
+                        type="button"
+                        onClick={() => triggerNativeCall(cleanPhone)}
                         id={`donor-call-${donor.id || idx}`}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-2xs"
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer active:scale-98"
+                        title="সরাসরি কল দিন"
                       >
                         <Phone className="w-3 h-3" />
                         <span>কল দিন</span>
-                      </a>
+                      </button>
                     </div>
                   </div>
                 </div>

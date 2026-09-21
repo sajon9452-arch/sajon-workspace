@@ -1,5 +1,13 @@
 import { Member } from '../types';
+import {
+  sanitizePhone,
+  buildUniversalSmsUri,
+  triggerNativeSms,
+  triggerNativeGroupSms
+} from './nativeIntentHelper';
 import { sanitizePhoneForSms, buildDirectSimSmsUrl, triggerDirectSimSms } from './smsHelper';
+
+export { triggerNativeGroupSms };
 
 /**
  * Designation-Based Auto-Classification:
@@ -115,21 +123,22 @@ export function buildMeetingRecipients(
 }
 
 /**
- * Builds native multi-recipient SMS URL
+ * Builds native multi-recipient SMS URL using cross-platform universal standards
  */
 export function buildGroupSmsUrl(phones: string[], body: string): string {
-  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '');
-  const separator = isIOS ? '&' : '?';
-  const delimiter = isIOS ? ',' : ',';
-  const cleanList = phones.map(p => sanitizePhoneForSms(p)).filter(Boolean);
-  const joinedPhones = cleanList.join(delimiter);
-
-  return `sms:${joinedPhones}${separator}body=${encodeURIComponent(body)}`;
+  return buildUniversalSmsUri(phones, body);
 }
 
 /**
- * Triggers native SIM SMS for a specific phone and text
+ * Triggers native SIM SMS for a specific phone and text safely without breaking WebViews
  */
 export function sendSmsToRecipient(phone: string, text: string): boolean {
-  return triggerDirectSimSms(phone, text);
+  return triggerNativeSms(phone, text);
+}
+
+/**
+ * Triggers native SIM SMS for multiple recipients at once into the device's native messaging app
+ */
+export function sendGroupSmsToRecipients(phones: string[], text: string): boolean {
+  return triggerNativeGroupSms(phones, text);
 }

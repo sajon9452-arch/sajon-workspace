@@ -30,6 +30,7 @@ import {
   sendSmsToRecipient,
   MeetingSmsRecipient 
 } from '../utils/meetingSmsHelper';
+import { triggerNativeGroupSms, triggerNativeSms } from '../utils/nativeIntentHelper';
 import { loadMembers, saveMembers } from '../utils/storage';
 import { fetchServerDatabase } from '../utils/serverApi';
 
@@ -74,6 +75,7 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
   const [completedCount, setCompletedCount] = useState(0);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [allPhonesCopied, setAllPhonesCopied] = useState(false);
+  const [groupSmsNotice, setGroupSmsNotice] = useState<string | null>(null);
   const [delayMs, setDelayMs] = useState(1500);
 
   const dispatchTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -209,10 +211,30 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
   };
 
   const handleOpenGroupSms = () => {
-    const phones = selectedRecipients.map(r => r.cleanPhone).filter(Boolean);
-    if (phones.length === 0) return;
-    const url = buildGroupSmsUrl(phones, message);
-    window.location.href = url;
+    const validPhones = selectedRecipients.map(r => r.cleanPhone).filter(Boolean);
+    if (validPhones.length === 0) {
+      if (onNotifySuccess) {
+        onNotifySuccess('কোনো বৈধ মোবাইল নম্বর নির্বাচন করা হয়নি!');
+      }
+      return;
+    }
+
+    // Launch device's native messaging client directly via universal safe intent
+    triggerNativeGroupSms(validPhones, message);
+
+    // Mark selected recipients as sent for visual confirmation
+    setRecipients(prev => prev.map(r => r.selected && r.isValidPhone ? { ...r, status: 'sent' } : r));
+    setCompletedCount(validPhones.length);
+
+    const feedbackMsg = `নির্বাচিত ${toBengaliNumber(validPhones.length)} জন সদস্যের নম্বর সহ ডিভাইসের নেটিভ মেসেজ অ্যাপ চালু হয়েছে!`;
+    setGroupSmsNotice(feedbackMsg);
+    if (onNotifySuccess) {
+      onNotifySuccess(feedbackMsg);
+    }
+
+    setTimeout(() => {
+      setGroupSmsNotice(null);
+    }, 6000);
   };
 
   const handleSingleSms = (recipient: MeetingSmsRecipient) => {
@@ -526,6 +548,19 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
             </div>
           )}
 
+          {/* Group SMS Feedback Notice */}
+          {groupSmsNotice && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl flex items-center justify-between gap-2 shadow-xs text-xs font-bold text-emerald-900 animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{groupSmsNotice}</span>
+              </div>
+              <span className="text-[11px] font-semibold text-emerald-700 bg-white/80 px-2 py-0.5 rounded-lg border border-emerald-200">
+                ক্লিপবোর্ডেও প্রস্তুত
+              </span>
+            </div>
+          )}
+
           {/* Quick Actions & Group SMS Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-slate-50 border border-slate-200">
             <div className="flex items-center gap-3">
@@ -727,23 +762,37 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
             বাতিল
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {!isDispatching ? (
-              <button
-                type="button"
-                onClick={handleStartDispatch}
-                disabled={totalSelected === 0}
-                className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white shadow-md flex items-center gap-2 transition cursor-pointer ${
-                  isExecutiveMeeting 
-                    ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' 
-                    : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                <Send className="w-4 h-4" />
-                <span>
-                  সবার কাছে এসএমএস পাঠান ({toBengaliNumber(totalSelected)} জন)
-                </span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleStartDispatch}
+                  disabled={totalSelected === 0}
+                  className="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                  title="প্রতিটি সদস্যের কাছে এক এক করে নির্দিষ্ট বিরতিতে এসএমএস পাঠানো হবে"
+                >
+                  <Play className="w-3.5 h-3.5 text-slate-600" />
+                  <span>ধারাবাহিক অটো-প্রেরণ</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenGroupSms}
+                  disabled={totalSelected === 0}
+                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white shadow-md flex items-center gap-2 transition cursor-pointer active:scale-98 ${
+                    isExecutiveMeeting 
+                      ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' 
+                      : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title="নির্বাচিত সকল সদস্যের মোবাইল নম্বর সহ সরাসরি মেসেজ অ্যাপ চালু করুন"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>
+                    সবার কাছে এসএমএস পাঠান ({toBengaliNumber(totalSelected)} জন)
+                  </span>
+                </button>
+              </>
             ) : (
               <button
                 type="button"

@@ -24,6 +24,7 @@ import {
 import { Member } from '../types';
 import { toBengaliNumber, sanitizePhone, sortMembersOldestFirst, getMemberPhotoUrl } from '../utils/helpers';
 import { isExecutiveCommitteeMember } from '../utils/meetingSmsHelper';
+import { triggerNativeCall, triggerNativeSms } from '../utils/nativeIntentHelper';
 import { compressImageFile } from '../utils/imageCompressor';
 import { DueSmsModal } from './DueSmsModal';
 import { loadPaymentSettings } from '../utils/storage';
@@ -639,13 +640,14 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                         )}
 
                         {isAdmin && (
-                          <a
-                            href={`sms:${cleanPhone}`}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition"
-                            title="এসএমএস পাঠান"
+                          <button
+                            type="button"
+                            onClick={() => triggerNativeSms(cleanPhone, '')}
+                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition cursor-pointer"
+                            title="সরাসরি সিম থেকে এসএমএস পাঠান"
                           >
                             <MessageSquare className="w-3.5 h-3.5" />
-                          </a>
+                          </button>
                         )}
 
                         <a
@@ -658,14 +660,16 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                           <span>WA</span>
                         </a>
 
-                        <a
-                          href={`tel:${cleanPhone}`}
+                        <button
+                          type="button"
+                          onClick={() => triggerNativeCall(cleanPhone)}
                           id={`member-call-${member.id || idx}`}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-98"
+                          title="সরাসরি কল দিন"
                         >
                           <Phone className="w-3 h-3" />
                           <span>কল</span>
-                        </a>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1057,13 +1061,24 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
-                <a
-                  href={`tel:${sanitizePhone(zoomedMember.phone)}`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                <button
+                  type="button"
+                  onClick={() => triggerNativeCall(zoomedMember.phone)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-98"
+                  title="সরাসরি ফোন কল করুন"
                 >
                   <Phone className="w-3.5 h-3.5" />
                   <span>কল করুন ({zoomedMember.phone})</span>
-                </a>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => triggerNativeSms(zoomedMember.phone, '')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition shadow-xs cursor-pointer"
+                  title="সরাসরি এসএমএস পাঠান"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>এসএমএস</span>
+                </button>
               </div>
             </div>
           </div>

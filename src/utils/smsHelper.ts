@@ -1,65 +1,50 @@
 import { Member } from '../types';
 import { toBengaliNumber } from './helpers';
+import {
+  sanitizePhone,
+  buildUniversalSmsUri,
+  buildUniversalTelUri,
+  launchNativeUri,
+  triggerNativeSms,
+  triggerNativeCall,
+  triggerNativeGroupSms,
+  isIOSDevice,
+  isAndroidDevice
+} from './nativeIntentHelper';
+
+export {
+  sanitizePhone,
+  buildUniversalSmsUri,
+  buildUniversalTelUri,
+  launchNativeUri,
+  triggerNativeSms,
+  triggerNativeCall,
+  triggerNativeGroupSms,
+  isIOSDevice,
+  isAndroidDevice
+};
 
 /**
  * Normalizes a Bangladeshi or international phone number for SIM SMS URI schemes.
  */
 export function sanitizePhoneForSms(phone: string): string {
-  if (!phone) return '';
-  let cleaned = phone.replace(/[^0-9+]/g, '');
-  if (cleaned.startsWith('8801') && cleaned.length === 13) {
-    cleaned = '+' + cleaned;
-  } else if (cleaned.startsWith('01') && cleaned.length === 11) {
-    // Both 01xxxxxxxxx and +8801xxxxxxxxx are valid, keep clean 017... or +8801...
-    cleaned = '0' + cleaned.substring(1);
-  }
-  return cleaned;
+  return sanitizePhone(phone);
 }
 
 /**
  * Builds the native mobile device SMS URI scheme.
- * iOS requires '&body=' separator while Android and web standards use '?body='.
+ * Compatible with single phone or multiple phones, cross-platform.
  */
 export function buildDirectSimSmsUrl(phone: string, body: string): string {
-  const cleanPhone = sanitizePhoneForSms(phone);
-  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '');
-  const separator = isIOS ? '&' : '?';
-  return `sms:${cleanPhone}${separator}body=${encodeURIComponent(body)}`;
+  return buildUniversalSmsUri(phone, body);
 }
 
 /**
  * Triggers native SIM SMS by opening the mobile device's default SMS app with prefilled body.
+ * Guaranteed not to throw net::ERR_UNKNOWN_URL_SCHEME or break the webview/in-app browser.
  */
 export function triggerDirectSimSms(phone: string, body: string): boolean {
-  if (typeof window === 'undefined') return false;
-  const cleanPhone = sanitizePhoneForSms(phone);
-  if (!cleanPhone && !body) return false;
-
-  const smsUrl = buildDirectSimSmsUrl(cleanPhone, body);
-
-  try {
-    const link = document.createElement('a');
-    link.href = smsUrl;
-    link.target = '_self';
-    link.rel = 'noopener noreferrer';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      if (document.body.contains(link)) {
-        document.body.removeChild(link);
-      }
-    }, 800);
-    return true;
-  } catch (err) {
-    console.warn('Failed to launch SMS via anchor, falling back to window.location:', err);
-    try {
-      window.location.href = smsUrl;
-      return true;
-    } catch {
-      return false;
-    }
-  }
+  return triggerNativeSms(phone, body);
 }
 
 /**

@@ -119,6 +119,7 @@ import {
 import { DueSmsModal } from './DueSmsModal';
 import { BulkMeetingSmsModal } from './BulkMeetingSmsModal';
 import { isExecutiveCommitteeMember } from '../utils/meetingSmsHelper';
+import { triggerNativeCall, triggerNativeSms } from '../utils/nativeIntentHelper';
 import {
   triggerDirectSimSms,
   generatePaidConfirmationSms,
@@ -2851,14 +2852,25 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                           </button>
                         </div>
 
+                        {/* Direct SMS Button */}
+                        <button
+                          type="button"
+                          onClick={() => triggerNativeSms(report.phone, '')}
+                          className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+                          title="সরাসরি এসএমএস পাঠান"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </button>
+
                         {/* Direct Call Button */}
-                        <a
-                          href={`tel:${sanitizePhone(report.phone)}`}
-                          className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                        <button
+                          type="button"
+                          onClick={() => triggerNativeCall(report.phone)}
+                          className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer active:scale-98"
                           title="সরাসরি কল দিন"
                         >
                           <Phone className="w-3.5 h-3.5" />
-                        </a>
+                        </button>
 
                         {/* Edit Button */}
                         <button

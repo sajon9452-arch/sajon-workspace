@@ -34,6 +34,7 @@ import { toBengaliCurrency, toBengaliNumber, formatBengaliDate, getCleanFundDesc
 import { loadPaymentSettings, loadMembers } from '../utils/storage';
 import { ExpenseModal } from './ExpenseModal';
 import { DueSmsModal } from './DueSmsModal';
+import { triggerNativeCall, triggerNativeSms } from '../utils/nativeIntentHelper';
 import { 
   triggerDirectSimSms, 
   generatePaidConfirmationSms, 
@@ -925,9 +926,14 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                     {pRecord.phone && (
                       <div className="flex items-center justify-between">
                         <span className="text-slate-500 text-[11px] font-medium">প্রেরক মোবাইল:</span>
-                        <a href={`tel:${pRecord.phone}`} className="font-mono text-emerald-700 font-semibold hover:underline">
+                        <button
+                          type="button"
+                          onClick={() => triggerNativeCall(pRecord.phone)}
+                          className="font-mono text-emerald-700 font-semibold hover:underline cursor-pointer"
+                          title="সরাসরি কল দিন"
+                        >
                           {pRecord.phone}
-                        </a>
+                        </button>
                       </div>
                     )}
 
@@ -1727,14 +1733,15 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                           </h4>
                           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                             {memberPhone ? (
-                              <a
-                                href={`tel:${memberPhone}`}
-                                className="inline-flex items-center gap-1 text-xs font-mono font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200/90 shadow-2xs transition"
-                                title="সরাসরি ফোন বা SMS দিতে ক্লিক করুন"
+                              <button
+                                type="button"
+                                onClick={() => triggerNativeCall(memberPhone)}
+                                className="inline-flex items-center gap-1 text-xs font-mono font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200/90 shadow-2xs transition cursor-pointer active:scale-98"
+                                title="সরাসরি কল দিন"
                               >
                                 <Smartphone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                                 <span>{memberPhone}</span>
-                              </a>
+                              </button>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
                                 <Smartphone className="w-3 h-3 text-slate-400 shrink-0" />
@@ -2430,13 +2437,15 @@ export const FundScreen: React.FC<FundScreenProps> = ({
           <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
             <span>ক্লিপবোর্ডে কপি করা হয়েছে</span>
             {paidSmsToast.phone && (
-              <a
-                href={`sms:${paidSmsToast.phone}?body=${encodeURIComponent(paidSmsToast.smsText)}`}
-                className="text-emerald-400 font-bold hover:underline flex items-center gap-1"
+              <button
+                type="button"
+                onClick={() => triggerNativeSms(paidSmsToast.phone!, paidSmsToast.smsText)}
+                className="text-emerald-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                title="সরাসরি মেসেজ অ্যাপ আবার খুলুন"
               >
-                আবার খুলুন
+                <span>আবার খুলুন</span>
                 <ExternalLink className="w-3 h-3" />
-              </a>
+              </button>
             )}
           </div>
         </div>

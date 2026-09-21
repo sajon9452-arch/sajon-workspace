@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { SupportReportItem, OrganizationProfile } from '../types';
 import { toBengaliNumber } from '../utils/helpers';
+import { triggerNativeCall, triggerNativeSms } from '../utils/nativeIntentHelper';
 
 interface SupportScreenProps {
   reports: SupportReportItem[];
@@ -321,15 +322,26 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
                       <span>হোয়াটসঅ্যাপ</span>
                     </a>
 
+                    <button
+                      type="button"
+                      onClick={() => triggerNativeSms(item.phone, '')}
+                      className="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer"
+                      title="সরাসরি এসএমএস পাঠান"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-slate-600" />
+                      <span>এসএমএস</span>
+                    </button>
+
                     {/* Direct Call Action */}
-                    <a
-                      href={`tel:${item.phone}`}
-                      className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-xl text-xs font-black shadow-xs transition hover:scale-102"
+                    <button
+                      type="button"
+                      onClick={() => triggerNativeCall(item.phone)}
+                      className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-xl text-xs font-black shadow-xs transition hover:scale-102 cursor-pointer active:scale-98"
                       title="সরাসরি ফোন কল করুন"
                     >
                       <PhoneCall className="w-3.5 h-3.5" />
                       <span>সরাসরি কল</span>
-                    </a>
+                    </button>
                   </div>
                 </div>
               </div>

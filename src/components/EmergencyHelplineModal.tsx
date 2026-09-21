@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { OrganizationProfile } from '../types';
 import { verifyAdminPin, saveOrgProfile } from '../utils/storage';
+import { triggerNativeCall } from '../utils/nativeIntentHelper';
 
 interface EmergencyHelplineModalProps {
   isOpen: boolean;
@@ -449,13 +450,15 @@ export const EmergencyHelplineModal: React.FC<EmergencyHelplineModalProps> = ({
                         )}
                       </button>
 
-                      <a
-                        href={`tel:${officialNumber.replace(/[^0-9+]/g, '')}`}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                      <button
+                        type="button"
+                        onClick={() => triggerNativeCall(officialNumber)}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-98"
+                        title="অফিসিয়াল নম্বরে সরাসরি কল দিন"
                       >
                         <PhoneCall className="w-4 h-4" />
                         <span>সরাসরি কল করুন</span>
-                      </a>
+                      </button>
                     </>
                   )}
 
@@ -542,13 +545,15 @@ export const EmergencyHelplineModal: React.FC<EmergencyHelplineModalProps> = ({
                         <Copy className="w-3.5 h-3.5" />
                       )}
                     </button>
-                    <a
-                      href={`tel:${item.number}`}
-                      className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-xl shadow-2xs transition flex items-center gap-1"
+                    <button
+                      type="button"
+                      onClick={() => triggerNativeCall(item.number)}
+                      className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-xl shadow-2xs transition flex items-center gap-1 cursor-pointer active:scale-98"
+                      title="সরাসরি কল দিন"
                     >
                       <Phone className="w-3 h-3" />
                       <span>কল করুন</span>
-                    </a>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -608,13 +613,15 @@ export const EmergencyHelplineModal: React.FC<EmergencyHelplineModalProps> = ({
                         <Copy className="w-3.5 h-3.5" />
                       )}
                     </button>
-                    <a
-                      href={`tel:${item.number}`}
-                      className="px-2.5 py-1.5 bg-slate-900 hover:bg-black text-white font-bold text-[11px] rounded-xl shadow-2xs transition flex items-center gap-1"
+                    <button
+                      type="button"
+                      onClick={() => triggerNativeCall(item.number)}
+                      className="px-2.5 py-1.5 bg-slate-900 hover:bg-black text-white font-bold text-[11px] rounded-xl shadow-2xs transition flex items-center gap-1 cursor-pointer active:scale-98"
+                      title="সরাসরি কল দিন"
                     >
                       <Phone className="w-3 h-3" />
                       <span>কল করুন</span>
-                    </a>
+                    </button>
                   </div>
                 </div>
               ))}

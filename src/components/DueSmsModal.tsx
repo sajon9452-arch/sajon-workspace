@@ -393,13 +393,15 @@ export const DueSmsModal: React.FC<DueSmsModalProps> = ({
                 <Check className="w-4 h-4 text-emerald-700 flex-shrink-0" />
                 <span>আপনার মোবাইল ডিভাইসের মেসেজ অ্যাপ ওপেন হচ্ছে...</span>
               </div>
-              <a
-                href={directSmsUrl}
-                className="px-2.5 py-1 bg-emerald-700 text-white rounded-lg text-[11px] font-bold hover:bg-emerald-800 transition flex items-center gap-1"
+              <button
+                type="button"
+                onClick={handleSendSimSms}
+                className="px-2.5 py-1 bg-emerald-700 text-white rounded-lg text-[11px] font-bold hover:bg-emerald-800 transition flex items-center gap-1 cursor-pointer"
+                title="সরাসরি মেসেজ অ্যাপ আবার চালু করুন"
               >
                 <span>সরাসরি লিঙ্ক</span>
                 <ExternalLink className="w-3 h-3" />
-              </a>
+              </button>
             </div>
           )}
         </div>
