@@ -5,8 +5,11 @@ import { sanitizePhoneForSms, buildDirectSimSmsUrl, triggerDirectSimSms } from '
  * Checks if a member belongs to the Executive Committee (কার্যকরী কমিটি)
  */
 export function isExecutiveCommitteeMember(member: Member): boolean {
+  if (!member) return false;
   if (member.isExecutive === true) return true;
   if (member.isExecutive === false) return false;
+  if (member.category === 'কার্যকরী কমিটি' || member.committeeType === 'executive') return true;
+  if (member.category === 'সাধারণ সদস্য' || member.committeeType === 'general') return false;
   
   const des = (member.designation || '').trim();
   if (!des) return false;
@@ -23,6 +26,8 @@ export function isExecutiveCommitteeMember(member: Member): boolean {
   // Executive keywords across Bangladeshi organizations
   const executiveKeywords = [
     'কার্যকরী',
+    'কার্যনির্বাহী',
+    'নির্বাহী',
     'সভাপতি',
     'সম্পাদক',
     'কোষাধ্যক্ষ',
@@ -34,6 +39,7 @@ export function isExecutiveCommitteeMember(member: Member): boolean {
     'উপদেষ্টা',
     'পরিচালক',
     'আহ্বায়ক',
+    'আহবায়ক',
     'সহ-সভাপতি',
     'সহ সভাপতি',
     'যুগ্ম',
@@ -46,11 +52,18 @@ export function isExecutiveCommitteeMember(member: Member): boolean {
     'সমাজসেবা',
     'শিক্ষা',
     'স্বাস্থ্য',
-    'নির্বাহী',
+    'তথ্য ও প্রযুক্তি',
+    'আইন',
+    'ধর্ম',
+    'সদস্য সচিব',
+    'মহাসচিব',
     'executive',
     'president',
     'secretary',
-    'advisor'
+    'advisor',
+    'treasurer',
+    'director',
+    'coordinator'
   ];
 
   return executiveKeywords.some(kw => des.includes(kw));
@@ -70,6 +83,7 @@ export interface MeetingSmsRecipient {
 
 /**
  * Categorizes and builds recipients list according to meeting type
+ * Without any hardcoded limits - completely dynamic
  */
 export function buildMeetingRecipients(
   meetingType: 'কার্যকরী কমিটির মিটিং' | 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং' | string,
@@ -81,15 +95,15 @@ export function buildMeetingRecipients(
   validPhoneCount: number;
   missingPhoneCount: number;
 } {
-  const isExecutiveOnly = !meetingType?.includes('সাধারণ') && (
+  const isExecutiveOnly = !meetingType?.includes('সাধারণ') && !meetingType?.includes('উভয়') && (
     meetingType === 'কার্যকরী কমিটির মিটিং' || meetingType?.includes('কার্যকরী')
   );
 
-  // Filter out any invalid items
+  // Filter out any invalid items - unconstrained dynamic members list
   const activeMembers = (members || []).filter(m => m && m.id && m.name);
 
-  // Classify all members
-  const allCategorized = activeMembers.map(m => {
+  // Classify all members dynamically
+  const allCategorized: MeetingSmsRecipient[] = activeMembers.map(m => {
     const clean = sanitizePhoneForSms(m.phone || '');
     const isValid = Boolean(clean && clean.length >= 10);
     const isExec = isExecutiveCommitteeMember(m);
@@ -110,18 +124,12 @@ export function buildMeetingRecipients(
   const executiveCount = allCategorized.filter(m => m.isExecutive).length;
   const generalCount = allCategorized.filter(m => !m.isExecutive).length;
 
-  // If Executive meeting, target ONLY executive members
-  // If Joint meeting, target ALL members (Executive & General)
-  let targeted: MeetingSmsRecipient[];
-  if (isExecutiveOnly) {
-    targeted = allCategorized.filter(m => m.isExecutive);
-    // If no member matched executive keywords (e.g. empty designation or new org), fallback to all
-    if (targeted.length === 0 && allCategorized.length > 0) {
-      targeted = allCategorized;
-    }
-  } else {
-    targeted = allCategorized;
-  }
+  // Strict Category-Based Dynamic Filtering:
+  // When 'কার্যকরী কমিটির মিটিং' is selected, target ONLY executive committee members (no general members)
+  // When 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং' is selected, target all members (Executive + General)
+  const targeted: MeetingSmsRecipient[] = isExecutiveOnly
+    ? allCategorized.filter(m => m.isExecutive)
+    : allCategorized;
 
   const validPhoneCount = targeted.filter(t => t.isValidPhone).length;
   const missingPhoneCount = targeted.filter(t => !t.isValidPhone).length;

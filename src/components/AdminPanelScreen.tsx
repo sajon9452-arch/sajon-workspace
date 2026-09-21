@@ -118,6 +118,7 @@ import {
 } from '../utils/serverApi';
 import { DueSmsModal } from './DueSmsModal';
 import { BulkMeetingSmsModal } from './BulkMeetingSmsModal';
+import { isExecutiveCommitteeMember } from '../utils/meetingSmsHelper';
 import {
   triggerDirectSimSms,
   generatePaidConfirmationSms,
@@ -262,6 +263,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [memberEmailInput, setMemberEmailInput] = useState('');
   const [memberStatusInput, setMemberStatusInput] = useState<'সক্রিয়' | 'স্থগিত'>('সক্রিয়');
   const [memberIsExpatriateInput, setMemberIsExpatriateInput] = useState(false);
+  const [memberIsExecutiveInput, setMemberIsExecutiveInput] = useState(false);
   const [memberCountryStatusInput, setMemberCountryStatusInput] = useState('');
   const [adminMemberTab, setAdminMemberTab] = useState<'all' | 'general' | 'expatriate'>('all');
 
@@ -277,6 +279,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       setMemberPhotoBase64(getMemberPhotoUrl(editingMember));
       setMemberIsExpatriateInput(Boolean(editingMember.isExpatriate || editingMember.memberType === 'expatriate'));
       setMemberCountryStatusInput(editingMember.countryStatus || '');
+      const isExec = editingMember.isExecutive !== undefined 
+        ? Boolean(editingMember.isExecutive) 
+        : (editingMember.category === 'কার্যকরী কমিটি' || editingMember.committeeType === 'executive' || isExecutiveCommitteeMember(editingMember));
+      setMemberIsExecutiveInput(isExec);
     } else {
       setMemberNameInput('');
       setMemberDesignationInput('সদস্য');
@@ -287,6 +293,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       setMemberStatusInput('সক্রিয়');
       setMemberPhotoBase64('');
       setMemberIsExpatriateInput(false);
+      setMemberIsExecutiveInput(false);
       setMemberCountryStatusInput('');
     }
   }, [editingMember, isAddMemberOpen]);
@@ -784,7 +791,7 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
     const memberData: Omit<Member, 'id'> = {
       name,
-      designation: designation || 'সদস্য',
+      designation: designation || (memberIsExecutiveInput ? 'কার্যকরী সদস্য' : 'সদস্য'),
       phone,
       area: area || (memberIsExpatriateInput ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'),
       photoUrl: photoUrl || '',
@@ -792,6 +799,9 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       email: email || '',
       status: status || 'সক্রিয়',
       isExpatriate: memberIsExpatriateInput,
+      isExecutive: memberIsExecutiveInput,
+      category: memberIsExecutiveInput ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য',
+      committeeType: memberIsExecutiveInput ? 'executive' : 'general',
       memberType: memberIsExpatriateInput ? 'expatriate' : 'general',
       countryStatus: memberCountryStatusInput.trim()
     };
@@ -799,7 +809,10 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
     if (editingMember) {
       const updatedMember: Member = {
         ...memberData,
-        id: editingMember.id
+        id: editingMember.id,
+        isExecutive: memberIsExecutiveInput,
+        category: memberIsExecutiveInput ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য',
+        committeeType: memberIsExecutiveInput ? 'executive' : 'general'
       };
 
       if (onEditMember) {
@@ -4144,6 +4157,54 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                 <Globe className="w-3.5 h-3.5 text-blue-600" />
                 <span>প্রবাসী সদস্য</span>
               </button>
+            </div>
+
+            {/* Committee Type Switcher (Executive vs General) */}
+            <div className="mt-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50/70">
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                কমিটির ধরণ (Committee Category) *
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberIsExecutiveInput(true);
+                    if (memberDesignationInput === 'সদস্য') {
+                      setMemberDesignationInput('কার্যকরী সদস্য');
+                    }
+                  }}
+                  className={`py-2 px-3 text-xs font-bold rounded-lg border transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                    memberIsExecutiveInput
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>কার্যকরী কমিটি</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberIsExecutiveInput(false);
+                    if (memberDesignationInput === 'কার্যকরী সদস্য') {
+                      setMemberDesignationInput('সদস্য');
+                    }
+                  }}
+                  className={`py-2 px-3 text-xs font-bold rounded-lg border transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                    !memberIsExecutiveInput
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>সাধারণ সদস্য</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                {memberIsExecutiveInput
+                  ? 'এই সদস্য কার্যকরী কমিটি এবং যৌথ সাধারণ সভা উভয় নোটিশের এসএমএস তালিকায় অন্তর্ভূক্ত হবেন।'
+                  : 'এই সদস্য শুধুমাত্র কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের যৌথ সাধারণ সভার এসএমএস তালিকায় অন্তর্ভূক্ত হবেন।'}
+              </p>
             </div>
 
             <form onSubmit={handleSaveMember} className="space-y-3 mt-3">

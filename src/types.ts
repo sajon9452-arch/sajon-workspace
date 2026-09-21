@@ -43,6 +43,8 @@ export interface Member {
   serial?: number;
   isExpatriate?: boolean;
   isExecutive?: boolean;
+  category?: 'কার্যকরী কমিটি' | 'সাধারণ সদস্য' | string;
+  committeeType?: 'executive' | 'general' | string;
   memberType?: 'general' | 'expatriate';
   countryStatus?: string; // যেমন: 'সৌদি প্রবাসী', 'দুবাই প্রবাসী' ইত্যাদি
 }
