@@ -42,6 +42,7 @@ export interface Member {
   createdAt?: string;
   serial?: number;
   isExpatriate?: boolean;
+  isExecutive?: boolean;
   memberType?: 'general' | 'expatriate';
   countryStatus?: string; // যেমন: 'সৌদি প্রবাসী', 'দুবাই প্রবাসী' ইত্যাদি
 }

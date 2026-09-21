@@ -524,6 +524,7 @@ export default function App() {
           {activeScreen === 'notices' && (
             <NoticeScreen
               notices={notices}
+              members={members}
               isAdmin={isAdmin}
               onAddNotice={handleAddNotice}
               onEditNotice={handleEditNotice}

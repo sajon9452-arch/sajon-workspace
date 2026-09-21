@@ -48,6 +48,15 @@ import {
   Send
 } from 'lucide-react';
 const ExpenseModal = lazy(() => import('./ExpenseModal').then(m => ({ default: m.ExpenseModal })));
+import { 
+  MeetingFields, 
+  DEFAULT_MEETING_FIELDS,
+  generateExecutiveMeetingNotice, 
+  generateJointMeetingNotice,
+  formatBengaliMeetingDate,
+  getBengaliDayFromDate
+} from '../utils/noticeTemplates';
+import { MeetingNoticeForm } from './MeetingNoticeForm';
 import {
   Member,
   BloodDonor,
@@ -108,6 +117,7 @@ import {
   SupabaseStatusResponse
 } from '../utils/serverApi';
 import { DueSmsModal } from './DueSmsModal';
+import { BulkMeetingSmsModal } from './BulkMeetingSmsModal';
 import {
   triggerDirectSimSms,
   generatePaidConfirmationSms,
@@ -307,6 +317,40 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
   const [isAddNoticeOpen, setIsAddNoticeOpen] = useState(false);
+  const [noticeModalCategory, setNoticeModalCategory] = useState<string>('কার্যকরী কমিটির মিটিং');
+  const [noticeModalText, setNoticeModalText] = useState<string>('');
+  const [noticeModalTitle, setNoticeModalTitle] = useState<string>('');
+  const [noticeModalDate, setNoticeModalDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [noticeModalIsPinned, setNoticeModalIsPinned] = useState<boolean>(false);
+  const [noticeMeetingFields, setNoticeMeetingFields] = useState<MeetingFields>(() => ({
+    date: formatBengaliMeetingDate(new Date().toISOString().split('T')[0]),
+    day: getBengaliDayFromDate(new Date().toISOString().split('T')[0]),
+    time: '৮:৩০ মিনিট',
+    location: 'সংগঠনের কার্যালয়',
+    contactNumber: '01886122678'
+  }));
+
+  // Bulk Meeting SMS Dispatch State
+  const [bulkMeetingSmsData, setBulkMeetingSmsData] = useState<{
+    isOpen: boolean;
+    meetingType: string;
+    noticeText: string;
+    noticeTitle?: string;
+  }>({
+    isOpen: false,
+    meetingType: 'কার্যকরী কমিটির মিটিং',
+    noticeText: '',
+    noticeTitle: ''
+  });
+
+  const handleOpenBulkMeetingSms = (type: string, text: string, title?: string) => {
+    setBulkMeetingSmsData({
+      isOpen: true,
+      meetingType: type || 'কার্যকরী কমিটির মিটিং',
+      noticeText: text,
+      noticeTitle: title
+    });
+  };
 
   // Settings State
   const [editProfileData, setEditProfileData] = useState<OrganizationProfile>(profile);
@@ -1137,61 +1181,130 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
     }
   };
 
-  // NOTICE CRUD
+  // NOTICE CRUD & DYNAMIC MEETING TEMPLATES
+  const handleOpenAddNoticeModal = (defaultCat: string = 'কার্যকরী কমিটির মিটিং') => {
+    const todayIso = new Date().toISOString().split('T')[0];
+    const initialFields: MeetingFields = {
+      date: formatBengaliMeetingDate(todayIso),
+      day: getBengaliDayFromDate(todayIso),
+      time: '৮:৩০ মিনিট',
+      location: 'সংগঠনের কার্যালয়',
+      contactNumber: '01886122678'
+    };
+    setNoticeMeetingFields(initialFields);
+    setEditingNotice(null);
+    setNoticeModalDate(todayIso);
+    setNoticeModalCategory(defaultCat);
+    setNoticeModalIsPinned(false);
+
+    if (defaultCat === 'কার্যকরী কমিটির মিটিং') {
+      setNoticeModalText(generateExecutiveMeetingNotice(initialFields));
+      setNoticeModalTitle('জরুরি কার্যকরী কমিটির সভা বিজ্ঞপ্তি');
+    } else if (defaultCat === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং') {
+      setNoticeModalText(generateJointMeetingNotice(initialFields));
+      setNoticeModalTitle('জরুরি যৌথ সাধারণ সভা বিজ্ঞপ্তি');
+    } else {
+      setNoticeModalText('');
+      setNoticeModalTitle('');
+    }
+    setIsAddNoticeOpen(true);
+  };
+
+  const handleOpenEditNoticeModal = (n: Notice) => {
+    setEditingNotice(n);
+    const cat = n.category || n.priority || 'সাধারণ';
+    setNoticeModalCategory(cat);
+    setNoticeModalText(n.noticeText || '');
+    setNoticeModalTitle(n.title || '');
+    setNoticeModalDate(n.date || new Date().toISOString().split('T')[0]);
+    setNoticeModalIsPinned(Boolean(n.isPinned));
+    setIsAddNoticeOpen(true);
+  };
+
+  const handleNoticeCategoryChange = (cat: string) => {
+    setNoticeModalCategory(cat);
+    if (cat === 'কার্যকরী কমিটির মিটিং') {
+      setNoticeModalText(generateExecutiveMeetingNotice(noticeMeetingFields));
+      if (!noticeModalTitle || noticeModalTitle.includes('মিটিং') || noticeModalTitle.includes('সভা')) {
+        setNoticeModalTitle('জরুরি কার্যকরী কমিটির সভা বিজ্ঞপ্তি');
+      }
+    } else if (cat === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং') {
+      setNoticeModalText(generateJointMeetingNotice(noticeMeetingFields));
+      if (!noticeModalTitle || noticeModalTitle.includes('মিটিং') || noticeModalTitle.includes('সভা')) {
+        setNoticeModalTitle('জরুরি যৌথ সাধারণ সভা বিজ্ঞপ্তি');
+      }
+    }
+  };
+
+  const handleNoticeMeetingFieldsChange = (updated: MeetingFields) => {
+    setNoticeMeetingFields(updated);
+    if (noticeModalCategory === 'কার্যকরী কমিটির মিটিং') {
+      setNoticeModalText(generateExecutiveMeetingNotice(updated));
+    } else if (noticeModalCategory === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং') {
+      setNoticeModalText(generateJointMeetingNotice(updated));
+    }
+  };
+
   const handleSaveNotice = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const form = e.currentTarget;
-    const formData = new FormData(form);
-    const title = formData.get('title') as string;
-    const noticeText = formData.get('noticeText') as string;
-    const priority = formData.get('priority') as any;
-    const date = formData.get('date') as string;
-    const isPinned = formData.get('isPinned') === 'on';
 
-    if (!noticeText.trim()) {
+    if (!noticeModalText.trim()) {
       notifyError('নোটিশের বিবরণ অবশ্যই লিখুন');
       return;
     }
+
+    const finalTitle = noticeModalTitle.trim() || (
+      noticeModalCategory === 'কার্যকরী কমিটির মিটিং' 
+        ? 'জরুরি কার্যকরী কমিটির সভা'
+        : noticeModalCategory === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং'
+        ? 'জরুরি যৌথ সাধারণ সভা'
+        : 'সংগঠনের নোটিশ'
+    );
 
     if (editingNotice) {
       if (onEditNotice) {
         onEditNotice({
           ...editingNotice,
-          title: title.trim() || 'সাধারণ নোটিশ',
-          noticeText: noticeText.trim(),
-          priority,
-          date: date || editingNotice.date,
-          isPinned
+          title: finalTitle,
+          noticeText: noticeModalText.trim(),
+          priority: noticeModalCategory as any,
+          category: noticeModalCategory,
+          date: noticeModalDate || editingNotice.date,
+          isPinned: noticeModalIsPinned
         });
       } else if (setNotices) {
         setNotices(prev => prev.map(n => n.id === editingNotice.id ? {
           ...n,
-          title: title.trim() || 'সাধারণ নোটিশ',
-          noticeText: noticeText.trim(),
-          priority,
-          date: date || n.date,
-          isPinned
+          title: finalTitle,
+          noticeText: noticeModalText.trim(),
+          priority: noticeModalCategory as any,
+          category: noticeModalCategory,
+          date: noticeModalDate || n.date,
+          isPinned: noticeModalIsPinned
         } : n));
       }
       setEditingNotice(null);
+      setIsAddNoticeOpen(false);
       notifySuccess('নোটিশ সফলভাবে আপডেট হয়েছে');
     } else {
       if (onAddNotice) {
         onAddNotice({
-          title: title.trim() || 'সাধারণ নোটিশ',
-          noticeText: noticeText.trim(),
-          priority: priority || 'সাধারণ',
-          date: date || new Date().toISOString().split('T')[0],
-          isPinned: isPinned || priority === 'জরুরি'
+          title: finalTitle,
+          noticeText: noticeModalText.trim(),
+          priority: noticeModalCategory as any,
+          category: noticeModalCategory,
+          date: noticeModalDate || new Date().toISOString().split('T')[0],
+          isPinned: noticeModalIsPinned
         });
       } else if (setNotices) {
         const newNotice: Notice = {
           id: `n-${Date.now()}`,
-          title: title.trim() || 'সাধারণ নোটিশ',
-          noticeText: noticeText.trim(),
-          priority: priority || 'সাধারণ',
-          date: date || new Date().toISOString().split('T')[0],
-          isPinned: isPinned || priority === 'জরুরি'
+          title: finalTitle,
+          noticeText: noticeModalText.trim(),
+          priority: noticeModalCategory as any,
+          category: noticeModalCategory,
+          date: noticeModalDate || new Date().toISOString().split('T')[0],
+          isPinned: noticeModalIsPinned
         };
         setNotices(prev => [newNotice, ...prev]);
       }
@@ -2342,33 +2455,45 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       {/* TAB 5: NOTICES CRUD */}
       {activeTab === 'notices' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <BellRing className="w-4 h-4 text-amber-600" />
               নোটিশ ব্যবস্থাপনা
             </h3>
 
-            <button
-              onClick={() => {
-                setEditingNotice(null);
-                setIsAddNoticeOpen(true);
-              }}
-              id="admin-add-notice-btn"
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>নতুন নোটিশ প্রকাশ</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultText = generateExecutiveMeetingNotice(noticeMeetingFields);
+                  handleOpenBulkMeetingSms('কার্যকরী কমিটির মিটিং', defaultText, 'জরুরি কার্যকরী কমিটির সভা বিজ্ঞপ্তি');
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl shadow-xs transition cursor-pointer"
+                title="সবার কাছে মিটিং নোটিশ এসএমএস পাঠান"
+              >
+                <Send className="w-3.5 h-3.5 text-purple-600" />
+                <span>মিটিং এসএমএস ব্রডকাস্ট</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenAddNoticeModal('কার্যকরী কমিটির মিটিং')}
+                id="admin-add-notice-btn"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>নতুন নোটিশ প্রকাশ</span>
+              </button>
+            </div>
           </div>
 
           <div className="space-y-3">
             {notices.map(n => (
               <div key={n.id} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
-                        {n.priority || 'সাধারণ'}
+                        {n.category || n.priority || 'সাধারণ'}
                       </span>
                       <span className="text-xs text-slate-500">{formatBengaliDate(n.date)}</span>
                       {n.isPinned && (
@@ -2377,28 +2502,58 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                         </span>
                       )}
                     </div>
-                    <h4 className="font-bold text-slate-900 text-sm mt-1.5">{n.title}</h4>
-                    <p className="text-xs text-slate-600 mt-1 whitespace-pre-line leading-relaxed">{n.noticeText}</p>
+                    {n.title && <h4 className="font-bold text-slate-900 text-sm mt-1.5">{n.title}</h4>}
+                    <p className="text-xs text-slate-700 mt-1 whitespace-pre-line leading-relaxed bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">{n.noticeText}</p>
                   </div>
 
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                    {(n.category === 'কার্যকরী কমিটির মিটিং' || 
+                      n.category === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং' ||
+                      n.title?.includes('মিটিং') ||
+                      n.title?.includes('সভা') ||
+                      n.noticeText?.includes('মিটিং')) && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenBulkMeetingSms(n.category || 'কার্যকরী কমিটির মিটিং', n.noticeText, n.title)}
+                        className={`p-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                          n.category === 'কার্যকরী কমিটির মিটিং'
+                            ? 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200'
+                            : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                        }`}
+                        title="সবার কাছে এসএমএস পাঠান"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">এসএমএস পাঠান</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(n.noticeText);
+                        notifySuccess('নোটিশ কপি হয়েছে');
+                      }}
+                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition cursor-pointer"
+                      title="নোটিশ কপি করুন"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => handleTogglePinNotice(n.id)}
-                      className={`p-1.5 rounded-lg text-xs transition ${n.isPinned ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'}`}
+                      className={`p-1.5 rounded-lg text-xs transition cursor-pointer ${n.isPinned ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'}`}
                       title={n.isPinned ? 'আনপিন করুন' : 'পিন করুন'}
                     >
                       <Pin className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => setEditingNotice(n)}
-                      className="p-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition"
+                      onClick={() => handleOpenEditNoticeModal(n)}
+                      className="p-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition cursor-pointer"
                       title="এডিট"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => handleDeleteNotice(n.id)}
-                      className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition"
+                      className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition cursor-pointer"
                       title="ডিলিট"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -4638,102 +4793,253 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
         </Suspense>
       )}
 
-      {/* NOTICE MODAL (Add / Edit) */}
+      {/* NOTICE MODAL (Add / Edit) with Dynamic Meeting Templates */}
       {(isAddNoticeOpen || editingNotice) && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 animate-scaleUp">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-xl border border-slate-200 animate-scaleUp my-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <BellRing className="w-5 h-5 text-amber-600" />
-                {editingNotice ? 'নোটিশ সম্পাদনা (Edit)' : 'নতুন নোটিশ প্রকাশ (Post)'}
-              </h3>
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <BellRing className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {editingNotice ? 'নোটিশ সম্পাদনা (Edit Notice)' : 'নতুন নোটিশ ও বিজ্ঞপ্তি প্রকাশ'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">সিলেট মানবসেবা সংগঠন • নোটিশ বোর্ড</p>
+                </div>
+              </div>
               <button
                 onClick={() => { setIsAddNoticeOpen(false); setEditingNotice(null); }}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveNotice} className="space-y-3 mt-4">
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSaveNotice} className="space-y-4 mt-4">
+              {/* Meeting Category Selection */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-800">
+                  নোটিশের ধরন / ক্যাটাগরি বাছাই করুন *
+                </label>
+                
+                {/* Two Distinct Meeting Category Options */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleNoticeCategoryChange('কার্যকরী কমিটির মিটিং')}
+                    className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition cursor-pointer ${
+                      noticeModalCategory === 'কার্যকরী কমিটির মিটিং'
+                        ? 'bg-purple-50/80 border-purple-400 ring-2 ring-purple-400/20 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-purple-200 hover:bg-purple-50/30'
+                    }`}
+                  >
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                      noticeModalCategory === 'কার্যকরী কমিটির মিটিং'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-purple-100 text-purple-700'
+                    }`}>
+                      <Users className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-900">
+                        কার্যকরী কমিটির মিটিং
+                      </div>
+                      <div className="text-[11px] text-slate-500 leading-tight mt-0.5">
+                        Executive Committee Meeting (নির্দিষ্ট টেমপ্লেট)
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleNoticeCategoryChange('কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং')}
+                    className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition cursor-pointer ${
+                      noticeModalCategory === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং'
+                        ? 'bg-indigo-50/80 border-indigo-400 ring-2 ring-indigo-400/20 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/30'
+                    }`}
+                  >
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                      noticeModalCategory === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-indigo-100 text-indigo-700'
+                    }`}>
+                      <Users className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-900">
+                        কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং
+                      </div>
+                      <div className="text-[11px] text-slate-500 leading-tight mt-0.5">
+                        Joint Meeting (উভয় সদস্যদের জন্য যৌথ সভা)
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Other standard categories */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[11px] text-slate-500 font-semibold mr-1">অন্যান্য নোটিশ:</span>
+                  {[
+                    { id: 'সাধারণ', label: 'সাধারণ নোটিশ' },
+                    { id: 'জরুরি', label: 'জরুরি নোটিশ' },
+                    { id: 'রক্তদান', label: 'রক্তদান ক্যাম্প' },
+                    { id: 'ত্রাণ', label: 'ত্রাণ ও সেবা' }
+                  ].map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleNoticeCategoryChange(c.id)}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
+                        noticeModalCategory === c.id
+                          ? 'bg-slate-800 text-white shadow-xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* If meeting category is selected, render Dynamic Meeting Input Form */}
+              {(noticeModalCategory === 'কার্যকরী কমিটির মিটিং' || noticeModalCategory === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং') && (
+                <MeetingNoticeForm
+                  meetingType={noticeModalCategory as any}
+                  fields={noticeMeetingFields}
+                  onChange={handleNoticeMeetingFieldsChange}
+                  onReset={() => {
+                    const todayIso = new Date().toISOString().split('T')[0];
+                    const resetFields: MeetingFields = {
+                      date: formatBengaliMeetingDate(todayIso),
+                      day: getBengaliDayFromDate(todayIso),
+                      time: '৮:৩০ মিনিট',
+                      location: 'সংগঠনের কার্যালয়',
+                      contactNumber: '01886122678'
+                    };
+                    handleNoticeMeetingFieldsChange(resetFields);
+                  }}
+                />
+              )}
+
+              {/* Title & Posting Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">তারিখ *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    নোটিশের শিরোনাম (Title)
+                  </label>
                   <input
-                    type="date"
-                    name="date"
-                    required
-                    defaultValue={editingNotice?.date || new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none"
+                    type="text"
+                    value={noticeModalTitle}
+                    onChange={(e) => setNoticeModalTitle(e.target.value)}
+                    placeholder="যেমন: জরুরি সভা সংক্রান্ত বিজ্ঞপ্তি"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-none bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">ধরন / ক্যাটাগরি</label>
-                  <select
-                    name="priority"
-                    defaultValue={editingNotice?.priority || 'সাধারণ'}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-bold bg-white"
-                  >
-                    <option value="সাধারণ">সাধারণ নোটিশ</option>
-                    <option value="জরুরি">জরুরি নোটিশ</option>
-                    <option value="মিটিং">মাসিক মিটিং</option>
-                    <option value="রক্তদান">রক্তদান ক্যাম্প</option>
-                    <option value="ত্রাণ">ত্রাণ ও সেবা</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    প্রকাশের তারিখ (Date) *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={noticeModalDate}
+                    onChange={(e) => setNoticeModalDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-none bg-white"
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">শিরোনাম / বিষয়</label>
-                <input
-                  type="text"
-                  name="title"
-                  defaultValue={editingNotice?.title || ''}
-                  placeholder="যেমন: পতেঙ্গা এলাকায় জরুরি রক্তদান ক্যাম্পেইন"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">নোটিশের বিবরণ *</label>
+              {/* Notice Content / Live Generated Output */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    নোটিশের বিবরণ (Notice Text) *
+                  </label>
+                  {(noticeModalCategory === 'কার্যকরী কমিটির মিটিং' || noticeModalCategory === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (noticeModalCategory === 'কার্যকরী কমিটির মিটিং') {
+                          setNoticeModalText(generateExecutiveMeetingNotice(noticeMeetingFields));
+                        } else {
+                          setNoticeModalText(generateJointMeetingNotice(noticeMeetingFields));
+                        }
+                      }}
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                      title="উপরে পূরণ করা তথ্য দিয়ে টেমপ্লেট পুনরায় লোড করুন"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>টেমপ্লেট পুনরায় রিফ্রেশ</span>
+                    </button>
+                  )}
+                </div>
                 <textarea
-                  name="noticeText"
-                  rows={4}
                   required
-                  defaultValue={editingNotice?.noticeText || ''}
+                  rows={(noticeModalCategory === 'কার্যকরী কমিটির মিটিং' || noticeModalCategory === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং') ? 5 : 4}
+                  value={noticeModalText}
+                  onChange={(e) => setNoticeModalText(e.target.value)}
                   placeholder="বিস্তারিত নোটিশ লিখুন..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none leading-relaxed"
+                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-none leading-relaxed font-normal bg-white"
                 />
+                {(noticeModalCategory === 'কার্যকরী কমিটির মিটিং' || noticeModalCategory === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং') && (
+                  <p className="text-[11px] text-slate-500">
+                    💡 উপরের ফরমের ফিল্ডগুলো পরিবর্তন করলে এই টেক্সট স্বয়ংক্রিয়ভাবে আপডেট হয়।
+                  </p>
+                )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 pt-1">
                 <input
                   type="checkbox"
-                  name="isPinned"
-                  id="admin-pin-checkbox"
-                  defaultChecked={editingNotice?.isPinned}
-                  className="rounded text-amber-600 focus:ring-amber-500"
+                  id="admin-notice-pin-chk"
+                  checked={noticeModalIsPinned}
+                  onChange={(e) => setNoticeModalIsPinned(e.target.checked)}
+                  className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
                 />
-                <label htmlFor="admin-pin-checkbox" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                <label htmlFor="admin-notice-pin-chk" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
                   বোর্ডের শীর্ষে পিন করে রাখুন
                 </label>
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setIsAddNoticeOpen(false); setEditingNotice(null); }}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
-                >
-                  বাতিল
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs"
-                >
-                  {editingNotice ? 'আপডেট করুন' : 'প্রকাশ করুন'}
-                </button>
+              <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100">
+                <div>
+                  {(noticeModalCategory === 'কার্যকরী কমিটির মিটিং' || noticeModalCategory === 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং') && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenBulkMeetingSms(noticeModalCategory, noticeModalText, noticeModalTitle)}
+                      className={`px-4 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5 ${
+                        noticeModalCategory === 'কার্যকরী কমিটির মিটিং'
+                          ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-100'
+                          : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
+                      }`}
+                      title="এই মিটিং নোটিশটি সরাসরি সবার কাছে এসএমএস পাঠান"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>সবার কাছে এসএমএস পাঠান</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setIsAddNoticeOpen(false); setEditingNotice(null); }}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <BellRing className="w-3.5 h-3.5" />
+                    <span>{editingNotice ? 'আপডেট করুন' : 'প্রকাশ করুন'}</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -5036,6 +5342,17 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
         onClose={() => setDueSmsTarget(null)}
         target={dueSmsTarget}
         paymentConfig={paymentConfig}
+      />
+
+      {/* Bulk Meeting SMS Dispatch Modal */}
+      <BulkMeetingSmsModal
+        isOpen={bulkMeetingSmsData.isOpen}
+        onClose={() => setBulkMeetingSmsData(prev => ({ ...prev, isOpen: false }))}
+        meetingType={bulkMeetingSmsData.meetingType}
+        noticeText={bulkMeetingSmsData.noticeText}
+        noticeTitle={bulkMeetingSmsData.noticeTitle}
+        members={members}
+        onNotifySuccess={(msg) => notifySuccess(msg)}
       />
     </div>
   );
