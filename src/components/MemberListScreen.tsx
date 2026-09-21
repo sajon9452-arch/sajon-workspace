@@ -38,6 +38,114 @@ interface MemberListScreenProps {
   onBack: () => void;
 }
 
+// Global memory caches for instantaneous, flicker-free member picture rendering
+const loadedPhotoCache = new Set<string>();
+const failedPhotoCache = new Set<string>();
+
+// Helper to determine whether a member is an expatriate member
+export const isExpatriateMember = (m?: Member | null): boolean => {
+  if (!m) return false;
+  return Boolean(
+    m.isExpatriate === true ||
+    m.memberType === 'expatriate' ||
+    (m.countryStatus && m.countryStatus.trim().length > 0)
+  );
+};
+
+interface MemberCardPhotoProps {
+  member: Member;
+  serialNo: number;
+  isExp: boolean;
+  onZoom: () => void;
+}
+
+const MemberCardPhoto: React.FC<MemberCardPhotoProps> = React.memo(({
+  member,
+  serialNo,
+  isExp,
+  onZoom,
+}) => {
+  const photoSrc = useMemo(() => getMemberPhotoUrl(member), [member]);
+  const isInitiallyCached = Boolean(photoSrc && loadedPhotoCache.has(photoSrc));
+  const [isLoaded, setIsLoaded] = useState<boolean>(isInitiallyCached);
+  const [hasError, setHasError] = useState<boolean>(Boolean(photoSrc && failedPhotoCache.has(photoSrc)));
+
+  useEffect(() => {
+    if (!photoSrc) {
+      setIsLoaded(false);
+      setHasError(false);
+      return;
+    }
+    if (loadedPhotoCache.has(photoSrc)) {
+      setIsLoaded(true);
+      setHasError(false);
+    } else if (failedPhotoCache.has(photoSrc)) {
+      setHasError(true);
+      setIsLoaded(false);
+    }
+  }, [photoSrc]);
+
+  const canZoom = Boolean(photoSrc && !hasError);
+
+  return (
+    <div
+      onClick={canZoom ? onZoom : undefined}
+      id={`member-photo-${member.id || serialNo}`}
+      className={`w-20 h-24 sm:w-24 sm:h-28 rounded-xl border-2 border-emerald-500/30 text-emerald-800 flex flex-col items-center justify-center font-bold flex-shrink-0 overflow-hidden shadow-xs relative bg-slate-100 select-none ${
+        canZoom ? 'cursor-pointer group/photo hover:border-emerald-500 transition-all active:scale-95' : ''
+      }`}
+      title={canZoom ? `${member.name}-এর ছবি বড় করে দেখতে ক্লিক করুন` : member.name}
+      role={canZoom ? 'button' : undefined}
+      aria-label={canZoom ? `${member.name}-এর ছবি জুম করে দেখুন` : undefined}
+    >
+      {/* 1. Permanent Stylized Fallback/Placeholder Layer (ALWAYS rendered underneath to eliminate white flashing) */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-2 bg-gradient-to-b from-emerald-50 via-slate-100 to-emerald-100/60 z-0">
+        <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-base font-black mb-1 shadow-2xs border border-emerald-200/70">
+          {member.name.trim().charAt(0) || 'স'}
+        </div>
+        <span className="text-[10px] font-bold text-slate-500">
+          {isExp ? 'প্রবাসী' : 'সদস্য'}
+        </span>
+      </div>
+
+      {/* 2. Actual Image Layer with decoding="async" and eager loading */}
+      {photoSrc && !hasError && (
+        <img
+          src={photoSrc}
+          alt={member.name}
+          loading="eager"
+          decoding="async"
+          onLoad={() => {
+            loadedPhotoCache.add(photoSrc);
+            setIsLoaded(true);
+          }}
+          onError={() => {
+            failedPhotoCache.add(photoSrc);
+            setHasError(true);
+          }}
+          className={`absolute inset-0 w-full h-full object-cover z-1 group-hover/photo:scale-105 transition-opacity duration-200 ${
+            isLoaded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        />
+      )}
+
+      {/* 3. Hover Zoom Indicator Overlay */}
+      {canZoom && isLoaded && (
+        <div className="absolute inset-0 bg-slate-950/25 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-2">
+          <div className="p-1.5 rounded-lg bg-black/60 text-white shadow-xs backdrop-blur-xs">
+            <Maximize2 className="w-3.5 h-3.5" />
+          </div>
+        </div>
+      )}
+
+      {/* 4. Seniority / Serial Badge */}
+      <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/70 backdrop-blur-xs text-white text-[9px] font-bold rounded-md z-3 shadow-xs">
+        #{toBengaliNumber(serialNo)}
+      </div>
+    </div>
+  );
+});
+
 export const MemberListScreen: React.FC<MemberListScreenProps> = ({
   members,
   onAddMember,
@@ -102,14 +210,24 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
     }
   };
 
-  // Helper to determine whether a member is an expatriate member
-  const isExpatriateMember = (m: Member): boolean => {
-    return Boolean(
-      m.isExpatriate === true ||
-      m.memberType === 'expatriate' ||
-      (m.countryStatus && m.countryStatus.trim().length > 0)
-    );
-  };
+  // Background preloader for instant photo rendering without any scroll flashing
+  useEffect(() => {
+    if (!Array.isArray(members) || members.length === 0) return;
+    members.forEach(member => {
+      const url = getMemberPhotoUrl(member);
+      if (url && !loadedPhotoCache.has(url) && !failedPhotoCache.has(url)) {
+        const preloader = new Image();
+        preloader.decoding = 'async';
+        preloader.src = url;
+        preloader.onload = () => {
+          loadedPhotoCache.add(url);
+        };
+        preloader.onerror = () => {
+          failedPhotoCache.add(url);
+        };
+      }
+    });
+  }, [members]);
 
   // Strictly sort members in ascending (oldest-first) order by registration/addition time
   // Earliest added members stay at the top (starting from #1) and new members append to the bottom
@@ -443,6 +561,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
             {filteredMembers.map((member, idx) => {
               const cleanPhone = sanitizePhone(member.phone);
               const serialNo = memberSerialMap.get(member.id) || (idx + 1);
+              const isExp = isExpatriateMember(member);
 
               return (
                 <div
@@ -470,21 +589,21 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                             <Globe className="w-3 h-3 text-blue-600" />
                             <span>{member.countryStatus}</span>
                           </span>
-                        ) : member.isExpatriate ? (
+                        ) : isExp ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-800 text-[11px] font-bold border border-blue-200/80">
                             <Globe className="w-3 h-3 text-blue-600" />
                             <span>প্রবাসী সদস্য</span>
                           </span>
                         ) : null}
 
-                        {member.bloodGroup && (
+                        {!isExp && member.bloodGroup && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 text-[11px] font-bold border border-rose-200/70">
                             রক্ত: {member.bloodGroup}
                           </span>
                         )}
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200/60">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          <span>{member.isExpatriate ? 'প্রবাসী' : 'সক্রিয়'}</span>
+                          <span>{isExp ? 'প্রবাসী' : 'সক্রিয়'}</span>
                         </span>
                       </div>
                     </div>
@@ -492,71 +611,12 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                     {/* Professional ID Card Body */}
                     <div className="flex items-start gap-4">
                       {/* Large ID Card Portrait Photo with Seniority Badge & Click-to-Zoom */}
-                      {(() => {
-                        const photoSrc = getMemberPhotoUrl(member);
-                        return (
-                          <div 
-                            onClick={() => {
-                              if (photoSrc) {
-                                setZoomedMember(member);
-                              }
-                            }}
-                            id={`member-photo-${member.id || idx}`}
-                            className={`w-20 h-24 sm:w-24 sm:h-28 rounded-xl bg-gradient-to-b from-slate-50 to-slate-100 border-2 border-emerald-500/30 text-emerald-800 flex flex-col items-center justify-center font-bold flex-shrink-0 overflow-hidden shadow-xs relative ${
-                              photoSrc ? 'cursor-pointer group/photo hover:border-emerald-500 transition-all active:scale-95' : ''
-                            }`}
-                            title={photoSrc ? `${member.name}-এর ছবি বড় করে দেখতে ক্লিক করুন` : member.name}
-                            role={photoSrc ? 'button' : undefined}
-                            aria-label={photoSrc ? `${member.name}-এর ছবি জুম করে দেখুন` : undefined}
-                          >
-                            {photoSrc ? (
-                              <>
-                                <img
-                                  src={photoSrc}
-                                  alt={member.name}
-                                  className="w-full h-full object-cover group-hover/photo:scale-105 transition-transform duration-300"
-                                  onError={(e) => {
-                                    const img = e.target as HTMLImageElement;
-                                    if (member.id && !img.src.includes('/api/member-photo/')) {
-                                      img.src = `/api/member-photo/${encodeURIComponent(member.id)}`;
-                                    } else {
-                                      img.style.display = 'none';
-                                      const fallbackEl = img.parentElement?.querySelector('.fallback-initials') as HTMLElement;
-                                      if (fallbackEl) fallbackEl.style.display = 'flex';
-                                    }
-                                  }}
-                                />
-                                <div className="fallback-initials hidden flex-col items-center justify-center text-center p-2 absolute inset-0 bg-slate-50">
-                                  <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base font-black mb-1">
-                                    {member.name.charAt(0)}
-                                  </div>
-                                  <span className="text-[10px] font-bold text-slate-400">
-                                    {member.isExpatriate ? 'প্রবাসী' : 'সদস্য'}
-                                  </span>
-                                </div>
-                                {/* Subtle hover zoom overlay affordance */}
-                                <div className="absolute inset-0 bg-slate-950/25 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                                  <div className="p-1.5 rounded-lg bg-black/60 text-white shadow-xs backdrop-blur-xs">
-                                    <Maximize2 className="w-3.5 h-3.5" />
-                                  </div>
-                                </div>
-                              </>
-                            ) : (
-                              <div className="flex flex-col items-center justify-center text-center p-2">
-                                <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base font-black mb-1">
-                                  {member.name.charAt(0)}
-                                </div>
-                                <span className="text-[10px] font-bold text-slate-400">
-                                  {member.isExpatriate ? 'প্রবাসী' : 'সদস্য'}
-                                </span>
-                              </div>
-                            )}
-                            <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/65 backdrop-blur-xs text-white text-[9px] font-bold rounded-md z-10">
-                              #{toBengaliNumber(serialNo)}
-                            </div>
-                          </div>
-                        );
-                      })()}
+                      <MemberCardPhoto
+                        member={member}
+                        serialNo={serialNo}
+                        isExp={isExp}
+                        onZoom={() => setZoomedMember(member)}
+                      />
                       
                       {/* Member Info Column */}
                       <div className="flex-1 min-w-0 flex flex-col justify-center space-y-2 py-0.5">
@@ -571,107 +631,137 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                           </span>
                         </div>
 
-                        {member.area ? (
-                          <p className="text-xs text-slate-600 flex items-center gap-1.5">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                            <span className="truncate">{member.area}</span>
-                          </p>
-                        ) : (
-                          <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                            <span className="truncate">{member.isExpatriate ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'}</span>
+                        {/* Expatriate Country */}
+                        {isExp && (
+                          <p className="text-xs font-semibold text-blue-700 flex items-center gap-1.5">
+                            <Globe className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                            <span>দেশ: {member.countryStatus || 'সৌদি আরব'}</span>
                           </p>
                         )}
+
+                        {/* Location */}
+                        <p className="text-xs text-slate-600 flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                          <span className="truncate">
+                            {isExp 
+                              ? `অবস্থান: ${member.area || 'প্রবাসী'}` 
+                              : (member.area || 'পতেঙ্গা, চট্টগ্রাম')}
+                          </span>
+                        </p>
                       </div>
                     </div>
 
-                    {/* Actions & Phone Bar */}
-                    <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-mono font-bold text-slate-800 tracking-wide">
-                          {member.phone}
-                        </span>
-                        <button
-                          onClick={() => handleCopyPhone(member.phone)}
-                          id={`member-copy-${member.id || idx}`}
-                          className="p-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition cursor-pointer"
-                          title="নম্বর কপি করুন"
-                        >
-                          {copiedPhone === member.phone ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        {/* Inline Admin Controls */}
-                        {isAdmin && (
-                          <div className="flex items-center gap-1 mr-1 pr-1 border-r border-slate-200">
-                            <button
-                              onClick={() => handleOpenEdit(member)}
-                              className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs transition cursor-pointer"
-                              title="সদস্য এডিট করুন"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            {onDeleteMember && (
-                              <button
-                                onClick={() => onDeleteMember(member.id, member.name)}
-                                className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-xs transition cursor-pointer"
-                                title="সদস্য ডিলিট করুন"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {isAdmin && (
+                    {/* Actions & Phone Bar - Completely removed for Expatriate members */}
+                    {!isExp ? (
+                      <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-mono font-bold text-slate-800 tracking-wide">
+                            {member.phone}
+                          </span>
                           <button
-                            onClick={() => setDueSmsMember(member)}
-                            className="px-2 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition flex items-center gap-1 border border-amber-200 cursor-pointer shadow-2xs"
-                            title="বকেয়া চাঁদা রিমাইন্ডার SIM SMS পাঠান (কাস্টম মাসসহ)"
+                            onClick={() => handleCopyPhone(member.phone)}
+                            id={`member-copy-${member.id || idx}`}
+                            className="p-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition cursor-pointer"
+                            title="নম্বর কপি করুন"
                           >
-                            <MessageSquare className="w-3.5 h-3.5 text-amber-600" />
-                            <span className="text-[10px] hidden sm:inline">বকেয়া SMS</span>
+                            {copiedPhone === member.phone ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
                           </button>
-                        )}
+                        </div>
 
-                        {isAdmin && (
+                        <div className="flex items-center gap-1.5">
+                          {/* Inline Admin Controls */}
+                          {isAdmin && (
+                            <div className="flex items-center gap-1 mr-1 pr-1 border-r border-slate-200">
+                              <button
+                                onClick={() => handleOpenEdit(member)}
+                                className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs transition cursor-pointer"
+                                title="সদস্য এডিট করুন"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              {onDeleteMember && (
+                                <button
+                                  onClick={() => onDeleteMember(member.id, member.name)}
+                                  className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-xs transition cursor-pointer"
+                                  title="সদস্য ডিলিট করুন"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {isAdmin && (
+                            <button
+                              onClick={() => setDueSmsMember(member)}
+                              className="px-2 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition flex items-center gap-1 border border-amber-200 cursor-pointer shadow-2xs"
+                              title="বকেয়া চাঁদা রিমাইন্ডার SIM SMS পাঠান (কাস্টম মাসসহ)"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5 text-amber-600" />
+                              <span className="text-[10px] hidden sm:inline">বকেয়া SMS</span>
+                            </button>
+                          )}
+
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => triggerNativeSms(cleanPhone, '')}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition cursor-pointer"
+                              title="সরাসরি সিম থেকে এসএমএস পাঠান"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          <a
+                            href={`https://wa.me/${cleanPhone.replace('+', '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition flex items-center gap-1 border border-emerald-200/70"
+                            title="হোয়াটসঅ্যাপে বার্তা পাঠান"
+                          >
+                            <span>WA</span>
+                          </a>
+
                           <button
                             type="button"
-                            onClick={() => triggerNativeSms(cleanPhone, '')}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition cursor-pointer"
-                            title="সরাসরি সিম থেকে এসএমএস পাঠান"
+                            onClick={() => triggerNativeCall(cleanPhone)}
+                            id={`member-call-${member.id || idx}`}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-98"
+                            title="সরাসরি কল দিন"
                           >
-                            <MessageSquare className="w-3.5 h-3.5" />
+                            <Phone className="w-3 h-3" />
+                            <span>কল</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : isAdmin ? (
+                      /* For Expatriate Members: completely NO phone, NO copy, NO WA, NO Call. If Admin: provide edit/delete options */
+                      <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handleOpenEdit(member)}
+                          className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                          title="প্রবাসী সদস্যের তথ্য এডিট করুন"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>এডিট</span>
+                        </button>
+                        {onDeleteMember && (
+                          <button
+                            onClick={() => onDeleteMember(member.id, member.name)}
+                            className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                            title="প্রবাসী সদস্য ডিলিট করুন"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>ডিলিট</span>
                           </button>
                         )}
-
-                        <a
-                          href={`https://wa.me/${cleanPhone.replace('+', '')}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-2 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition flex items-center gap-1 border border-emerald-200/70"
-                          title="হোয়াটসঅ্যাপে বার্তা পাঠান"
-                        >
-                          <span>WA</span>
-                        </a>
-
-                        <button
-                          type="button"
-                          onClick={() => triggerNativeCall(cleanPhone)}
-                          id={`member-call-${member.id || idx}`}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-98"
-                          title="সরাসরি কল দিন"
-                        >
-                          <Phone className="w-3 h-3" />
-                          <span>কল</span>
-                        </button>
                       </div>
-                    </div>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -1033,13 +1123,9 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                     <img
                       src={zoomPhoto}
                       alt={zoomedMember.name}
+                      loading="eager"
+                      decoding="async"
                       className="w-full h-auto max-h-[65vh] object-contain rounded-2xl select-none shadow-lg"
-                      onError={(e) => {
-                        const img = e.target as HTMLImageElement;
-                        if (zoomedMember.id && !img.src.includes('/api/member-photo/')) {
-                          img.src = `/api/member-photo/${encodeURIComponent(zoomedMember.id)}`;
-                        }
-                      }}
                     />
                   </div>
                 ) : (
@@ -1057,29 +1143,35 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
             <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs text-slate-600 truncate">
                 <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                <span className="truncate">{zoomedMember.area || (zoomedMember.isExpatriate ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম')}</span>
+                <span className="truncate">
+                  {isExpatriateMember(zoomedMember)
+                    ? (zoomedMember.countryStatus ? `${zoomedMember.countryStatus} • ${zoomedMember.area || 'প্রবাসী'}` : (zoomedMember.area || 'প্রবাসী'))
+                    : (zoomedMember.area || 'পতেঙ্গা, চট্টগ্রাম')}
+                </span>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => triggerNativeCall(zoomedMember.phone)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-98"
-                  title="সরাসরি ফোন কল করুন"
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>কল করুন ({zoomedMember.phone})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => triggerNativeSms(zoomedMember.phone, '')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition shadow-xs cursor-pointer"
-                  title="সরাসরি এসএমএস পাঠান"
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span>এসএমএস</span>
-                </button>
-              </div>
+              {!isExpatriateMember(zoomedMember) && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => triggerNativeCall(zoomedMember.phone)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-98"
+                    title="সরাসরি ফোন কল করুন"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>কল করুন ({zoomedMember.phone})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => triggerNativeSms(zoomedMember.phone, '')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition shadow-xs cursor-pointer"
+                    title="সরাসরি এসএমএস পাঠান"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>এসএমএস</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

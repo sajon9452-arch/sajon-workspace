@@ -208,18 +208,11 @@ export function getMemberPhotoUrl(member?: Partial<Member> | null): string {
     '';
 
   if (!raw || typeof raw !== 'string') {
-    // If member has an ID, check if server has photo stored
-    if (member.id && !member.id.startsWith('temp-')) {
-      return `/api/member-photo/${encodeURIComponent(member.id)}`;
-    }
     return '';
   }
 
   const trimmed = raw.trim();
   if (!trimmed) {
-    if (member.id && !member.id.startsWith('temp-')) {
-      return `/api/member-photo/${encodeURIComponent(member.id)}`;
-    }
     return '';
   }
 
