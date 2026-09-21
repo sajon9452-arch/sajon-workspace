@@ -2,71 +2,42 @@ import { Member } from '../types';
 import { sanitizePhoneForSms, buildDirectSimSmsUrl, triggerDirectSimSms } from './smsHelper';
 
 /**
- * Checks if a member belongs to the Executive Committee (কার্যকরী কমিটি)
+ * Designation-Based Auto-Classification:
+ * - If the designation contains or equals "সদস্য" (e.g., সাধারণ সদস্য, সদস্য, প্রবাসী সদস্য),
+ *   the system classifies that person as a 'সাধারণ সদস্য' (General Member).
+ * - If the designation is anything else (e.g., সভাপতি, সাধারণ সম্পাদক, সহ-ক্রীড়া সম্পাদক, সাংগঠনিক সম্পাদক ইত্যাদি),
+ *   the system automatically classifies them as part of the 'কার্যকরী কমিটি' (Executive Committee).
  */
-export function isExecutiveCommitteeMember(member: Member): boolean {
+export function isGeneralMemberByDesignation(designation?: string): boolean {
+  if (!designation) return true; // Default to general member if empty
+  const des = designation.trim();
+  if (!des) return true;
+  // If the designation contains or equals "সদস্য"
+  return des.includes('সদস্য') || des.toLowerCase().includes('member');
+}
+
+/**
+ * Checks if a member belongs to the Executive Committee (কার্যকরী কমিটি) based on Designation
+ * - Target ONLY members whose designation is NOT 'সদস্য' / does NOT contain 'সদস্য'
+ */
+export function isExecutiveCommitteeMember(member: { designation?: string } | null | undefined): boolean {
   if (!member) return false;
-  if (member.isExecutive === true) return true;
-  if (member.isExecutive === false) return false;
-  if (member.category === 'কার্যকরী কমিটি' || member.committeeType === 'executive') return true;
-  if (member.category === 'সাধারণ সদস্য' || member.committeeType === 'general') return false;
-  
   const des = (member.designation || '').trim();
   if (!des) return false;
-  
-  // Explicitly general member tags
-  if (des === 'সদস্য' || des === 'সাধারণ সদস্য' || des === 'প্রবাসী সদস্য') {
-    return false;
-  }
-  
-  if (/^(সাধারণ\s*সদস্য|সদস্য|প্রবাসী\s*সদস্য)$/i.test(des)) {
-    return false;
-  }
+  return !isGeneralMemberByDesignation(des);
+}
 
-  // Executive keywords across Bangladeshi organizations
-  const executiveKeywords = [
-    'কার্যকরী',
-    'কার্যনির্বাহী',
-    'নির্বাহী',
-    'সভাপতি',
-    'সম্পাদক',
-    'কোষাধ্যক্ষ',
-    'ক্যাশিয়ার',
-    'সাংগঠনিক',
-    'দপ্তর',
-    'প্রচার',
-    'সমন্বয়ক',
-    'উপদেষ্টা',
-    'পরিচালক',
-    'আহ্বায়ক',
-    'আহবায়ক',
-    'সহ-সভাপতি',
-    'সহ সভাপতি',
-    'যুগ্ম',
-    'অর্থ',
-    'ত্রাণ',
-    'এাণ', // common Bengali typing variant of ত্রাণ
-    'কল্যাণ',
-    'ক্রীড়া',
-    'সাংস্কৃতিক',
-    'সমাজসেবা',
-    'শিক্ষা',
-    'স্বাস্থ্য',
-    'তথ্য ও প্রযুক্তি',
-    'আইন',
-    'ধর্ম',
-    'সদস্য সচিব',
-    'মহাসচিব',
-    'executive',
-    'president',
-    'secretary',
-    'advisor',
-    'treasurer',
-    'director',
-    'coordinator'
-  ];
-
-  return executiveKeywords.some(kw => des.includes(kw));
+export function getMemberCommitteeCategory(designation?: string): {
+  isExecutive: boolean;
+  categoryLabel: 'কার্যকরী কমিটি' | 'সাধারণ সদস্য';
+  categoryTitle: string;
+} {
+  const isExec = !isGeneralMemberByDesignation(designation);
+  return {
+    isExecutive: isExec,
+    categoryLabel: isExec ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য',
+    categoryTitle: isExec ? 'কার্যকরী কমিটি (Executive Committee)' : 'সাধারণ সদস্য (General Member)'
+  };
 }
 
 export interface MeetingSmsRecipient {

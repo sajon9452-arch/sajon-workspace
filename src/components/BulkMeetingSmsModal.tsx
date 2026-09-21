@@ -390,7 +390,7 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
               </div>
               <p className="text-[11px] sm:text-xs text-slate-600 mt-1 leading-relaxed">
                 {isExecutiveMeeting 
-                  ? `ডাটাবেজে সংরক্ষিত শুধুমাত্র কার্যকরী কমিটির সদস্যদের ফিল্টার করে মোট ${toBengaliNumber(recipients.length)} জনের তালিকা প্রস্তুত করা হয়েছে (কোনো সদস্য সংখ্যা সীমাবদ্ধতা নেই, নতুন সদস্য যোগ করলে স্বয়ংক্রিয়ভাবে তালিকায় আসবে)।` 
+                  ? `পদবি-ভিত্তিক স্বয়ংক্রিয় ফিল্টারিং: পদবিতে 'সদস্য' নেই এমন সকল কার্যকরী কমিটির কর্মকর্তাদের ডাটাবেজ থেকে স্বয়ংক্রিয়ভাবে ফিল্টার করে মোট ${toBengaliNumber(recipients.length)} জনের টার্গেট তালিকা প্রস্তুত করা হয়েছে (কোনো সংখ্যা সীমাবদ্ধতা নেই)।` 
                   : `সংগঠনের কার্যকরী কমিটি (${toBengaliNumber(stats.executiveCount)} জন) ও সাধারণ সদস্য (${toBengaliNumber(stats.generalCount)} জন) মিলিয়ে মোট ${toBengaliNumber(recipients.length)} জন সদস্যের যৌথ তালিকা লোড করা হয়েছে।`}
               </p>
             </div>
@@ -662,9 +662,9 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
                           <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border ${
                             member.isExecutive
                               ? 'bg-purple-50 text-purple-700 border-purple-200'
-                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           }`}>
-                            {member.designation}
+                            {member.designation} {member.isExecutive ? '• কার্যকরী' : '• সাধারণ'}
                           </span>
                         </div>
                         <div className="text-[11px] text-slate-500 flex items-center gap-1 font-mono mt-0.5">

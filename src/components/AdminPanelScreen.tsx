@@ -789,9 +789,10 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       return;
     }
 
+    const isExec = isExecutiveCommitteeMember({ designation });
     const memberData: Omit<Member, 'id'> = {
       name,
-      designation: designation || (memberIsExecutiveInput ? 'কার্যকরী সদস্য' : 'সদস্য'),
+      designation: designation || 'সদস্য',
       phone,
       area: area || (memberIsExpatriateInput ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'),
       photoUrl: photoUrl || '',
@@ -799,9 +800,9 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       email: email || '',
       status: status || 'সক্রিয়',
       isExpatriate: memberIsExpatriateInput,
-      isExecutive: memberIsExecutiveInput,
-      category: memberIsExecutiveInput ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য',
-      committeeType: memberIsExecutiveInput ? 'executive' : 'general',
+      isExecutive: isExec,
+      category: isExec ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য',
+      committeeType: isExec ? 'executive' : 'general',
       memberType: memberIsExpatriateInput ? 'expatriate' : 'general',
       countryStatus: memberCountryStatusInput.trim()
     };
@@ -810,9 +811,9 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       const updatedMember: Member = {
         ...memberData,
         id: editingMember.id,
-        isExecutive: memberIsExecutiveInput,
-        category: memberIsExecutiveInput ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য',
-        committeeType: memberIsExecutiveInput ? 'executive' : 'general'
+        isExecutive: isExec,
+        category: isExec ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য',
+        committeeType: isExec ? 'executive' : 'general'
       };
 
       if (onEditMember) {
@@ -1993,7 +1994,21 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                                   </span>
                                 ) : null}
                               </div>
-                              <div className="text-[11px] text-slate-500">{m.designation}</div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[11px] text-slate-600 font-medium">{m.designation}</span>
+                                {(() => {
+                                  const isExec = isExecutiveCommitteeMember(m);
+                                  return (
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                                      isExec 
+                                        ? 'bg-purple-50 text-purple-700 border-purple-200' 
+                                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    }`}>
+                                      {isExec ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য'}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -4159,54 +4174,6 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
               </button>
             </div>
 
-            {/* Committee Type Switcher (Executive vs General) */}
-            <div className="mt-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50/70">
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                কমিটির ধরণ (Committee Category) *
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMemberIsExecutiveInput(true);
-                    if (memberDesignationInput === 'সদস্য') {
-                      setMemberDesignationInput('কার্যকরী সদস্য');
-                    }
-                  }}
-                  className={`py-2 px-3 text-xs font-bold rounded-lg border transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                    memberIsExecutiveInput
-                      ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>কার্যকরী কমিটি</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMemberIsExecutiveInput(false);
-                    if (memberDesignationInput === 'কার্যকরী সদস্য') {
-                      setMemberDesignationInput('সদস্য');
-                    }
-                  }}
-                  className={`py-2 px-3 text-xs font-bold rounded-lg border transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                    !memberIsExecutiveInput
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>সাধারণ সদস্য</span>
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                {memberIsExecutiveInput
-                  ? 'এই সদস্য কার্যকরী কমিটি এবং যৌথ সাধারণ সভা উভয় নোটিশের এসএমএস তালিকায় অন্তর্ভূক্ত হবেন।'
-                  : 'এই সদস্য শুধুমাত্র কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের যৌথ সাধারণ সভার এসএমএস তালিকায় অন্তর্ভূক্ত হবেন।'}
-              </p>
-            </div>
-
             <form onSubmit={handleSaveMember} className="space-y-3 mt-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">পূর্ণ নাম (Name) *</label>
@@ -4221,18 +4188,38 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">পদবি (Designation) *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>পদবি (Designation) *</span>
+                    <span className="text-[10px] text-blue-600 font-medium">পদবি অনুযায়ী স্বয়ংক্রিয় শ্রেণিবিভাগ</span>
+                  </label>
                   <input
                     type="text"
                     name="designation"
                     required
                     value={memberDesignationInput}
                     onChange={(e) => setMemberDesignationInput(e.target.value)}
-                    placeholder="যেমন: সাধারণ সম্পাদক / সদস্য"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                    placeholder="যেমন: সাধারণ সম্পাদক / সভাপতি / সদস্য"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none font-medium"
                   />
+                  {/* Quick Designation Presets */}
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                    {['সদস্য', 'সভাপতি', 'সাধারণ সম্পাদক', 'সহ-সভাপতি', 'সাংগঠনিক সম্পাদক', 'কোষাধ্যক্ষ', 'সহ-ক্রীড়া সম্পাদক', 'উপদেষ্টা'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setMemberDesignationInput(preset)}
+                        className={`text-[10px] px-2 py-0.5 rounded-md border transition cursor-pointer ${
+                          memberDesignationInput === preset
+                            ? 'bg-blue-100 text-blue-800 border-blue-300 font-bold'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
@@ -4248,6 +4235,41 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                   />
                 </div>
               </div>
+
+              {/* Dynamic Designation-Based Auto-Classification Card */}
+              {(() => {
+                const isExec = isExecutiveCommitteeMember({ designation: memberDesignationInput });
+                return (
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 transition ${
+                    isExec 
+                      ? 'bg-purple-50/80 border-purple-200 text-purple-900' 
+                      : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                  }`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isExec ? (
+                        <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+                      ) : (
+                        <Users className="w-4 h-4 text-emerald-600 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold flex items-center gap-1.5 flex-wrap">
+                          <span>স্বয়ংক্রিয় শ্রেণিবিভাগ:</span>
+                          <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                            isExec ? 'bg-purple-200 text-purple-900' : 'bg-emerald-200 text-emerald-900'
+                          }`}>
+                            {isExec ? 'কার্যকরী কমিটি (Executive Committee)' : 'সাধারণ সদস্য (General Member)'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-600 mt-0.5 leading-tight">
+                          {isExec 
+                            ? "পদবিতে 'সদস্য' না থাকায় ইনি স্বয়ংক্রিয়ভাবে কার্যকরী কমিটির মিটিং ও যৌথ সাধারণ সভা উভয় এসএমএস তালিকায় অন্তর্ভুক্ত হবেন।" 
+                            : "পদবিতে 'সদস্য' থাকায় ইনি সাধারণ সদস্য হিসেবে শ্রেণিভুক্ত এবং যৌথ সাধারণ সভার এসএমএসে অন্তর্ভুক্ত হবেন।"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Expatriate Country / Status Title Input (Blank by default, manual input) */}
               {memberIsExpatriateInput && (

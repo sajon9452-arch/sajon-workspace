@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Member } from '../types';
 import { toBengaliNumber, sanitizePhone, sortMembersOldestFirst, getMemberPhotoUrl } from '../utils/helpers';
+import { isExecutiveCommitteeMember } from '../utils/meetingSmsHelper';
 import { compressImageFile } from '../utils/imageCompressor';
 import { DueSmsModal } from './DueSmsModal';
 import { loadPaymentSettings } from '../utils/storage';
@@ -210,6 +211,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
     }
 
     const finalPhoto = photoUrl.trim() || '';
+    const isExec = isExecutiveCommitteeMember({ designation });
     const memberPayload = {
       name: name.trim(),
       designation: designation.trim(),
@@ -219,6 +221,9 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
       avatarUrl: finalPhoto,
       photo_url: finalPhoto,
       isExpatriate: isExpatriateForm,
+      isExecutive: isExec,
+      category: isExec ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য',
+      committeeType: isExec ? 'executive' : 'general',
       memberType: (isExpatriateForm ? 'expatriate' : 'general') as 'expatriate' | 'general',
       countryStatus: isExpatriateForm ? countryStatus.trim() : undefined,
     };
@@ -747,17 +752,35 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    পদবি (Designation) *
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>পদবি (Designation) *</span>
+                    <span className="text-[10px] text-emerald-700 font-medium">পদবি অনুযায়ী স্বয়ংক্রিয় শ্রেণিবিভাগ</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={designation}
                     onChange={(e) => setDesignation(e.target.value)}
-                    placeholder="যেমন: সদস্য / সাধারণ সম্পাদক"
+                    placeholder="যেমন: সাধারণ সম্পাদক / সভাপতি / সদস্য"
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none"
                   />
+                  {/* Quick Designation Presets */}
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                    {['সদস্য', 'সভাপতি', 'সাধারণ সম্পাদক', 'সহ-সভাপতি', 'সাংগঠনিক সম্পাদক', 'কোষাধ্যক্ষ', 'সহ-ক্রীড়া সম্পাদক', 'উপদেষ্টা'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setDesignation(preset)}
+                        className={`text-[10px] px-2 py-0.5 rounded-md border transition cursor-pointer ${
+                          designation === preset
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
@@ -774,6 +797,41 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Dynamic Designation-Based Auto-Classification Card */}
+              {(() => {
+                const isExec = isExecutiveCommitteeMember({ designation });
+                return (
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 transition ${
+                    isExec 
+                      ? 'bg-purple-50/80 border-purple-200 text-purple-900' 
+                      : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                  }`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isExec ? (
+                        <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+                      ) : (
+                        <Users className="w-4 h-4 text-emerald-600 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold flex items-center gap-1.5 flex-wrap">
+                          <span>স্বয়ংক্রিয় শ্রেণিবিভাগ:</span>
+                          <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                            isExec ? 'bg-purple-200 text-purple-900' : 'bg-emerald-200 text-emerald-900'
+                          }`}>
+                            {isExec ? 'কার্যকরী কমিটি (Executive Committee)' : 'সাধারণ সদস্য (General Member)'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-600 mt-0.5 leading-tight">
+                          {isExec 
+                            ? "পদবিতে 'সদস্য' না থাকায় ইনি স্বয়ংক্রিয়ভাবে কার্যকরী কমিটির মিটিং ও যৌথ সাধারণ সভা উভয় এসএমএস তালিকায় অন্তর্ভুক্ত হবেন।" 
+                            : "পদবিতে 'সদস্য' থাকায় ইনি সাধারণ সদস্য হিসেবে শ্রেণিভুক্ত এবং যৌথ সাধারণ সভার এসএমএসে অন্তর্ভুক্ত হবেন।"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Dedicated Expatriate Country / Status Title Input (Blank by default) */}
               {isExpatriateForm && (
