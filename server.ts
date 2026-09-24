@@ -449,43 +449,52 @@ async function upsertInChunks(supabase: SupabaseClient, tableName: string, recor
 // Dedicated Table Model Mappers
 function extractMemberPhoto(r: any, supabaseUrl?: string): string {
   if (!r) return '';
-  let raw =
-    r.photo_url ||
-    r.photoUrl ||
-    r.avatar_url ||
-    r.avatarUrl ||
-    r.avatar ||
-    r.image_url ||
-    r.imageUrl ||
-    r.photo ||
-    r.image ||
-    r.profile_photo ||
-    r.profile_image ||
-    r.profile_pic ||
-    r.picture ||
-    r.file_url ||
-    r.file_path ||
-    '';
 
-  if (!raw) return '';
-  if (typeof raw === 'object') {
-    raw = raw.url || raw.path || raw.publicUrl || raw.name || '';
-  }
-  if (typeof raw !== 'string') return '';
-  const trimmed = raw.trim();
-  if (!trimmed) return '';
+  const candidateKeys = [
+    'photo_url',
+    'photoUrl',
+    'avatar_url',
+    'avatarUrl',
+    'avatar',
+    'imageUrl',
+    'image_url',
+    'photo',
+    'image',
+    'profile_photo',
+    'profile_image',
+    'profile_pic',
+    'picture'
+  ];
 
-  // 1. Data URLs and Blob URLs
-  if (trimmed.startsWith('data:image/') || trimmed.startsWith('blob:')) {
-    return trimmed;
+  // 1. Data URLs and Blob URLs take top priority
+  for (const k of candidateKeys) {
+    let raw = r[k];
+    if (typeof raw === 'object' && raw) {
+      raw = raw.url || raw.path || raw.publicUrl || raw.name || '';
+    }
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (trimmed.startsWith('data:image/') || trimmed.startsWith('blob:')) {
+        return trimmed;
+      }
+    }
   }
 
   // 2. Full HTTP/HTTPS URLs (including Supabase Storage)
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
+  for (const k of candidateKeys) {
+    let raw = r[k];
+    if (typeof raw === 'object' && raw) {
+      raw = raw.url || raw.path || raw.publicUrl || raw.name || '';
+    }
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (/^https?:\/\//i.test(trimmed)) {
+        return trimmed;
+      }
+    }
   }
 
-  // 3. Supabase Storage Relative Paths
+  // 3. Supabase Storage Relative Paths (exclude internal /api/ endpoints)
   const base = (
     supabaseUrl ||
     process.env.SUPABASE_URL ||
@@ -493,23 +502,32 @@ function extractMemberPhoto(r: any, supabaseUrl?: string): string {
     'https://quqzeiuaybmhzisivrud.supabase.co'
   ).replace(/\/+$/, '');
 
-  if (trimmed.startsWith('/storage/v1/object/public/')) {
-    return `${base}${trimmed}`;
-  }
-  if (trimmed.startsWith('storage/v1/object/public/')) {
-    return `${base}/${trimmed}`;
+  for (const k of candidateKeys) {
+    let raw = r[k];
+    if (typeof raw === 'object' && raw) {
+      raw = raw.url || raw.path || raw.publicUrl || raw.name || '';
+    }
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (trimmed && !trimmed.startsWith('/api/')) {
+        if (trimmed.startsWith('/storage/v1/object/public/')) {
+          return `${base}${trimmed}`;
+        }
+        if (trimmed.startsWith('storage/v1/object/public/')) {
+          return `${base}/${trimmed}`;
+        }
+        if (trimmed.includes('/') && !trimmed.startsWith('http')) {
+          const clean = trimmed.replace(/^\/+/, '');
+          return `${base}/storage/v1/object/public/${clean}`;
+        }
+        if (/\.(jpe?g|png|webp|gif|avif)$/i.test(trimmed)) {
+          return `${base}/storage/v1/object/public/avatars/${trimmed}`;
+        }
+      }
+    }
   }
 
-  if (trimmed.includes('/')) {
-    const clean = trimmed.replace(/^\/+/, '');
-    return `${base}/storage/v1/object/public/${clean}`;
-  }
-
-  if (/\.(jpe?g|png|webp|gif|avif)$/i.test(trimmed)) {
-    return `${base}/storage/v1/object/public/avatars/${trimmed}`;
-  }
-
-  return trimmed;
+  return '';
 }
 
 function mapMemberToDb(m: any) {
@@ -1469,11 +1487,19 @@ app.get('/api/health', (req, res) => {
 });
 
 // Member profile picture streaming & proxy endpoint
-// Streams base64 data URLs as binary images or redirects to Supabase Storage
+// Checks server_data/member_photos disk storage first, streams binary images with immutable cache
 app.get('/api/member-photo/:id', async (req, res) => {
   try {
     const { id } = req.params;
     if (!id) return res.status(400).send('Missing member ID');
+
+    // 1. Direct local disk photo cache check (fastest, 0 overhead)
+    const diskPath = path.join(process.cwd(), 'server_data', 'member_photos', `${id}.jpg`);
+    if (fs.existsSync(diskPath)) {
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.sendFile(diskPath);
+    }
 
     const db = readLocalDatabase();
     const members = Array.isArray(db.members) ? db.members : [];
@@ -1488,28 +1514,32 @@ app.get('/api/member-photo/:id', async (req, res) => {
       return res.status(404).send('No photo available for this member');
     }
 
-    // 1. Base64 Data URL -> Stream binary image buffer
+    // 2. Base64 Data URL -> Stream binary image buffer & persist to disk
     if (photo.startsWith('data:image/')) {
       const match = photo.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
       if (match) {
         const mimeSubtype = match[1].toLowerCase();
         const contentType = mimeSubtype === 'jpg' ? 'image/jpeg' : `image/${mimeSubtype}`;
         const buffer = Buffer.from(match[2], 'base64');
+        try {
+          const photosDir = path.join(process.cwd(), 'server_data', 'member_photos');
+          if (!fs.existsSync(photosDir)) fs.mkdirSync(photosDir, { recursive: true });
+          fs.writeFileSync(diskPath, buffer);
+        } catch (saveErr) {}
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', buffer.length.toString());
-        res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         return res.end(buffer);
       }
     }
 
-    // 2. HTTP/HTTPS or Supabase Public Storage URL -> 302 Redirect
+    // 3. HTTP/HTTPS or Supabase Public Storage URL -> 302 Redirect
     if (/^https?:\/\//i.test(photo)) {
       res.setHeader('Cache-Control', 'public, max-age=86400');
       return res.redirect(302, photo);
     }
 
-    // 3. Relative path -> Redirect
-    return res.redirect(302, photo);
+    return res.status(404).send('Photo format unsupported');
   } catch (err: any) {
     res.status(500).send('Error retrieving member photo');
   }

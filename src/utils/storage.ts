@@ -2,6 +2,7 @@ import { Member, BloodDonor, Notice, FundRecord, OrganizationProfile, PaymentGat
 import { INITIAL_MEMBERS, INITIAL_DONORS, INITIAL_NOTICES, INITIAL_FUNDS, INITIAL_ORG_PROFILE, INITIAL_SUPPORT_REPORTS, INITIAL_HOME_SLIDES, INITIAL_HUMANITARIAN_ACTIVITIES, INITIAL_ORGANIZATION_RULES } from '../data/initialData';
 import { syncKeyToServer, resetServerDatabase, clearServerDatabase, ServerDatabasePayload } from './serverApi';
 import { sortMembersOldestFirst } from './helpers';
+import { preloadMembersPhotos } from './photoPreloader';
 
 export const STORAGE_KEYS = {
   PROFILE: 'pms_profile_v2',
@@ -220,6 +221,7 @@ export function populateLocalStorageFromServer(
       memoryMembersCache = sortMembersOldestFirst(
         serverDb.members.filter((m: any) => m && m.id && !deletedMemberIds.includes(m.id))
       );
+      preloadMembersPhotos(memoryMembersCache);
     }
     const membersRes = reconcileEntityStorageList(
       serverDb.members,
@@ -536,6 +538,7 @@ export function saveMembers(members: Member[]): void {
     const filtered = members.filter(m => !deletedIds.includes(m.id));
     const sorted = sortMembersOldestFirst(filtered);
     memoryMembersCache = sorted;
+    preloadMembersPhotos(sorted);
     notifyDataChange(STORAGE_KEYS.MEMBERS, sorted);
     safeSetLocalStorage(STORAGE_KEYS.MEMBERS, sorted);
     syncKeyToServer('members', sorted);

@@ -28,6 +28,12 @@ import { triggerNativeCall, triggerNativeSms } from '../utils/nativeIntentHelper
 import { compressImageFile } from '../utils/imageCompressor';
 import { DueSmsModal } from './DueSmsModal';
 import { loadPaymentSettings } from '../utils/storage';
+import { 
+  loadedPhotoCache, 
+  failedPhotoCache, 
+  preloadPhoto, 
+  preloadMembersPhotos 
+} from '../utils/photoPreloader';
 
 interface MemberListScreenProps {
   members: Member[];
@@ -37,10 +43,6 @@ interface MemberListScreenProps {
   isAdmin?: boolean;
   onBack: () => void;
 }
-
-// Global memory caches for instantaneous, flicker-free member picture rendering
-const loadedPhotoCache = new Set<string>();
-const failedPhotoCache = new Set<string>();
 
 // Helper to determine whether a member is an expatriate member
 export const isExpatriateMember = (m?: Member | null): boolean => {
@@ -66,26 +68,23 @@ const MemberCardPhoto: React.FC<MemberCardPhotoProps> = React.memo(({
   onZoom,
 }) => {
   const photoSrc = useMemo(() => getMemberPhotoUrl(member), [member]);
-  const isInitiallyCached = Boolean(photoSrc && loadedPhotoCache.has(photoSrc));
-  const [isLoaded, setIsLoaded] = useState<boolean>(isInitiallyCached);
   const [hasError, setHasError] = useState<boolean>(Boolean(photoSrc && failedPhotoCache.has(photoSrc)));
 
   useEffect(() => {
     if (!photoSrc) {
-      setIsLoaded(false);
       setHasError(false);
       return;
     }
-    if (loadedPhotoCache.has(photoSrc)) {
-      setIsLoaded(true);
-      setHasError(false);
-    } else if (failedPhotoCache.has(photoSrc)) {
+    if (failedPhotoCache.has(photoSrc)) {
       setHasError(true);
-      setIsLoaded(false);
+    } else {
+      setHasError(false);
+      preloadPhoto(photoSrc);
     }
   }, [photoSrc]);
 
-  const canZoom = Boolean(photoSrc && !hasError);
+  const hasRealPhoto = Boolean(photoSrc && !hasError);
+  const canZoom = hasRealPhoto;
 
   return (
     <div
@@ -98,39 +97,39 @@ const MemberCardPhoto: React.FC<MemberCardPhotoProps> = React.memo(({
       role={canZoom ? 'button' : undefined}
       aria-label={canZoom ? `${member.name}-এর ছবি জুম করে দেখুন` : undefined}
     >
-      {/* 1. Permanent Stylized Fallback/Placeholder Layer (ALWAYS rendered underneath to eliminate white flashing) */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-2 bg-gradient-to-b from-emerald-50 via-slate-100 to-emerald-100/60 z-0">
-        <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-base font-black mb-1 shadow-2xs border border-emerald-200/70">
-          {member.name.trim().charAt(0) || 'স'}
+      {/* 1. Direct Instant Image Rendering when real photo exists: NO letter placeholder underneath */}
+      {hasRealPhoto ? (
+        <>
+          <div className="absolute inset-0 bg-slate-200/50 z-0" />
+          <img
+            src={photoSrc}
+            alt={member.name}
+            loading="eager"
+            decoding="async"
+            onLoad={() => {
+              loadedPhotoCache.add(photoSrc);
+            }}
+            onError={() => {
+              failedPhotoCache.add(photoSrc);
+              setHasError(true);
+            }}
+            className="absolute inset-0 w-full h-full object-cover z-1 group-hover/photo:scale-105 transition-transform duration-200"
+          />
+        </>
+      ) : (
+        /* 2. Fallback placeholder ONLY when no profile photo exists or loading strictly failed */
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-2 bg-gradient-to-b from-emerald-50 via-slate-100 to-emerald-100/60 z-0">
+          <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-base font-black mb-1 shadow-2xs border border-emerald-200/70">
+            {member.name.trim().charAt(0) || 'স'}
+          </div>
+          <span className="text-[10px] font-bold text-slate-500">
+            {isExp ? 'প্রবাসী' : 'সদস্য'}
+          </span>
         </div>
-        <span className="text-[10px] font-bold text-slate-500">
-          {isExp ? 'প্রবাসী' : 'সদস্য'}
-        </span>
-      </div>
-
-      {/* 2. Actual Image Layer with decoding="async" and eager loading */}
-      {photoSrc && !hasError && (
-        <img
-          src={photoSrc}
-          alt={member.name}
-          loading="eager"
-          decoding="async"
-          onLoad={() => {
-            loadedPhotoCache.add(photoSrc);
-            setIsLoaded(true);
-          }}
-          onError={() => {
-            failedPhotoCache.add(photoSrc);
-            setHasError(true);
-          }}
-          className={`absolute inset-0 w-full h-full object-cover z-1 group-hover/photo:scale-105 transition-opacity duration-200 ${
-            isLoaded ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-        />
       )}
 
       {/* 3. Hover Zoom Indicator Overlay */}
-      {canZoom && isLoaded && (
+      {canZoom && (
         <div className="absolute inset-0 bg-slate-950/25 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-2">
           <div className="p-1.5 rounded-lg bg-black/60 text-white shadow-xs backdrop-blur-xs">
             <Maximize2 className="w-3.5 h-3.5" />
@@ -212,21 +211,9 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
 
   // Background preloader for instant photo rendering without any scroll flashing
   useEffect(() => {
-    if (!Array.isArray(members) || members.length === 0) return;
-    members.forEach(member => {
-      const url = getMemberPhotoUrl(member);
-      if (url && !loadedPhotoCache.has(url) && !failedPhotoCache.has(url)) {
-        const preloader = new Image();
-        preloader.decoding = 'async';
-        preloader.src = url;
-        preloader.onload = () => {
-          loadedPhotoCache.add(url);
-        };
-        preloader.onerror = () => {
-          failedPhotoCache.add(url);
-        };
-      }
-    });
+    if (Array.isArray(members) && members.length > 0) {
+      preloadMembersPhotos(members);
+    }
   }, [members]);
 
   // Strictly sort members in ascending (oldest-first) order by registration/addition time

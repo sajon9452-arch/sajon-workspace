@@ -58,6 +58,7 @@ import {
 } from './utils/storage';
 import { fetchServerDatabase, syncKeyToServer } from './utils/serverApi';
 import { isDonorEligible, sortMembersOldestFirst } from './utils/helpers';
+import { preloadMembersPhotos } from './utils/photoPreloader';
 import { Header } from './components/Header';
 import { HomeScreen } from './components/HomeScreen';
 import { BottomNav } from './components/BottomNav';
@@ -155,6 +156,13 @@ export default function App() {
       window.removeEventListener(PMS_SYNC_EVENT_NAME, syncAllFromStorage);
     };
   }, []);
+
+  // Preload and cache member directory images in browser memory on boot & updates
+  useEffect(() => {
+    if (members && members.length > 0) {
+      preloadMembersPhotos(members);
+    }
+  }, [members]);
 
   // Organization Profile Update Handler
   const handleUpdateProfile = (newProfile: OrganizationProfile) => {

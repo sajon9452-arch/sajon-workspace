@@ -190,72 +190,62 @@ export function sortMembersOldestFirst(members: Member[]): Member[] {
 export function getMemberPhotoUrl(member?: Partial<Member> | null): string {
   if (!member) return '';
 
-  const raw =
-    member.photoUrl ||
-    member.avatarUrl ||
-    member.avatar ||
-    member.avatar_url ||
-    member.photo_url ||
-    member.imageUrl ||
-    member.image_url ||
-    member.photo ||
-    member.image ||
-    (member as any).profile_photo ||
-    (member as any).profile_image ||
-    (member as any).picture ||
-    (member as any).file_url ||
-    (member as any).file_path ||
-    '';
+  const candidateKeys = [
+    'photoUrl',
+    'photo_url',
+    'avatarUrl',
+    'avatar_url',
+    'avatar',
+    'imageUrl',
+    'image_url',
+    'photo',
+    'image',
+    'profile_photo',
+    'profile_image',
+    'picture',
+    'file_url',
+    'file_path'
+  ];
 
-  if (!raw || typeof raw !== 'string') {
-    return '';
+  // 1. In-memory data URLs or blob URLs (immediate 0ms rendering)
+  for (const k of candidateKeys) {
+    const val = (member as any)[k];
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (trimmed.startsWith('data:image/') || trimmed.startsWith('blob:')) {
+        return trimmed;
+      }
+    }
   }
 
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return '';
+  // 2. Full HTTP/HTTPS URLs (including CDN & storage)
+  for (const k of candidateKeys) {
+    const val = (member as any)[k];
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (/^https?:\/\//i.test(trimmed)) {
+        return trimmed;
+      }
+    }
   }
 
-  // 1. Data URLs and Blob URLs
-  if (trimmed.startsWith('data:image/') || trimmed.startsWith('blob:')) {
-    return trimmed;
+  // 3. Direct server binary stream endpoint by member ID (supported by disk cache)
+  if (member.id && typeof member.id === 'string' && !member.id.startsWith('temp-')) {
+    return `/api/member-photo/${encodeURIComponent(member.id)}`;
   }
 
-  // 2. Direct server endpoint relative URL
-  if (trimmed.startsWith('/api/member-photo/')) {
-    return trimmed;
+  // 4. Any direct relative /api/ endpoint if specified
+  for (const k of candidateKeys) {
+    const val = (member as any)[k];
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (trimmed.startsWith('/api/member-photo/')) {
+        return trimmed;
+      }
+    }
   }
 
-  // 3. Full HTTP/HTTPS URLs (including Supabase Storage)
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-
-  // 4. Supabase Storage Relative Paths
-  const supabaseBase = (
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL) ||
-    'https://quqzeiuaybmhzisivrud.supabase.co'
-  ).replace(/\/+$/, '');
-
-  if (trimmed.startsWith('/storage/v1/object/public/')) {
-    return `${supabaseBase}${trimmed}`;
-  }
-  if (trimmed.startsWith('storage/v1/object/public/')) {
-    return `${supabaseBase}/${trimmed}`;
-  }
-
-  // Bucket path, e.g. 'avatars/xyz.jpg' or 'members/xyz.png'
-  if (trimmed.includes('/')) {
-    const clean = trimmed.replace(/^\/+/, '');
-    return `${supabaseBase}/storage/v1/object/public/${clean}`;
-  }
-
-  // Single file name like 'xyz.jpg' -> default to avatars bucket
-  if (/\.(jpe?g|png|webp|gif|avif)$/i.test(trimmed)) {
-    return `${supabaseBase}/storage/v1/object/public/avatars/${trimmed}`;
-  }
-
-  return trimmed;
+  return '';
 }
 
 /**
