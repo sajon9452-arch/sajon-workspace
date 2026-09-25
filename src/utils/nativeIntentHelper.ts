@@ -91,40 +91,64 @@ export function buildUniversalTelUri(phone: string): string {
  * Bypasses WebView / Browser interference:
  * Executes strictly as an external application launch (equivalent to Flutter LaunchMode.externalApplication)
  * to completely eliminate net::ERR_UNKNOWN_URL_SCHEME errors in Chromium WebViews, Android apps, and iframes.
+ * 
+ * Guarantees that:
+ * 1. window.open(uri, '_blank') is NEVER called with custom schemes (which triggers ERR_UNKNOWN_URL_SCHEME in WebViews).
+ * 2. An invisible, isolated iframe and safe anchor are used so the host viewport is NEVER navigated away.
+ * 3. Bridges for Flutter InAppWebView, Capacitor, and Cordova are handled cleanly.
  */
 export function launchNativeUri(uri: string): boolean {
   if (typeof window === 'undefined' || !uri) return false;
 
   try {
-    // 1. In-App Browser / Hybrid container bridges (Cordova, Capacitor, Flutter InAppWebView)
     const win = window as any;
+
+    // 1. In-App Browser / Hybrid container bridges (Flutter InAppWebView, Capacitor, Cordova)
+    if (win.flutter_inappwebview?.callHandler) {
+      win.flutter_inappwebview.callHandler('launchUrl', uri, 'externalApplication').catch(() => {});
+      win.flutter_inappwebview.callHandler('launchExternalUrl', uri).catch(() => {});
+    }
+    if (win.Capacitor?.Plugins?.App?.openUrl) {
+      win.Capacitor.Plugins.App.openUrl({ url: uri }).catch(() => {});
+    }
     if (win.cordova?.InAppBrowser?.open) {
       win.cordova.InAppBrowser.open(uri, '_system');
       return true;
     }
-    if (win.Capacitor?.Plugins?.App?.openUrl) {
-      win.Capacitor.Plugins.App.openUrl({ url: uri });
-      return true;
-    }
-    if (win.flutter_inappwebview?.callHandler) {
-      win.flutter_inappwebview.callHandler('launchExternalUrl', uri).catch(() => {});
-    }
 
-    // 2. Ephemeral external application launcher anchor
-    // Using target="_blank" + rel="external noopener noreferrer" strictly invokes external application launch,
-    // preventing WebView in-frame navigation and eliminating net::ERR_UNKNOWN_URL_SCHEME
+    // 2. Safe Hidden Iframe Dispatcher
+    // An isolated 0x0 iframe passes custom schemes (sms:, tel:) directly to the OS Activity Manager
+    // without triggering net::ERR_UNKNOWN_URL_SCHEME or replacing the host application viewport.
+    let iframe = document.getElementById('native-external-intent-dispatcher-frame') as HTMLIFrameElement | null;
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = 'native-external-intent-dispatcher-frame';
+      iframe.style.position = 'fixed';
+      iframe.style.top = '-9999px';
+      iframe.style.left = '-9999px';
+      iframe.style.width = '0px';
+      iframe.style.height = '0px';
+      iframe.style.border = 'none';
+      iframe.style.opacity = '0';
+      iframe.style.pointerEvents = 'none';
+      iframe.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(iframe);
+    }
+    iframe.src = uri;
+
+    // 3. Ephemeral Anchor Dispatcher (without target="_blank" to prevent child WebView crashes)
+    // For iOS Safari and standard mobile browsers, an anchor with rel="external" cleanly invokes the native app
     const a = document.createElement('a');
     a.href = uri;
-    a.target = '_blank';
     a.rel = 'external noopener noreferrer';
     a.style.position = 'fixed';
     a.style.top = '-9999px';
     a.style.left = '-9999px';
     a.style.opacity = '0';
+    a.style.pointerEvents = 'none';
     a.setAttribute('aria-hidden', 'true');
     document.body.appendChild(a);
 
-    // Both native DOM click and dispatchEvent for maximum cross-browser/WebView compatibility
     if (typeof a.click === 'function') {
       a.click();
     } else {
@@ -136,7 +160,6 @@ export function launchNativeUri(uri: string): boolean {
       a.dispatchEvent(clickEvent);
     }
 
-    // Clean up
     setTimeout(() => {
       if (document.body.contains(a)) {
         document.body.removeChild(a);
@@ -145,20 +168,8 @@ export function launchNativeUri(uri: string): boolean {
 
     return true;
   } catch (err) {
-    console.warn('[NativeIntent] Anchor dispatch error, trying safe fallback:', err);
-    try {
-      const win = window.open(uri, '_blank', 'noopener,noreferrer');
-      if (win) {
-        setTimeout(() => {
-          try {
-            win.close();
-          } catch {}
-        }, 500);
-      }
-      return true;
-    } catch {
-      return false;
-    }
+    console.warn('[NativeIntent] Dispatcher handled error safely without crashing:', err);
+    return false;
   }
 }
 

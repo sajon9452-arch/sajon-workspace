@@ -119,6 +119,7 @@ export function dispatchPreFilledMemberSms(member: Partial<Member> | null): bool
 
 export interface MeetingSmsRecipient {
   id: string;
+  serialNo: number;
   name: string;
   designation: string;
   phone: string;
@@ -130,11 +131,25 @@ export interface MeetingSmsRecipient {
 }
 
 /**
- * Categorizes and builds recipients list according to meeting type
- * Without any hardcoded limits - completely dynamic
+ * Checks whether a given meeting type string refers strictly to Executive Committee members.
+ * Supports: 'কার্যকরী কমিটির মিটিং' (Executive only)
+ * vs 'যৌথ মিটিং' / 'যৌথ সাধারণ সভা' (Executive + General)
+ */
+export function isExecutiveMeetingType(meetingType?: string): boolean {
+  if (!meetingType) return true;
+  const t = meetingType.trim();
+  if (t.includes('যৌথ') || t.includes('উভয়') || t.includes('সাধারণ')) {
+    return false;
+  }
+  return t === 'কার্যকরী কমিটির মিটিং' || t.includes('কার্যকরী');
+}
+
+/**
+ * Categorizes and builds recipients list dynamically according to meeting type and live members in database.
+ * Never hardcodes any count - strictly computes from database active members.
  */
 export function buildMeetingRecipients(
-  meetingType: 'কার্যকরী কমিটির মিটিং' | 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং' | string,
+  meetingType: 'কার্যকরী কমিটির মিটিং' | 'যৌথ মিটিং' | 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং' | string,
   members: Member[]
 ): {
   recipients: MeetingSmsRecipient[];
@@ -143,21 +158,20 @@ export function buildMeetingRecipients(
   validPhoneCount: number;
   missingPhoneCount: number;
 } {
-  const isExecutiveOnly = !meetingType?.includes('সাধারণ') && !meetingType?.includes('উভয়') && (
-    meetingType === 'কার্যকরী কমিটির মিটিং' || meetingType?.includes('কার্যকরী')
-  );
+  const isExecutiveOnly = isExecutiveMeetingType(meetingType);
 
   // Filter out any invalid items - unconstrained dynamic members list
   const activeMembers = (members || []).filter(m => m && m.id && m.name);
 
-  // Classify all members dynamically
-  const allCategorized: MeetingSmsRecipient[] = activeMembers.map(m => {
+  // Classify all members dynamically with their seniority serial number
+  const allCategorized: MeetingSmsRecipient[] = activeMembers.map((m, index) => {
     const clean = sanitizePhoneForSms(m.phone || '');
     const isValid = Boolean(clean && clean.length >= 10);
     const isExec = isExecutiveCommitteeMember(m);
     
     return {
       id: m.id,
+      serialNo: index + 1,
       name: m.name.trim(),
       designation: m.designation?.trim() || (isExec ? 'কার্যকরী সদস্য' : 'সাধারণ সদস্য'),
       phone: m.phone?.trim() || '',

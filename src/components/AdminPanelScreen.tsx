@@ -2508,10 +2508,10 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                   handleOpenBulkMeetingSms('কার্যকরী কমিটির মিটিং', defaultText, 'জরুরি কার্যকরী কমিটির সভা বিজ্ঞপ্তি');
                 }}
                 className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl shadow-xs transition cursor-pointer"
-                title="সবার কাছে মিটিং নোটিশ এসএমএস পাঠান"
+                title="সদস্যদের মিটিং নোটিশ এসএমএস পাঠান"
               >
                 <Send className="w-3.5 h-3.5 text-purple-600" />
-                <span>মিটিং এসএমএস ব্রডকাস্ট</span>
+                <span>মিটিং এসএমএস প্রেরণ</span>
               </button>
 
               <button
@@ -2559,10 +2559,10 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                             ? 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200'
                             : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
                         }`}
-                        title="সবার কাছে এসএমএস পাঠান"
+                        title="সদস্যদের মিটিং নোটিশ এসএমএস পাঠান"
                       >
                         <Send className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">এসএমএস পাঠান</span>
+                        <span className="hidden sm:inline">মিটিং এসএমএস</span>
                       </button>
                     )}
                     <button
@@ -5132,10 +5132,10 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                           ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-100'
                           : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
                       }`}
-                      title="এই মিটিং নোটিশটি সরাসরি সবার কাছে এসএমএস পাঠান"
+                      title="এই মিটিং নোটিশটি সদস্যদের এসএমএস পাঠান"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>সবার কাছে এসএমএস পাঠান</span>
+                      <span>মিটিং এসএমএস প্রেরণ</span>
                     </button>
                   )}
                 </div>

@@ -1,43 +1,38 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Send, 
   X, 
   Users, 
   CheckCircle2, 
-  AlertCircle, 
   Copy, 
   Check, 
   Play, 
-  Pause, 
-  Square, 
   Smartphone, 
   Sparkles, 
   Phone, 
   Clock, 
   RotateCcw,
-  CheckSquare,
-  Square as EmptySquare,
-  ExternalLink,
   RefreshCw,
   Search,
-  ShieldCheck
+  ShieldCheck,
+  UserCheck,
+  AlertCircle
 } from 'lucide-react';
 import { Member } from '../types';
 import { toBengaliNumber } from '../utils/helpers';
 import { 
   buildMeetingRecipients, 
-  buildGroupSmsUrl, 
   sendSmsToRecipient,
+  isExecutiveMeetingType,
   MeetingSmsRecipient 
 } from '../utils/meetingSmsHelper';
-import { triggerNativeGroupSms, triggerNativeSms } from '../utils/nativeIntentHelper';
 import { loadMembers, saveMembers } from '../utils/storage';
 import { fetchServerDatabase } from '../utils/serverApi';
 
 interface BulkMeetingSmsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  meetingType: 'কার্যকরী কমিটির মিটিং' | 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং' | string;
+  meetingType: 'কার্যকরী কমিটির মিটিং' | 'যৌথ মিটিং' | 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং' | string;
   noticeText: string;
   noticeTitle?: string;
   members?: Member[];
@@ -53,71 +48,33 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
   members,
   onNotifySuccess
 }) => {
-  const isExecutiveMeeting = !meetingType?.includes('সাধারণ') && !meetingType?.includes('উভয়') && (
-    meetingType === 'কার্যকরী কমিটির মিটিং' || meetingType?.includes('কার্যকরী')
-  );
+  const isExecutiveMeeting = isExecutiveMeetingType(meetingType);
 
   const [message, setMessage] = useState(noticeText);
   const [recipients, setRecipients] = useState<MeetingSmsRecipient[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'sent'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [stats, setStats] = useState({
-    executiveCount: 0,
-    generalCount: 0,
-    validPhoneCount: 0,
-    missingPhoneCount: 0
-  });
-
-  // Runner state
-  const [isDispatching, setIsDispatching] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(-1);
-  const [completedCount, setCompletedCount] = useState(0);
   const [copyFeedback, setCopyFeedback] = useState(false);
-  const [allPhonesCopied, setAllPhonesCopied] = useState(false);
-  const [groupSmsNotice, setGroupSmsNotice] = useState<string | null>(null);
-  const [delayMs, setDelayMs] = useState(1500);
+  const [lastSentMemberName, setLastSentMemberName] = useState<string | null>(null);
 
-  const dispatchTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isDispatchingRef = useRef(false);
-  const isPausedRef = useRef(false);
-  const recipientsRef = useRef<MeetingSmsRecipient[]>([]);
-
-  // Sync state refs to prevent closure staleness
-  isDispatchingRef.current = isDispatching;
-  isPausedRef.current = isPaused;
-  recipientsRef.current = recipients;
-
+  // Load dynamically from database without any hardcoded counts
   const loadDynamicRecipients = () => {
     setMessage(noticeText);
     const storedMembers = loadMembers();
-    // Dynamically choose whichever list holds all active members without hardcoded limits
+    // Prioritize whichever list holds live members
     const dynamicMembers = (storedMembers && storedMembers.length >= (members?.length || 0))
       ? storedMembers
       : (members || []);
 
     const built = buildMeetingRecipients(meetingType, dynamicMembers);
     setRecipients(built.recipients);
-    setStats({
-      executiveCount: built.executiveCount,
-      generalCount: built.generalCount,
-      validPhoneCount: built.validPhoneCount,
-      missingPhoneCount: built.missingPhoneCount
-    });
-    setIsDispatching(false);
-    setIsPaused(false);
-    setCurrentIndex(-1);
-    setCompletedCount(0);
+    setLastSentMemberName(null);
   };
 
-  // Initialize or re-populate dynamically when modal opens
   useEffect(() => {
     if (isOpen) {
       loadDynamicRecipients();
-    } else {
-      if (dispatchTimerRef.current) {
-        clearTimeout(dispatchTimerRef.current);
-      }
     }
   }, [isOpen, meetingType, noticeText, members]);
 
@@ -134,205 +91,106 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
     }
     const freshMembers = loadMembers();
     const built = buildMeetingRecipients(meetingType, freshMembers);
-    setRecipients(built.recipients);
-    setStats({
-      executiveCount: built.executiveCount,
-      generalCount: built.generalCount,
-      validPhoneCount: built.validPhoneCount,
-      missingPhoneCount: built.missingPhoneCount
+    
+    // Preserve already-sent statuses when refreshing
+    setRecipients(prev => {
+      const sentIds = new Set(prev.filter(r => r.status === 'sent').map(r => r.id));
+      return built.recipients.map(r => ({
+        ...r,
+        status: sentIds.has(r.id) ? ('sent' as const) : ('idle' as const)
+      }));
     });
+
     setTimeout(() => setIsRefreshing(false), 400);
   };
 
-  // Filtered recipients for quick search
+  // Dynamic Live Counts (No Hardcoded Numbers)
+  const totalRecipientsCount = recipients.length;
+  const validPhoneRecipients = useMemo(() => recipients.filter(r => r.isValidPhone), [recipients]);
+  const validPhoneCount = validPhoneRecipients.length;
+  const missingPhoneCount = recipients.length - validPhoneCount;
+  
+  const sentRecipients = useMemo(() => recipients.filter(r => r.status === 'sent'), [recipients]);
+  const sentCount = sentRecipients.length;
+  
+  const pendingRecipients = useMemo(() => recipients.filter(r => r.status !== 'sent' && r.isValidPhone), [recipients]);
+  const pendingCount = pendingRecipients.length;
+
+  // Next Pending Member in Seniority Sequence
+  const nextPendingMember = useMemo(() => {
+    return recipients.find(r => r.status !== 'sent' && r.isValidPhone);
+  }, [recipients]);
+
+  // Individual SMS Dispatch
+  const handleSendSingleSms = (recipient: MeetingSmsRecipient) => {
+    if (!recipient.isValidPhone) return;
+
+    // Launch strictly through external application intent (LaunchMode.externalApplication)
+    sendSmsToRecipient(recipient.cleanPhone, message);
+
+    // Update status to 'sent'
+    setRecipients(prev => prev.map(r => r.id === recipient.id ? { ...r, status: 'sent' } : r));
+    setLastSentMemberName(recipient.name);
+
+    if (onNotifySuccess) {
+      onNotifySuccess(`${recipient.name} এর জন্য এসএমএস অ্যাপ্লিকেশন সফলভাবে ওপেন হয়েছে`);
+    }
+  };
+
+  // Sequential Next Pending SMS Sender
+  const handleSendNextPendingSms = () => {
+    if (!nextPendingMember) return;
+    
+    // Auto scroll row into view
+    try {
+      const el = document.getElementById(`sms-recipient-row-${nextPendingMember.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    } catch {}
+
+    handleSendSingleSms(nextPendingMember);
+  };
+
+  // Reset all statuses back to 'অপেক্ষমাণ'
+  const handleResetStatuses = () => {
+    setRecipients(prev => prev.map(r => ({ ...r, status: 'idle' })));
+    setLastSentMemberName(null);
+  };
+
+  const handleCopyMessage = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(message);
+    }
+    setCopyFeedback(true);
+    setTimeout(() => setCopyFeedback(false), 2200);
+  };
+
+  // Filtered list based on search and tab
   const displayedRecipients = useMemo(() => {
-    if (!searchTerm.trim()) return recipients;
+    let list = recipients;
+    if (filterTab === 'pending') {
+      list = list.filter(r => r.status !== 'sent' && r.isValidPhone);
+    } else if (filterTab === 'sent') {
+      list = list.filter(r => r.status === 'sent');
+    }
+
+    if (!searchTerm.trim()) return list;
     const q = searchTerm.trim().toLowerCase();
-    return recipients.filter(r => 
+    return list.filter(r => 
       r.name.toLowerCase().includes(q) || 
       r.phone.includes(q) || 
       r.designation.toLowerCase().includes(q)
     );
-  }, [recipients, searchTerm]);
+  }, [recipients, filterTab, searchTerm]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (dispatchTimerRef.current) {
-        clearTimeout(dispatchTimerRef.current);
-      }
-    };
-  }, []);
+  const progressPercent = validPhoneCount > 0 ? Math.round((sentCount / validPhoneCount) * 100) : 0;
 
   if (!isOpen) return null;
 
-  const validRecipients = recipients.filter(r => r.isValidPhone);
-  const selectedRecipients = recipients.filter(r => r.selected && r.isValidPhone);
-  const totalSelected = selectedRecipients.length;
-  const isAllValidSelected = validRecipients.length > 0 && validRecipients.every(r => r.selected);
-
-  const handleToggleSelectAll = () => {
-    if (isDispatching) return;
-    // If search filter is applied, toggle only the filtered members
-    if (searchTerm.trim()) {
-      const targetIds = new Set(displayedRecipients.filter(r => r.isValidPhone).map(r => r.id));
-      const allDisplayedSelected = displayedRecipients.filter(r => r.isValidPhone).every(r => r.selected);
-      setRecipients(prev => prev.map(r => {
-        if (targetIds.has(r.id)) {
-          return { ...r, selected: !allDisplayedSelected };
-        }
-        return r;
-      }));
-    } else {
-      setRecipients(prev => prev.map(r => ({
-        ...r,
-        selected: r.isValidPhone ? !isAllValidSelected : false
-      })));
-    }
-  };
-
-  const handleToggleRecipient = (id: string) => {
-    if (isDispatching) return;
-    setRecipients(prev => prev.map(r => r.id === id ? { ...r, selected: !r.selected } : r));
-  };
-
-  const handleCopyMessage = () => {
-    navigator.clipboard.writeText(message);
-    setCopyFeedback(true);
-    setTimeout(() => setCopyFeedback(null as any), 2200);
-  };
-
-  const handleCopyAllPhones = () => {
-    const phones = selectedRecipients.map(r => r.cleanPhone).filter(Boolean);
-    if (phones.length === 0) return;
-    navigator.clipboard.writeText(phones.join(', '));
-    setAllPhonesCopied(true);
-    setTimeout(() => setAllPhonesCopied(false), 2200);
-  };
-
-  const handleOpenGroupSms = () => {
-    const validPhones = selectedRecipients.map(r => r.cleanPhone).filter(Boolean);
-    if (validPhones.length === 0) {
-      if (onNotifySuccess) {
-        onNotifySuccess('কোনো বৈধ মোবাইল নম্বর নির্বাচন করা হয়নি!');
-      }
-      return;
-    }
-
-    // Launch device's native messaging client directly via universal safe intent
-    triggerNativeGroupSms(validPhones, message);
-
-    // Mark selected recipients as sent for visual confirmation
-    setRecipients(prev => prev.map(r => r.selected && r.isValidPhone ? { ...r, status: 'sent' } : r));
-    setCompletedCount(validPhones.length);
-
-    const feedbackMsg = `নির্বাচিত ${toBengaliNumber(validPhones.length)} জন সদস্যের নম্বর সহ ডিভাইসের নেটিভ মেসেজ অ্যাপ চালু হয়েছে!`;
-    setGroupSmsNotice(feedbackMsg);
-    if (onNotifySuccess) {
-      onNotifySuccess(feedbackMsg);
-    }
-
-    setTimeout(() => {
-      setGroupSmsNotice(null);
-    }, 6000);
-  };
-
-  const handleSingleSms = (recipient: MeetingSmsRecipient) => {
-    sendSmsToRecipient(recipient.cleanPhone, message);
-    setRecipients(prev => prev.map(r => r.id === recipient.id ? { ...r, status: 'sent' } : r));
-  };
-
-  // Start Sequential Bulk Dispatch Runner
-  const handleStartDispatch = () => {
-    if (totalSelected === 0) return;
-
-    setIsDispatching(true);
-    setIsPaused(false);
-    setCurrentIndex(0);
-    setCompletedCount(0);
-
-    // Reset statuses of selected to idle
-    setRecipients(prev => prev.map(r => r.selected && r.isValidPhone ? { ...r, status: 'idle' } : r));
-
-    processNext(0);
-  };
-
-  const processNext = (index: number) => {
-    const currentList = recipientsRef.current;
-    const validSelected = currentList.filter(r => r.selected && r.isValidPhone);
-
-    if (index >= validSelected.length) {
-      // Finished all!
-      setIsDispatching(false);
-      setIsPaused(false);
-      setCurrentIndex(-1);
-      if (onNotifySuccess) {
-        onNotifySuccess(`সকল ${toBengaliNumber(validSelected.length)} জন সদস্যের কাছে এসএমএস সফলভাবে প্রেরণ করা হয়েছে!`);
-      }
-      return;
-    }
-
-    if (!isDispatchingRef.current || isPausedRef.current) {
-      return;
-    }
-
-    setCurrentIndex(index);
-    const target = validSelected[index];
-
-    // Auto-scroll target item into view smoothly
-    try {
-      const el = document.getElementById(`sms-recipient-row-${target.id}`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    } catch {}
-
-    // Mark active sending
-    setRecipients(prev => prev.map(r => r.id === target.id ? { ...r, status: 'sending' } : r));
-
-    // Trigger SMS dispatch for this member
-    sendSmsToRecipient(target.cleanPhone, message);
-
-    // Mark as sent after brief dispatch and queue next with delay
-    dispatchTimerRef.current = setTimeout(() => {
-      setRecipients(prev => prev.map(r => r.id === target.id ? { ...r, status: 'sent' } : r));
-      setCompletedCount(c => c + 1);
-
-      // Check if paused or stopped before scheduling next
-      if (isDispatchingRef.current && !isPausedRef.current) {
-        processNext(index + 1);
-      }
-    }, delayMs);
-  };
-
-  const handlePauseDispatch = () => {
-    setIsPaused(true);
-    if (dispatchTimerRef.current) {
-      clearTimeout(dispatchTimerRef.current);
-    }
-  };
-
-  const handleResumeDispatch = () => {
-    setIsPaused(false);
-    // Continue from next item
-    const nextIdx = completedCount;
-    processNext(nextIdx);
-  };
-
-  const handleStopDispatch = () => {
-    setIsDispatching(false);
-    setIsPaused(false);
-    setCurrentIndex(-1);
-    if (dispatchTimerRef.current) {
-      clearTimeout(dispatchTimerRef.current);
-    }
-  };
-
-  const progressPercent = totalSelected > 0 ? Math.min(100, Math.round((completedCount / totalSelected) * 100)) : 0;
-
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-3xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 animate-scaleUp my-4 max-h-[94vh] flex flex-col">
+      <div className="bg-white rounded-3xl max-w-3xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 animate-scaleUp my-4 max-h-[92dvh] flex flex-col overflow-hidden">
         
         {/* Modal Header */}
         <div className="flex items-start justify-between pb-3.5 border-b border-slate-100 shrink-0">
@@ -347,7 +205,7 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                  সবার কাছে এসএমএস পাঠান (Bulk SMS Dispatch)
+                  মিটিং নোটিশ এসএমএস প্রেরণ (Sequential SMS Dispatch)
                 </h3>
                 <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
                   isExecutiveMeeting 
@@ -362,22 +220,19 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
                   ) : (
                     <>
                       <Users className="w-3 h-3" />
-                      <span>যৌথ সাধারণ সভা (উভয়)</span>
+                      <span>যৌথ সাধারণ সভা (সকল সদস্য)</span>
                     </>
                   )}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                সিলেট মানব সেবা সংগঠন • সম্পূর্ণ ডায়নামিক ও রিয়েল-টাইম এসএমএস সিস্টেম
+                সিলেট মানব সেবা সংগঠন • এক-এক করে ধারাবাহিক এসএমএস ও লাইভ স্ট্যাটাস ট্র্যাকিং
               </p>
             </div>
           </div>
 
           <button
-            onClick={() => {
-              handleStopDispatch();
-              onClose();
-            }}
+            onClick={onClose}
             className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
             title="বন্ধ করুন"
           >
@@ -386,7 +241,7 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
         </div>
 
         {/* Scrollable Modal Body */}
-        <div className="overflow-y-auto space-y-4 py-3.5 pr-1 flex-1">
+        <div className="overflow-y-auto space-y-4 py-3.5 pr-1 flex-1" style={{ WebkitOverflowScrolling: 'touch' }}>
           
           {/* Target Audience Alert Card */}
           <div className={`p-3.5 sm:p-4 rounded-2xl border flex items-start gap-3 ${
@@ -403,73 +258,98 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-1">
                 <h4 className="text-xs sm:text-sm font-bold">
                   {isExecutiveMeeting 
-                    ? `টার্গেট অডিয়েন্স: শুধুমাত্র কার্যকরী কমিটির সদস্যবৃন্দ (${toBengaliNumber(recipients.length)} জন)` 
-                    : `টার্গেট অডিয়েন্স: কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ই (${toBengaliNumber(recipients.length)} জন)`}
+                    ? `টার্গেট প্রাপক: শুধুমাত্র কার্যকরী কমিটির সদস্যবৃন্দ (${toBengaliNumber(totalRecipientsCount)} জন)` 
+                    : `টার্গেট প্রাপক: কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ই (${toBengaliNumber(totalRecipientsCount)} জন)`}
                 </h4>
                 <span className="text-[11px] font-semibold bg-white/80 px-2 py-0.5 rounded-md border border-slate-200/60 text-slate-700">
-                  {isExecutiveMeeting ? 'Executive Members Only' : 'Executive & General (All)'}
+                  {isExecutiveMeeting ? 'Executive Members Only' : 'Executive + General (All)'}
                 </span>
               </div>
               <p className="text-[11px] sm:text-xs text-slate-600 mt-1 leading-relaxed">
                 {isExecutiveMeeting 
-                  ? `পদবি-ভিত্তিক স্বয়ংক্রিয় ফিল্টারিং: পদবিতে 'সদস্য' নেই এমন সকল কার্যকরী কমিটির কর্মকর্তাদের ডাটাবেজ থেকে স্বয়ংক্রিয়ভাবে ফিল্টার করে মোট ${toBengaliNumber(recipients.length)} জনের টার্গেট তালিকা প্রস্তুত করা হয়েছে (কোনো সংখ্যা সীমাবদ্ধতা নেই)।` 
-                  : `সংগঠনের কার্যকরী কমিটি (${toBengaliNumber(stats.executiveCount)} জন) ও সাধারণ সদস্য (${toBengaliNumber(stats.generalCount)} জন) মিলিয়ে মোট ${toBengaliNumber(recipients.length)} জন সদস্যের যৌথ তালিকা লোড করা হয়েছে।`}
+                  ? `পদবি অনুযায়ী স্বয়ংক্রিয়ভাবে ফিল্টার করে মোট ${toBengaliNumber(totalRecipientsCount)} জন কার্যকরী কমিটির কর্মকর্তাদের প্রস্তুত করা হয়েছে। প্রতিটি সদস্যের পাশের 'এসএমএস পাঠান' বোতামে চাপ দিলে স্বয়ংক্রিয়ভাবে তার নম্বরে নোটিশ চলে যাবে।` 
+                  : `সংগঠনের সকল কার্যকরী ও সাধারণ সদস্য মিলিয়ে মোট ${toBengaliNumber(totalRecipientsCount)} জনের তালিকা লোড হয়েছে। কোনো সীমাবদ্ধতা বা হার্ডকোডেড সংখ্যা ছাড়াই ডাটাবেজ থেকে লাইভ তৈরি।`}
               </p>
             </div>
           </div>
 
-          {/* Stats Badges */}
+          {/* Dynamic Live Stats Tracking Counter Badges */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
               <div className="text-[11px] font-medium text-slate-500">মোট টার্গেট সদস্য</div>
               <div className="text-base font-bold text-slate-900 mt-0.5">
-                {toBengaliNumber(recipients.length)} জন
+                {toBengaliNumber(totalRecipientsCount)} জন
               </div>
             </div>
 
             <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200/80">
-              <div className="text-[11px] font-medium text-emerald-700">বৈধ মোবাইল নম্বর</div>
-              <div className="text-base font-bold text-emerald-900 mt-0.5">
-                {toBengaliNumber(stats.validPhoneCount)} জন
+              <div className="text-[11px] font-medium text-emerald-700 flex items-center justify-between">
+                <span>পাঠানো হয়েছে</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               </div>
-            </div>
-
-            <div className="p-3 bg-blue-50 rounded-xl border border-blue-200/80">
-              <div className="text-[11px] font-medium text-blue-700">প্রেরণের জন্য নির্বাচিত</div>
-              <div className="text-base font-bold text-blue-900 mt-0.5">
-                {toBengaliNumber(totalSelected)} জন
+              <div className="text-base font-bold text-emerald-900 mt-0.5">
+                {toBengaliNumber(sentCount)} জন
               </div>
             </div>
 
             <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80">
-              <div className="text-[11px] font-medium text-amber-700">নম্বর অনুপস্থিত</div>
+              <div className="text-[11px] font-medium text-amber-700 flex items-center justify-between">
+                <span>অপেক্ষমাণ</span>
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+              </div>
               <div className="text-base font-bold text-amber-900 mt-0.5">
-                {toBengaliNumber(stats.missingPhoneCount)} জন
+                {toBengaliNumber(pendingCount)} জন
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 rounded-xl border border-rose-200/80">
+              <div className="text-[11px] font-medium text-rose-700">নম্বর অনুপস্থিত</div>
+              <div className="text-base font-bold text-rose-900 mt-0.5">
+                {toBengaliNumber(missingPhoneCount)} জন
               </div>
             </div>
           </div>
+
+          {/* Dynamic Progress Bar */}
+          {validPhoneCount > 0 && (
+            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>এসএমএস প্রেরণের অগ্রগতি: {toBengaliNumber(sentCount)} / {toBengaliNumber(validPhoneCount)} জন</span>
+                </span>
+                <span className="font-bold text-emerald-700">{toBengaliNumber(progressPercent)}%</span>
+              </div>
+              <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-emerald-600 rounded-full transition-all duration-300"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Populated SMS Message Preview Box */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Smartphone className="w-3.5 h-3.5 text-blue-600" />
-                <span>প্রেরণযোগ্য চূড়ান্ত এসএমএস বার্তা (Live SMS Text)</span>
+                <span>প্রেরণযোগ্য চূড়ান্ত মিটিং নোটিশ (SMS Text)</span>
               </label>
 
               <button
                 type="button"
                 onClick={handleCopyMessage}
-                className="text-[11px] font-semibold text-slate-600 hover:text-blue-700 flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer"
+                className="text-[11px] font-semibold text-slate-600 hover:text-blue-700 flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
                 {copyFeedback ? (
                   <>
-                    <Check className="w-3 h-3 text-emerald-600" />
-                    <span className="text-emerald-700">কপি সম্পন্ন</span>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-emerald-700 font-bold">কপি সম্পন্ন</span>
                   </>
                 ) : (
                   <>
-                    <Copy className="w-3 h-3" />
+                    <Copy className="w-3.5 h-3.5" />
                     <span>টেক্সট কপি</span>
                   </>
                 )}
@@ -477,7 +357,7 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
             </div>
 
             <textarea
-              rows={4}
+              rows={3}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="এসএমএস বার্তা..."
@@ -485,139 +365,101 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
             />
             <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
               <span>অক্ষর সংখ্যা: <strong>{toBengaliNumber(message.length)}</strong> টি</span>
-              <span>প্রয়োজনে বার্তাটি পরিবর্তন বা পরিমার্জন করতে পারেন</span>
+              <span>বার্তা পরিবর্তন করলে প্রতিটি সদস্যের কাছে পরিবর্তিত রূপেই যাবে</span>
             </div>
           </div>
 
-          {/* Active Dispatch Progress Bar */}
-          {isDispatching && (
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-xs space-y-2 animate-fadeIn">
-              <div className="flex items-center justify-between text-xs font-bold text-blue-900">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping"></span>
-                  ধারাবাহিক এসএমএস পাঠানো হচ্ছে... ({toBengaliNumber(completedCount)}/{toBengaliNumber(totalSelected)})
-                </span>
-                <span>{toBengaliNumber(progressPercent)}%</span>
-              </div>
-
-              <div className="w-full h-2.5 bg-blue-100 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-blue-600 rounded-full transition-all duration-300"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <div className="text-[11px] text-slate-600 truncate max-w-[280px]">
-                  {currentIndex >= 0 && selectedRecipients[currentIndex] && (
-                    <span>বর্তমান: <strong>{selectedRecipients[currentIndex].name}</strong> ({selectedRecipients[currentIndex].cleanPhone})</span>
-                  )}
+          {/* Sequential One-Click Next Pending Banner */}
+          {nextPendingMember && (
+            <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-blue-50 to-emerald-50 rounded-2xl border border-indigo-200 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Play className="w-3 h-3 text-indigo-600" />
+                  <span>ধারাবাহিক পরবর্তী অপেক্ষমাণ সদস্য</span>
                 </div>
-
-                <div className="flex items-center gap-1.5">
-                  {isPaused ? (
-                    <button
-                      type="button"
-                      onClick={handleResumeDispatch}
-                      className="flex items-center gap-1 px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow-xs hover:bg-emerald-700 transition cursor-pointer"
-                    >
-                      <Play className="w-3 h-3" />
-                      <span>চালু রাখুন</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handlePauseDispatch}
-                      className="flex items-center gap-1 px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-bold shadow-xs hover:bg-amber-700 transition cursor-pointer"
-                    >
-                      <Pause className="w-3 h-3" />
-                      <span>বিরতি দিন</span>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={handleStopDispatch}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition cursor-pointer"
-                  >
-                    <Square className="w-3 h-3" />
-                    <span>থামান</span>
-                  </button>
+                <div className="text-sm font-bold text-slate-900 mt-0.5 flex items-center gap-2">
+                  <span>{nextPendingMember.name}</span>
+                  <span className="text-xs font-normal text-slate-600 font-mono">({nextPendingMember.phone})</span>
+                  <span className="text-[10px] px-2 py-0.2 rounded-md bg-white border border-slate-200 text-slate-700">
+                    #{toBengaliNumber(nextPendingMember.serialNo)}
+                  </span>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Group SMS Feedback Notice */}
-          {groupSmsNotice && (
-            <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl flex items-center justify-between gap-2 shadow-xs text-xs font-bold text-emerald-900 animate-fadeIn">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{groupSmsNotice}</span>
-              </div>
-              <span className="text-[11px] font-semibold text-emerald-700 bg-white/80 px-2 py-0.5 rounded-lg border border-emerald-200">
-                ক্লিপবোর্ডেও প্রস্তুত
-              </span>
-            </div>
-          )}
-
-          {/* Quick Actions & Group SMS Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-slate-50 border border-slate-200">
-            <div className="flex items-center gap-3">
               <button
                 type="button"
-                disabled={isDispatching || stats.validPhoneCount === 0}
-                onClick={handleToggleSelectAll}
-                className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-blue-700 transition cursor-pointer disabled:opacity-50"
+                onClick={handleSendNextPendingSms}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition whitespace-nowrap"
+                title={`${nextPendingMember.name} কে এসএমএস পাঠান`}
               >
-                {isAllValidSelected ? (
-                  <CheckSquare className="w-4 h-4 text-blue-600" />
-                ) : (
-                  <EmptySquare className="w-4 h-4 text-slate-400" />
-                )}
-                <span>সবাইকে নির্বাচন ({toBengaliNumber(totalSelected)}/{toBengaliNumber(stats.validPhoneCount)})</span>
+                <Send className="w-3.5 h-3.5" />
+                <span>পরবর্তী সদস্যকে এসএমএস পাঠান</span>
               </button>
+            </div>
+          )}
+
+          {/* Control Bar: Filter Tabs, Refresh, Reset */}
+          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setFilterTab('all')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  filterTab === 'all'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                সবাই ({toBengaliNumber(totalRecipientsCount)})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTab('pending')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                  filterTab === 'pending'
+                    ? 'bg-white text-amber-800 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Clock className="w-3 h-3 text-amber-600" />
+                <span>অপেক্ষমাণ ({toBengaliNumber(pendingCount)})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTab('sent')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                  filterTab === 'sent'
+                    ? 'bg-white text-emerald-800 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                <span>পাঠানো হয়েছে ({toBengaliNumber(sentCount)})</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {sentCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleResetStatuses}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-rose-700 transition cursor-pointer px-2.5 py-1 rounded-lg hover:bg-slate-200/70"
+                  title="সকল স্ট্যাটাস পুনরায় অপেক্ষমাণ করুন"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>স্ট্যাটাস রিসেট</span>
+                </button>
+              )}
 
               <button
                 type="button"
                 onClick={handleRefreshRecipients}
-                disabled={isRefreshing || isDispatching}
-                className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer px-2 py-1 rounded-lg hover:bg-slate-200/70"
-                title="ডাটাবেজ থেকে রিয়েল-টাইম তালিকা রিফ্রেশ করুন"
+                disabled={isRefreshing}
+                className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer px-2.5 py-1 rounded-lg hover:bg-slate-200/70"
+                title="ডাটাবেজ থেকে রিয়েল-টাইম সদস্য সংখ্যা রিফ্রেশ করুন"
               >
                 <RefreshCw className={`w-3 h-3 text-slate-500 ${isRefreshing ? 'animate-spin' : ''}`} />
                 <span>রিফ্রেশ</span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleCopyAllPhones}
-                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-slate-700 bg-white hover:bg-slate-100 rounded-lg border border-slate-300 transition cursor-pointer shadow-2xs"
-                title="সকল মোবাইল নম্বর কমা দিয়ে কপি করুন"
-              >
-                {allPhonesCopied ? (
-                  <>
-                    <Check className="w-3 h-3 text-emerald-600" />
-                    <span>নম্বর কপি হয়েছে</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3 h-3" />
-                    <span>সব নম্বর কপি</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleOpenGroupSms}
-                className="flex items-center gap-1 px-3 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition cursor-pointer shadow-2xs"
-                title="একত্রিত গ্রুপ এসএমএস অ্যাপ খুলুন"
-              >
-                <Smartphone className="w-3 h-3" />
-                <span>গ্রুপ মেসেজ ওপেন</span>
               </button>
             </div>
           </div>
@@ -625,7 +467,7 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
           {/* Recipient Member List */}
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700 px-1">
-              <span>টার্গেট প্রাপক সদস্যদের তালিকা ({toBengaliNumber(recipients.length)} জন)</span>
+              <span>প্রাপক সদস্যদের তালিকা ({toBengaliNumber(displayedRecipients.length)} জন)</span>
               
               {/* Quick Search Input */}
               <div className="relative w-full sm:w-56">
@@ -640,61 +482,41 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
               </div>
             </div>
 
-            <div className="border border-slate-200 rounded-2xl divide-y divide-slate-100 max-h-56 overflow-y-auto bg-white">
+            <div className="border border-slate-200 rounded-2xl divide-y divide-slate-100 max-h-72 overflow-y-auto bg-white" style={{ WebkitOverflowScrolling: 'touch' }}>
               {displayedRecipients.length === 0 ? (
                 <div className="p-8 text-center text-slate-500 text-xs">
                   {searchTerm.trim() ? (
                     <span>"{searchTerm}" দিয়ে কোনো সদস্য পাওয়া যায়নি</span>
-                  ) : isExecutiveMeeting ? (
-                    <div className="space-y-1">
-                      <div className="font-bold text-slate-700">কার্যকরী কমিটির কোনো সদস্য পাওয়া যায়নি</div>
-                      <div className="text-[11px] text-slate-500">
-                        এডমিন প্যানেল থেকে কার্যকরী সদস্যদের পদবি বা 'কার্যকরী কমিটি' ক্যাটাগরি যুক্ত করুন।
-                      </div>
-                    </div>
+                  ) : filterTab === 'pending' ? (
+                    <span className="text-emerald-700 font-bold">সকল সদস্যের কাছে এসএমএস পাঠানো সম্পন্ন হয়েছে!</span>
+                  ) : filterTab === 'sent' ? (
+                    <span>এখনও কোনো সদস্যকে এসএমএস পাঠানো হয়নি।</span>
                   ) : (
-                    <span>সংগঠনে কোনো সদস্য তালিকাভুক্ত নেই।</span>
+                    <span>সংগঠনে কোনো সদস্য পাওয়া যায়নি।</span>
                   )}
                 </div>
               ) : (
-                displayedRecipients.map((member, idx) => (
+                displayedRecipients.map((member) => (
                   <div 
                     key={member.id}
                     id={`sms-recipient-row-${member.id}`}
-                    className={`p-2.5 flex items-center justify-between gap-2 transition ${
-                      member.status === 'sending'
-                        ? 'bg-amber-50/80'
-                        : member.status === 'sent'
-                        ? 'bg-emerald-50/40'
-                        : !member.selected
-                        ? 'opacity-60 bg-slate-50/50'
+                    className={`p-3 flex items-center justify-between gap-2 transition ${
+                      member.status === 'sent'
+                        ? 'bg-emerald-50/30'
                         : 'hover:bg-slate-50'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <button
-                        type="button"
-                        disabled={!member.isValidPhone || isDispatching}
-                        onClick={() => handleToggleRecipient(member.id)}
-                        className="text-slate-400 hover:text-blue-600 disabled:opacity-30 cursor-pointer"
-                      >
-                        {member.selected ? (
-                          <CheckSquare className="w-4 h-4 text-blue-600" />
-                        ) : (
-                          <EmptySquare className="w-4 h-4 text-slate-300" />
-                        )}
-                      </button>
-
-                      <span className="text-[11px] font-bold text-slate-400 w-6 shrink-0">
-                        {toBengaliNumber(idx + 1)}.
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-xs font-bold text-slate-400 w-7 shrink-0 font-mono">
+                        #{toBengaliNumber(member.serialNo)}
                       </span>
 
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-bold text-slate-900 truncate">
                             {member.name}
                           </span>
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border ${
+                          <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-md border ${
                             member.isExecutive
                               ? 'bg-purple-50 text-purple-700 border-purple-200'
                               : 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -702,43 +524,51 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
                             {member.designation} {member.isExecutive ? '• কার্যকরী' : '• সাধারণ'}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 flex items-center gap-1 font-mono mt-0.5">
+                        <div className="text-[11px] text-slate-600 flex items-center gap-1 font-mono mt-0.5">
                           <Phone className="w-2.5 h-2.5 text-slate-400" />
-                          {member.phone ? member.phone : <span className="text-red-500 font-sans text-[10px]">নম্বর নেই</span>}
+                          {member.phone ? member.phone : (
+                            <span className="text-rose-500 font-sans text-[10px] font-semibold flex items-center gap-0.5">
+                              <AlertCircle className="w-2.5 h-2.5" />
+                              নম্বর নেই
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      {/* Status indicator */}
-                      {member.status === 'sending' && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full animate-pulse">
-                          <Clock className="w-3 h-3" />
-                          <span>পাঠানো হচ্ছে...</span>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      {/* Status indicator: 'অপেক্ষমাণ' vs 'পাঠানো হয়েছে' */}
+                      {member.status === 'sent' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>পাঠানো হয়েছে</span>
                         </span>
-                      )}
-                      {member.status === 'sent' && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>সম্পন্ন</span>
-                        </span>
-                      )}
-                      {member.status === 'idle' && (
-                        <span className="text-[11px] text-slate-400">
-                          অপেক্ষমাণ
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          <span>অপেক্ষমাণ</span>
                         </span>
                       )}
 
-                      {/* Direct Single SMS Trigger */}
-                      {member.isValidPhone && (
+                      {/* Direct Individual SMS Trigger Button */}
+                      {member.isValidPhone ? (
                         <button
                           type="button"
-                          onClick={() => handleSingleSms(member)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+                          onClick={() => handleSendSingleSms(member)}
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95 ${
+                            member.status === 'sent'
+                              ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
+                          }`}
                           title={`${member.name} কে সরাসরি এসএমএস পাঠান`}
                         >
-                          <ExternalLink className="w-3.5 h-3.5" />
+                          <Send className="w-3 h-3" />
+                          <span>{member.status === 'sent' ? 'পুনরায় পাঠান' : 'এসএমএস পাঠান'}</span>
                         </button>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 italic px-2">
+                          অপ্রাপ্য
+                        </span>
                       )}
                     </div>
                   </div>
@@ -747,62 +577,30 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
             </div>
           </div>
 
+          {/* Generous bottom padding inside scrollable body */}
+          <div className="h-6 w-full shrink-0" aria-hidden="true" />
         </div>
 
-        {/* Modal Footer Actions */}
-        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        {/* Modal Footer Actions - Strictly Clean, NO Bulk Group Send to All */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => {
-              handleStopDispatch();
-              onClose();
-            }}
+            onClick={onClose}
             className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
           >
-            বাতিল
+            বন্ধ করুন
           </button>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {!isDispatching ? (
-              <>
-                <button
-                  type="button"
-                  onClick={handleStartDispatch}
-                  disabled={totalSelected === 0}
-                  className="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
-                  title="প্রতিটি সদস্যের কাছে এক এক করে নির্দিষ্ট বিরতিতে এসএমএস পাঠানো হবে"
-                >
-                  <Play className="w-3.5 h-3.5 text-slate-600" />
-                  <span>ধারাবাহিক অটো-প্রেরণ</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleOpenGroupSms}
-                  disabled={totalSelected === 0}
-                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white shadow-md flex items-center gap-2 transition cursor-pointer active:scale-98 ${
-                    isExecutiveMeeting 
-                      ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' 
-                      : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  title="নির্বাচিত সকল সদস্যের মোবাইল নম্বর সহ সরাসরি মেসেজ অ্যাপ চালু করুন"
-                >
-                  <Send className="w-4 h-4" />
-                  <span>
-                    সবার কাছে এসএমএস পাঠান ({toBengaliNumber(totalSelected)} জন)
-                  </span>
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={handleStopDispatch}
-                className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-md transition cursor-pointer flex items-center gap-2"
-              >
-                <Square className="w-4 h-4" />
-                <span>প্রেরণ বন্ধ করুন</span>
-              </button>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            {lastSentMemberName && (
+              <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" />
+                <span>সর্বশেষ প্রেরিত: <strong>{lastSentMemberName}</strong></span>
+              </span>
             )}
+            <span className="bg-slate-100 px-3 py-1.5 rounded-xl font-bold text-slate-700 border border-slate-200">
+              মোট প্রেরিত: {toBengaliNumber(sentCount)} / {toBengaliNumber(validPhoneCount)} জন
+            </span>
           </div>
         </div>
 

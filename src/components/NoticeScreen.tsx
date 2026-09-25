@@ -373,10 +373,10 @@ export const NoticeScreen: React.FC<NoticeScreenProps> = ({
                                   ? 'bg-purple-600 hover:bg-purple-700 text-white'
                                   : 'bg-indigo-600 hover:bg-indigo-700 text-white'
                               }`}
-                              title="সবার কাছে এসএমএস পাঠান"
+                              title="সদস্যদের মিটিং নোটিশ এসএমএস পাঠান"
                             >
                               <Send className="w-3 h-3" />
-                              <span>সবার কাছে এসএমএস পাঠান</span>
+                              <span>মিটিং এসএমএস পাঠান</span>
                             </button>
                           )}
 
@@ -642,10 +642,10 @@ export const NoticeScreen: React.FC<NoticeScreenProps> = ({
                           ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-100'
                           : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
                       }`}
-                      title="সবার কাছে এসএমএস পাঠান"
+                      title="সদস্যদের মিটিং নোটিশ এসএমএস পাঠান"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>সবার কাছে এসএমএস পাঠান</span>
+                      <span>মিটিং এসএমএস পাঠান</span>
                     </button>
                   )}
                 </div>
