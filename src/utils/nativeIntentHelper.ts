@@ -8,8 +8,8 @@
  * 
  * Guarantees that:
  * 1. window.location.href is NEVER navigated to custom protocols, preventing net::ERR_UNKNOWN_URL_SCHEME.
- * 2. Proper multi-recipient formatting is used for both Android and iOS.
- * 3. Native applications (SMS client, Phone dialer) are launched directly without breaking web views.
+ * 2. Pre-fills both target phone number and meeting SMS template body.
+ * 3. Native applications (SMS client, Phone dialer) are launched strictly via external application launch mode.
  */
 
 /**
@@ -88,48 +88,64 @@ export function buildUniversalTelUri(phone: string): string {
 /**
  * Universal Native Intent Dispatcher.
  * 
- * CRITICAL SAFETY MECHANISM:
- * Standard window.location.href = "sms:..." or target="_self" navigation causes
- * Chromium WebViews and iframes to crash with net::ERR_UNKNOWN_URL_SCHEME.
- * 
- * To safely launch the device's native app without navigating the webview frame:
- * 1. We create an ephemeral anchor element with target="_blank" and rel="noopener noreferrer external".
- * 2. We programmatically dispatch a synthetic MouseEvent.
- * 3. The underlying OS (Android Intent / iOS URL Handler) intercepts the custom protocol
- *    and launches the native SMS or Phone app directly.
- * 4. The current web application frame remains completely untouched and responsive.
+ * Bypasses WebView / Browser interference:
+ * Executes strictly as an external application launch (equivalent to Flutter LaunchMode.externalApplication)
+ * to completely eliminate net::ERR_UNKNOWN_URL_SCHEME errors in Chromium WebViews, Android apps, and iframes.
  */
 export function launchNativeUri(uri: string): boolean {
   if (typeof window === 'undefined' || !uri) return false;
 
   try {
+    // 1. In-App Browser / Hybrid container bridges (Cordova, Capacitor, Flutter InAppWebView)
+    const win = window as any;
+    if (win.cordova?.InAppBrowser?.open) {
+      win.cordova.InAppBrowser.open(uri, '_system');
+      return true;
+    }
+    if (win.Capacitor?.Plugins?.App?.openUrl) {
+      win.Capacitor.Plugins.App.openUrl({ url: uri });
+      return true;
+    }
+    if (win.flutter_inappwebview?.callHandler) {
+      win.flutter_inappwebview.callHandler('launchExternalUrl', uri).catch(() => {});
+    }
+
+    // 2. Ephemeral external application launcher anchor
+    // Using target="_blank" + rel="external noopener noreferrer" strictly invokes external application launch,
+    // preventing WebView in-frame navigation and eliminating net::ERR_UNKNOWN_URL_SCHEME
     const a = document.createElement('a');
     a.href = uri;
-    // target="_blank" guarantees the current frame is not navigated
     a.target = '_blank';
-    a.rel = 'noopener noreferrer external';
-    a.style.display = 'none';
+    a.rel = 'external noopener noreferrer';
+    a.style.position = 'fixed';
+    a.style.top = '-9999px';
+    a.style.left = '-9999px';
+    a.style.opacity = '0';
     a.setAttribute('aria-hidden', 'true');
     document.body.appendChild(a);
 
-    // Synthetic click event
-    const clickEvent = new MouseEvent('click', {
-      view: window,
-      bubbles: true,
-      cancelable: true,
-    });
-    a.dispatchEvent(clickEvent);
+    // Both native DOM click and dispatchEvent for maximum cross-browser/WebView compatibility
+    if (typeof a.click === 'function') {
+      a.click();
+    } else {
+      const clickEvent = new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+        cancelable: true,
+      });
+      a.dispatchEvent(clickEvent);
+    }
 
-    // Clean up from DOM
+    // Clean up
     setTimeout(() => {
       if (document.body.contains(a)) {
         document.body.removeChild(a);
       }
-    }, 600);
+    }, 500);
 
     return true;
   } catch (err) {
-    console.warn('Native URI launch via anchor click encountered error, trying safe window.open:', err);
+    console.warn('[NativeIntent] Anchor dispatch error, trying safe fallback:', err);
     try {
       const win = window.open(uri, '_blank', 'noopener,noreferrer');
       if (win) {

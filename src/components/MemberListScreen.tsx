@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { Member } from '../types';
 import { toBengaliNumber, sanitizePhone, sortMembersOldestFirst, getMemberPhotoUrl } from '../utils/helpers';
-import { isExecutiveCommitteeMember } from '../utils/meetingSmsHelper';
+import { isExecutiveCommitteeMember, dispatchPreFilledMemberSms } from '../utils/meetingSmsHelper';
 import { triggerNativeCall, triggerNativeSms } from '../utils/nativeIntentHelper';
 import { compressImageFile } from '../utils/imageCompressor';
 import { DueSmsModal } from './DueSmsModal';
@@ -697,11 +697,14 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                           {isAdmin && (
                             <button
                               type="button"
-                              onClick={() => triggerNativeSms(cleanPhone, '')}
-                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition cursor-pointer"
-                              title="সরাসরি সিম থেকে এসএমএস পাঠান"
+                              onClick={() => dispatchPreFilledMemberSms(member)}
+                              id={`member-sms-btn-${member.id || idx}`}
+                              className="px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center gap-1 border border-indigo-200/80 cursor-pointer shadow-2xs active:scale-95"
+                              title="এসএমএস পাঠান (প্রাক-নির্ধারিত মিটিং নোটিশসহ)"
                             >
-                              <MessageSquare className="w-3.5 h-3.5" />
+                              <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                              <span className="hidden sm:inline">এসএমএস পাঠান</span>
+                              <span className="sm:hidden">এসএমএস</span>
                             </button>
                           )}
 
@@ -1151,12 +1154,12 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => triggerNativeSms(zoomedMember.phone, '')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition shadow-xs cursor-pointer"
-                    title="সরাসরি এসএমএস পাঠান"
+                    onClick={() => dispatchPreFilledMemberSms(zoomedMember)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition shadow-xs border border-indigo-200 cursor-pointer active:scale-95"
+                    title="এসএমএস পাঠান (প্রাক-নির্ধারিত মিটিং নোটিশসহ)"
                   >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>এসএমএস</span>
+                    <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>এসএমএস পাঠান</span>
                   </button>
                 </div>
               )}

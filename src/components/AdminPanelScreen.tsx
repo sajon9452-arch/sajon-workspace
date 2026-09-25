@@ -118,7 +118,7 @@ import {
 } from '../utils/serverApi';
 import { DueSmsModal } from './DueSmsModal';
 import { BulkMeetingSmsModal } from './BulkMeetingSmsModal';
-import { isExecutiveCommitteeMember } from '../utils/meetingSmsHelper';
+import { isExecutiveCommitteeMember, dispatchPreFilledMemberSms } from '../utils/meetingSmsHelper';
 import { triggerNativeCall, triggerNativeSms } from '../utils/nativeIntentHelper';
 import {
   triggerDirectSimSms,
@@ -2024,6 +2024,15 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                           </span>
                         </td>
                         <td className="p-3.5 text-right space-x-1.5">
+                          <button
+                            type="button"
+                            onClick={() => dispatchPreFilledMemberSms(m)}
+                            id={`admin-sms-member-${m.id}`}
+                            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer"
+                            title="মিটিং নোটিশ এসএমএস পাঠান"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             onClick={() => setEditingMember(m)}
                             id={`edit-member-${m.id}`}

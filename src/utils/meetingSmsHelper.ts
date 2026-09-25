@@ -6,6 +6,12 @@ import {
   triggerNativeGroupSms
 } from './nativeIntentHelper';
 import { sanitizePhoneForSms, buildDirectSimSmsUrl, triggerDirectSimSms } from './smsHelper';
+import { loadNotices } from './storage';
+import {
+  generateExecutiveMeetingNotice,
+  generateJointMeetingNotice,
+  DEFAULT_MEETING_FIELDS
+} from './noticeTemplates';
 
 export { triggerNativeGroupSms };
 
@@ -46,6 +52,69 @@ export function getMemberCommitteeCategory(designation?: string): {
     categoryLabel: isExec ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য',
     categoryTitle: isExec ? 'কার্যকরী কমিটি (Executive Committee)' : 'সাধারণ সদস্য (General Member)'
   };
+}
+
+/**
+ * Auto-resolves the pre-configured meeting SMS template body for a member.
+ * Dynamically looks up any active published meeting notice from storage, or falls back to
+ * the official Executive Committee / Joint Meeting notice template based on member designation.
+ */
+export function getPreconfiguredMeetingSms(member?: Partial<Member> | null): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const notices = loadNotices();
+      if (Array.isArray(notices) && notices.length > 0) {
+        const isExec = isExecutiveCommitteeMember(member);
+
+        // 1. Look for matching meeting notice in notices list
+        const meetingNotice = notices.find(n => {
+          if (!n || !n.noticeText) return false;
+          const text = n.noticeText.trim();
+          if (!text) return false;
+          const cat = (n.category || '').trim();
+          const title = (n.title || '').trim();
+
+          if (isExec) {
+            if (
+              cat === 'কার্যকরী কমিটির মিটিং' ||
+              title.includes('কার্যকরী') ||
+              text.includes('কার্যকরী কমিটির সভা') ||
+              text.includes('কার্যকরী কমিটির মিটিং')
+            ) {
+              return true;
+            }
+          }
+          return cat.includes('মিটিং') || title.includes('মিটিং') || title.includes('সভা') || text.includes('মিটিং');
+        });
+
+        if (meetingNotice && meetingNotice.noticeText && meetingNotice.noticeText.trim().length > 15) {
+          return meetingNotice.noticeText.trim();
+        }
+      }
+    }
+  } catch (e) {
+    // Fallback to official templates
+  }
+
+  // 2. Official pre-configured meeting templates
+  const isExec = isExecutiveCommitteeMember(member);
+  if (isExec) {
+    return generateExecutiveMeetingNotice(DEFAULT_MEETING_FIELDS);
+  }
+  return generateJointMeetingNotice(DEFAULT_MEETING_FIELDS);
+}
+
+/**
+ * Immediately dispatches an individual pre-filled meeting SMS to the target member
+ * using the native device SMS application with auto-populated recipient number and message template.
+ * Enables one-tap sending for admin while strictly bypassing WebView/browser interference.
+ */
+export function dispatchPreFilledMemberSms(member: Partial<Member> | null): boolean {
+  if (!member || !member.phone) return false;
+  const cleanPhone = sanitizePhone(member.phone);
+  if (!cleanPhone) return false;
+  const templateBody = getPreconfiguredMeetingSms(member);
+  return triggerNativeSms(cleanPhone, templateBody);
 }
 
 export interface MeetingSmsRecipient {
@@ -103,9 +172,7 @@ export function buildMeetingRecipients(
   const executiveCount = allCategorized.filter(m => m.isExecutive).length;
   const generalCount = allCategorized.filter(m => !m.isExecutive).length;
 
-  // Strict Category-Based Dynamic Filtering:
-  // When 'কার্যকরী কমিটির মিটিং' is selected, target ONLY executive committee members (no general members)
-  // When 'কার্যকরী কমিটি ও সাধারণ সদস্য উভয়ের মিটিং' is selected, target all members (Executive + General)
+  // Strict Category-Based Dynamic Filtering
   const targeted: MeetingSmsRecipient[] = isExecutiveOnly
     ? allCategorized.filter(m => m.isExecutive)
     : allCategorized;
