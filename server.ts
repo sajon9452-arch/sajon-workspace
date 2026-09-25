@@ -286,15 +286,55 @@ function readLocalDatabase(): AppDatabase {
   }
 }
 
+function persistMemberPhotosToDisk(members: any[]): void {
+  if (!Array.isArray(members)) return;
+  const photosDir = path.join(process.cwd(), 'server_data', 'member_photos');
+  try {
+    if (!fs.existsSync(photosDir)) fs.mkdirSync(photosDir, { recursive: true });
+  } catch {}
+
+  for (const m of members) {
+    if (!m || !m.id) continue;
+    const photo = extractMemberPhoto(m);
+    if (!photo || !photo.startsWith('data:image/')) continue;
+
+    const match = photo.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+    if (match) {
+      try {
+        const diskPath = path.join(photosDir, `${m.id}.jpg`);
+        if (!fs.existsSync(diskPath)) {
+          const buffer = Buffer.from(match[2], 'base64');
+          fs.writeFileSync(diskPath, buffer);
+        }
+      } catch (err) {
+        console.warn(`[Server] Failed to write photo for member ${m.id} to disk:`, err);
+      }
+    }
+  }
+}
+
 function writeLocalDatabase(data: Partial<AppDatabase>): AppDatabase {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
     const current = readLocalDatabase();
+
+    // Permanent Data Safety & CRUD Integrity: Prevent accidental member data wipes
+    let membersToSave = data.members;
+    if (Array.isArray(membersToSave)) {
+      if (membersToSave.length === 0 && Array.isArray(current.members) && current.members.length > 0) {
+        console.warn('[Server] Rejecting attempt to overwrite members with empty array. Data preserved.');
+        membersToSave = current.members;
+      } else {
+        persistMemberPhotosToDisk(membersToSave);
+      }
+    }
+
     const updated: AppDatabase = {
       ...current,
       ...data,
+      ...(membersToSave !== undefined ? { members: membersToSave } : {}),
       updatedAt: new Date().toISOString()
     };
     // Safe atomic write

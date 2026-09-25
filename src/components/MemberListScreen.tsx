@@ -32,7 +32,8 @@ import {
   loadedPhotoCache, 
   failedPhotoCache, 
   preloadPhoto, 
-  preloadMembersPhotos 
+  preloadMembersPhotos,
+  getInstantPhotoUrl
 } from '../utils/photoPreloader';
 
 interface MemberListScreenProps {
@@ -67,7 +68,7 @@ const MemberCardPhoto: React.FC<MemberCardPhotoProps> = React.memo(({
   isExp,
   onZoom,
 }) => {
-  const photoSrc = useMemo(() => getMemberPhotoUrl(member), [member]);
+  const photoSrc = useMemo(() => getInstantPhotoUrl(member), [member]);
   const [hasError, setHasError] = useState<boolean>(Boolean(photoSrc && failedPhotoCache.has(photoSrc)));
 
   useEffect(() => {
@@ -79,9 +80,9 @@ const MemberCardPhoto: React.FC<MemberCardPhotoProps> = React.memo(({
       setHasError(true);
     } else {
       setHasError(false);
-      preloadPhoto(photoSrc);
+      preloadPhoto(photoSrc, member.id);
     }
-  }, [photoSrc]);
+  }, [photoSrc, member.id]);
 
   const hasRealPhoto = Boolean(photoSrc && !hasError);
   const canZoom = hasRealPhoto;
@@ -97,25 +98,25 @@ const MemberCardPhoto: React.FC<MemberCardPhotoProps> = React.memo(({
       role={canZoom ? 'button' : undefined}
       aria-label={canZoom ? `${member.name}-এর ছবি জুম করে দেখুন` : undefined}
     >
-      {/* 1. Direct Instant Image Rendering when real photo exists: NO letter placeholder underneath */}
+      {/* 1. Direct Instant Image Rendering: Zero-delay display with asynchronous pre-decoding */}
       {hasRealPhoto ? (
-        <>
-          <div className="absolute inset-0 bg-slate-200/50 z-0" />
-          <img
-            src={photoSrc}
-            alt={member.name}
-            loading="eager"
-            decoding="async"
-            onLoad={() => {
-              loadedPhotoCache.add(photoSrc);
-            }}
-            onError={() => {
-              failedPhotoCache.add(photoSrc);
-              setHasError(true);
-            }}
-            className="absolute inset-0 w-full h-full object-cover z-1 group-hover/photo:scale-105 transition-transform duration-200"
-          />
-        </>
+        <img
+          src={photoSrc}
+          alt={member.name}
+          loading="eager"
+          decoding="async"
+          // @ts-expect-error fetchpriority attribute is supported in modern browsers
+          fetchpriority="high"
+          onLoad={() => {
+            loadedPhotoCache.add(photoSrc);
+          }}
+          onError={() => {
+            failedPhotoCache.add(photoSrc);
+            setHasError(true);
+          }}
+          className="absolute inset-0 w-full h-full object-cover z-1 group-hover/photo:scale-105 transition-transform duration-200"
+          style={{ contentVisibility: 'auto' }}
+        />
       ) : (
         /* 2. Fallback placeholder ONLY when no profile photo exists or loading strictly failed */
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-2 bg-gradient-to-b from-emerald-50 via-slate-100 to-emerald-100/60 z-0">

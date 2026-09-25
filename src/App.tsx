@@ -54,11 +54,13 @@ import {
   populateLocalStorageFromServer, 
   resetAllData, 
   clearAllData,
+  hydrateFromOfflineDb,
   PMS_SYNC_EVENT_NAME
 } from './utils/storage';
 import { fetchServerDatabase, syncKeyToServer } from './utils/serverApi';
 import { isDonorEligible, sortMembersOldestFirst } from './utils/helpers';
 import { preloadMembersPhotos } from './utils/photoPreloader';
+import { initBackgroundSync } from './utils/backgroundSync';
 import { Header } from './components/Header';
 import { HomeScreen } from './components/HomeScreen';
 import { BottomNav } from './components/BottomNav';
@@ -131,7 +133,18 @@ export default function App() {
       setPaymentConfig(loadPaymentSettings());
     };
 
-    // Hydrate from server / Supabase Cloud database
+    // 1. Instantly hydrate from local IndexedDB if offline or on fresh launch
+    hydrateFromOfflineDb().then((offlineMembers) => {
+      if (isMounted && offlineMembers && offlineMembers.length > 0) {
+        setMembers(sortMembersOldestFirst(offlineMembers));
+        preloadMembersPhotos(offlineMembers);
+      }
+    }).catch(() => {});
+
+    // 2. Initialize automatic background sync for seamless network restoration
+    const cleanupBackgroundSync = initBackgroundSync();
+
+    // 3. Hydrate from server / Supabase Cloud database
     fetchServerDatabase().then((serverData) => {
       if (serverData && isMounted) {
         populateLocalStorageFromServer(serverData, true);
@@ -143,7 +156,7 @@ export default function App() {
         }
       }
     }).catch(() => {
-      // Fallback seamlessly to local storage cache
+      // Fallback seamlessly to local storage & IndexedDB cache
     });
 
     // Cross-tab and in-app synchronization listeners
@@ -152,6 +165,7 @@ export default function App() {
 
     return () => {
       isMounted = false;
+      cleanupBackgroundSync();
       window.removeEventListener('storage', syncAllFromStorage);
       window.removeEventListener(PMS_SYNC_EVENT_NAME, syncAllFromStorage);
     };

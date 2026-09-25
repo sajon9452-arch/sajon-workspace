@@ -3,6 +3,7 @@ import { INITIAL_MEMBERS, INITIAL_DONORS, INITIAL_NOTICES, INITIAL_FUNDS, INITIA
 import { syncKeyToServer, resetServerDatabase, clearServerDatabase, ServerDatabasePayload } from './serverApi';
 import { sortMembersOldestFirst } from './helpers';
 import { preloadMembersPhotos } from './photoPreloader';
+import { saveOfflineMembers, getOfflineMembers } from './offlineDb';
 
 export const STORAGE_KEYS = {
   PROFILE: 'pms_profile_v2',
@@ -230,6 +231,9 @@ export function populateLocalStorageFromServer(
       sortMembersOldestFirst
     );
     if (membersRes.changed) hasChanged = true;
+    if (membersRes.merged.length > 0) {
+      saveOfflineMembers(membersRes.merged).catch(() => {});
+    }
     if (membersRes.hasLocalAdditions) {
       syncKeyToServer('members', membersRes.merged).catch(() => {});
     }
@@ -541,10 +545,36 @@ export function saveMembers(members: Member[]): void {
     preloadMembersPhotos(sorted);
     notifyDataChange(STORAGE_KEYS.MEMBERS, sorted);
     safeSetLocalStorage(STORAGE_KEYS.MEMBERS, sorted);
+    saveOfflineMembers(sorted).catch(() => {});
     syncKeyToServer('members', sorted);
   } catch (e) {
     console.error('Error saving members', e);
   }
+}
+
+/**
+ * Asynchronously hydrates memory & local state from IndexedDB offline storage
+ * Ensures that all members and offline records are retained permanently even if localStorage was cleared
+ */
+export async function hydrateFromOfflineDb(): Promise<Member[]> {
+  try {
+    const offlineMembers = await getOfflineMembers();
+    const deletedIds = loadDeletedMemberIds();
+    const active = offlineMembers.filter(m => m && m.id && !deletedIds.includes(m.id));
+    if (active.length > 0) {
+      const sorted = sortMembersOldestFirst(active);
+      if (!memoryMembersCache || memoryMembersCache.length < sorted.length) {
+        memoryMembersCache = sorted;
+        safeSetLocalStorage(STORAGE_KEYS.MEMBERS, sorted);
+        preloadMembersPhotos(sorted);
+        notifyDataChange(STORAGE_KEYS.MEMBERS, sorted);
+      }
+      return sorted;
+    }
+  } catch (e) {
+    console.warn('[OfflineDb] Hydration skipped:', e);
+  }
+  return loadMembers();
 }
 
 // Donors
