@@ -2028,10 +2028,11 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                             type="button"
                             onClick={() => dispatchPreFilledMemberSms(m)}
                             id={`admin-sms-member-${m.id}`}
-                            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer"
-                            title="মিটিং নোটিশ এসএমএস পাঠান"
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer text-xs font-semibold"
+                            title="এসএমএস পাঠান (মিটিং নোটিশসহ)"
                           >
                             <MessageSquare className="w-3.5 h-3.5" />
+                            <span className="hidden xl:inline text-[11px]">এসএমএস পাঠান</span>
                           </button>
                           <button
                             onClick={() => setEditingMember(m)}
@@ -4140,9 +4141,10 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
       {/* MEMBER MODAL (Add / Edit) */}
       {(isAddMemberOpen || editingMember) && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 animate-scaleUp">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 flex flex-col max-h-[92dvh] sm:max-h-[88vh] animate-scaleUp overflow-hidden my-auto">
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white z-10">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 {memberIsExpatriateInput ? (
                   <Globe className="w-5 h-5 text-blue-600" />
@@ -4155,47 +4157,53 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
               </h3>
               <button
                 onClick={() => { setIsAddMemberOpen(false); setEditingMember(null); }}
-                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                title="বন্ধ করুন"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Member Category Switcher */}
-            <div className="flex items-center p-1 bg-slate-100 rounded-xl mt-3.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setMemberIsExpatriateInput(false);
-                  if (!memberAreaInput || memberAreaInput === 'প্রবাসী') {
-                    setMemberAreaInput('পতেঙ্গা, চট্টগ্রাম');
-                  }
-                }}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                  !memberIsExpatriateInput ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5 text-emerald-600" />
-                <span>সাধারণ সদস্য</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMemberIsExpatriateInput(true);
-                  if (memberAreaInput === 'পতেঙ্গা, চট্টগ্রাম') {
-                    setMemberAreaInput('');
-                  }
-                }}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                  memberIsExpatriateInput ? 'bg-white text-blue-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Globe className="w-3.5 h-3.5 text-blue-600" />
-                <span>প্রবাসী সদস্য</span>
-              </button>
-            </div>
+            {/* Flexible Scrollable Body (AlwaysScrollableScrollPhysics equivalent) */}
+            <div
+              className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:p-6"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
+              {/* Member Category Switcher */}
+              <div className="flex items-center p-1 bg-slate-100 rounded-xl mb-3.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberIsExpatriateInput(false);
+                    if (!memberAreaInput || memberAreaInput === 'প্রবাসী') {
+                      setMemberAreaInput('পতেঙ্গা, চট্টগ্রাম');
+                    }
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                    !memberIsExpatriateInput ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>সাধারণ সদস্য</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberIsExpatriateInput(true);
+                    if (memberAreaInput === 'পতেঙ্গা, চট্টগ্রাম') {
+                      setMemberAreaInput('');
+                    }
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                    memberIsExpatriateInput ? 'bg-white text-blue-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5 text-blue-600" />
+                  <span>প্রবাসী সদস্য</span>
+                </button>
+              </div>
 
-            <form onSubmit={handleSaveMember} className="space-y-3 mt-3">
+              <form onSubmit={handleSaveMember} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">পূর্ণ নাম (Name) *</label>
                 <input
@@ -4439,10 +4447,14 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                   <span>{editingMember ? 'আপডেট করুন' : 'সংরক্ষণ করুন'}</span>
                 </button>
               </div>
+
+              {/* Generous Bottom Padding (100px) ensuring action buttons sit completely above the system navigation bar */}
+              <div className="h-24 sm:h-28 w-full shrink-0" aria-hidden="true" style={{ minHeight: '100px' }} />
             </form>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* BLOOD DONOR MODAL (Add / Edit) */}
       {(isAddDonorOpen || editingDonor) && (
