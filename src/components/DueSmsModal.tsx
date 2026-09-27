@@ -391,19 +391,20 @@ export const DueSmsModal: React.FC<DueSmsModalProps> = ({
             <div className="p-3 bg-emerald-100/90 text-emerald-900 border border-emerald-300 rounded-2xl text-xs font-bold flex items-center justify-between gap-2 animate-fadeIn">
               <div className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-emerald-700 flex-shrink-0" />
-                <span>আপনার মোবাইল ডিভাইসের মেসেজ অ্যাপ ওপেন হচ্ছে...</span>
+                <div>
+                  <span>আপনার মোবাইল ডিভাইসের মেসেজ অ্যাপ ওপেন হচ্ছে...</span>
+                  <span className="text-[11px] text-emerald-800 font-normal block">মেসেজ ক্লিপবোর্ডে কপি করা হয়েছে। মেসেজ বক্সে পেস্ট (Paste) করে সেন্ড করুন।</span>
+                </div>
               </div>
-              <a
-                href={directSmsUrl}
-                target="_self"
-                rel="external"
+              <button
+                type="button"
                 onClick={handleSendSimSms}
-                className="px-2.5 py-1 bg-emerald-700 text-white rounded-lg text-[11px] font-bold hover:bg-emerald-800 transition flex items-center gap-1 cursor-pointer no-underline"
+                className="px-2.5 py-1 bg-emerald-700 text-white rounded-lg text-[11px] font-bold hover:bg-emerald-800 transition flex items-center gap-1 cursor-pointer shrink-0"
                 title="সরাসরি মেসেজ অ্যাপ আবার চালু করুন"
               >
-                <span>সরাসরি লিঙ্ক</span>
+                <span>পুনরায় পাঠান</span>
                 <ExternalLink className="w-3 h-3" />
-              </a>
+              </button>
             </div>
           )}
         </div>
@@ -436,16 +437,14 @@ export const DueSmsModal: React.FC<DueSmsModalProps> = ({
             >
               বাতিল
             </button>
-            <a
-              href={directSmsUrl}
-              target="_self"
-              rel="external"
+            <button
+              type="button"
               onClick={handleSendSimSms}
-              className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-extrabold shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 no-underline"
+              className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-extrabold shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
             >
               <Send className="w-4 h-4" />
               <span>সরাসরি SIM থেকে SMS পাঠান</span>
-            </a>
+            </button>
           </div>
         </div>
       </div>

@@ -2,16 +2,17 @@
  * Universal Native Intent Helper for 'সিলেট মানব সেবা সংগঠন'
  * 
  * Provides bulletproof native SMS and Call dispatching across:
- * - Android (Chrome, Samsung Internet, WebViews, In-App Browsers)
+ * - Android (App Creator 24, WebViews, In-App Wrappers, Chrome, Samsung Internet)
  * - iOS (Safari, WebKit WebViews)
  * - PWAs, Desktop browsers, and iframe-embedded preview environments
  * 
  * Guarantees that:
- * 1. ZERO iframe.src assignments for custom schemes, completely eliminating net::ERR_UNKNOWN_URL_SCHEME.
- * 2. ZERO target="_blank" on custom protocols, preventing blank WebView error crashes.
+ * 1. ZERO standard anchor links (<a href="sms:...">) that trigger net::ERR_UNKNOWN_URL_SCHEME in WebViews.
+ * 2. Employs official Android Intent URI scheme (Intent.ACTION_SENDTO with smsto:)
+ *    which Android WebViewClient and App Creator 24 intercept cleanly.
  * 3. Pre-fills both target phone number and SMS template body accurately.
- * 4. Dispatches strictly via external application intent (LaunchMode.externalApplication / OS Intent Manager).
- * 5. Auto-copies SMS text to clipboard as an instant fallback.
+ * 4. Auto-copies SMS message text to clipboard as an instant zero-fail fallback.
+ * 5. Bypasses in-app WebView rendering to hand off execution directly to device default messaging app.
  */
 
 const BENGALI_TO_ENGLISH_DIGITS: Record<string, string> = {
@@ -56,9 +57,63 @@ export function isAndroidDevice(): boolean {
 }
 
 /**
- * Builds the native Universal SMS URI scheme.
- * - iOS format: sms:number&body=message
- * - Android / RFC 5724 format: sms:number?body=message
+ * Detects if running inside an Android WebView wrapper (e.g. App Creator 24, WebView wrapper APK).
+ */
+export function isAndroidWebView(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isAndroid = /Android/i.test(ua);
+  const isWv = /wv|Version\/[0-9.]+/i.test(ua);
+  const win = typeof window !== 'undefined' ? (window as any) : {};
+  const hasAppBridge = !!(
+    win.Android ||
+    win.AndroidBridge ||
+    win.AppCreator24 ||
+    win.JSInterface ||
+    win.flutter_inappwebview
+  );
+  return isAndroid && (isWv || hasAppBridge || !/Chrome\/[.0-9]+ Mobile/i.test(ua));
+}
+
+/**
+ * Builds the official Android Intent URI using Intent.ACTION_SENDTO with smsto: scheme.
+ * Compatible with App Creator 24, Chrome for Android, and Android WebViews.
+ * 
+ * Android's Intent.parseUri(uri, Intent.URI_INTENT_SCHEME) converts this into an explicit Intent:
+ * - Action: android.intent.action.SENDTO
+ * - Data: smsto:01XXXXXXXXX
+ * - Extra: sms_body = body
+ * - Extra: android.intent.extra.TEXT = body
+ */
+export function buildAndroidSmsIntentUri(phone: string, body: string = ''): string {
+  const cleanPhone = sanitizePhone(phone);
+  const encodedBody = body ? encodeURIComponent(body) : '';
+  
+  if (encodedBody) {
+    return `intent:${cleanPhone}#Intent;action=android.intent.action.SENDTO;scheme=smsto;S.sms_body=${encodedBody};S.android.intent.extra.TEXT=${encodedBody};end`;
+  }
+  return `intent:${cleanPhone}#Intent;action=android.intent.action.SENDTO;scheme=smsto;end`;
+}
+
+/**
+ * Builds the standard RFC 5724 SMS URI.
+ */
+export function buildStandardSmsUri(phone: string, body: string = ''): string {
+  const cleanPhone = sanitizePhone(phone);
+  const encodedBody = body ? encodeURIComponent(body) : '';
+  const isIOS = isIOSDevice();
+  const sep = isIOS ? '&' : '?';
+  if (encodedBody) {
+    return `sms:${cleanPhone}${sep}body=${encodedBody}`;
+  }
+  return `sms:${cleanPhone}`;
+}
+
+/**
+ * Builds the optimal Universal SMS URI based on the client runtime environment:
+ * - On Android (including App Creator 24 WebView wrapper and Chrome): returns Android Intent URI.
+ * - On iOS (iPhone/iPad): returns sms:number&body=message.
+ * - Fallback / Desktop: returns standard RFC 5724 sms:number?body=message.
  */
 export function buildUniversalSmsUri(
   phoneOrPhones: string | string[],
@@ -68,22 +123,28 @@ export function buildUniversalSmsUri(
     .map(p => sanitizePhone(p))
     .filter(Boolean);
 
-  const isIOS = isIOSDevice();
+  const primaryPhone = list[0] || '';
   const joinedPhones = list.join(',');
   const encodedBody = body ? encodeURIComponent(body) : '';
 
-  // Parameter separator: iOS requires '&body=', standard RFC 5724/Android requires '?body='
-  const separator = isIOS ? '&' : '?';
+  // 1. Android devices & Android WebView wrappers (App Creator 24)
+  if (isAndroidDevice() || isAndroidWebView()) {
+    return buildAndroidSmsIntentUri(primaryPhone, body);
+  }
 
+  // 2. iOS devices (iPhone, iPad)
+  if (isIOSDevice()) {
+    if (!encodedBody) {
+      return joinedPhones ? `sms:${joinedPhones}` : 'sms:';
+    }
+    return joinedPhones ? `sms:${joinedPhones}&body=${encodedBody}` : `sms:&body=${encodedBody}`;
+  }
+
+  // 3. Desktop / RFC 5724 Fallback
   if (!encodedBody) {
     return joinedPhones ? `sms:${joinedPhones}` : 'sms:';
   }
-
-  if (!joinedPhones) {
-    return isIOS ? `sms:&body=${encodedBody}` : `sms:?body=${encodedBody}`;
-  }
-
-  return `sms:${joinedPhones}${separator}body=${encodedBody}`;
+  return joinedPhones ? `sms:${joinedPhones}?body=${encodedBody}` : `sms:?body=${encodedBody}`;
 }
 
 /**
@@ -99,14 +160,14 @@ export function buildUniversalTelUri(phone: string): string {
  * Universal Native Intent Dispatcher.
  * 
  * Bypasses WebView / Browser interference:
- * Executes strictly as an external application launch (equivalent to Flutter LaunchMode.externalApplication)
- * to completely eliminate net::ERR_UNKNOWN_URL_SCHEME errors in Chromium WebViews, Android apps, and iframes.
+ * Executes strictly as an external application launch (equivalent to Android Intent.ACTION_SENDTO / externalApplication)
+ * to completely eliminate net::ERR_UNKNOWN_URL_SCHEME errors in Chromium WebViews, App Creator 24, and iframes.
  * 
  * Guarantees that:
- * 1. window.open(uri, '_blank') is NEVER called with custom schemes (which triggers ERR_UNKNOWN_URL_SCHEME in WebViews).
- * 2. NO iframe.src assignment is used (iframe loading of sms: always fails with ERR_UNKNOWN_URL_SCHEME).
- * 3. Bridges for Flutter InAppWebView (LaunchMode.externalApplication), Android JavascriptInterface, Capacitor, and Cordova are handled cleanly.
- * 4. Safe ephemeral anchor dispatch with target="_self" activates the OS default handler directly.
+ * 1. ZERO anchor link navigation on custom schemes that causes WebViews to intercept as page loads.
+ * 2. ZERO iframe.src assignments (iframe loading of custom schemes causes ERR_UNKNOWN_URL_SCHEME).
+ * 3. Injected bridges for App Creator 24, Android, Flutter InAppWebView, Capacitor, and Cordova are handled cleanly.
+ * 4. Safe external hand-off directly to the OS ActivityManager.
  */
 export function launchNativeUri(
   uri: string,
@@ -117,26 +178,46 @@ export function launchNativeUri(
 
   try {
     const win = window as any;
+    const cleanPhone = recipientPhone ? sanitizePhone(recipientPhone) : '';
+    const body = messageBody || '';
 
-    // 1. Flutter InAppWebView external application intent bridge
+    // 1. App Creator 24 and Custom Android JavascriptInterface bridges
+    if (win.AppCreator24?.sendSms && cleanPhone) {
+      try {
+        win.AppCreator24.sendSms(cleanPhone, body);
+        return true;
+      } catch {}
+    }
+    if (win.Android?.sendSms && cleanPhone) {
+      try {
+        win.Android.sendSms(cleanPhone, body);
+        return true;
+      } catch {}
+    }
+    if (win.JSInterface?.sendSms && cleanPhone) {
+      try {
+        win.JSInterface.sendSms(cleanPhone, body);
+        return true;
+      } catch {}
+    }
+    if (win.AndroidBridge?.launchUrl) {
+      try {
+        win.AndroidBridge.launchUrl(uri);
+        return true;
+      } catch {}
+    }
+    if (win.Android?.launchExternal) {
+      try {
+        win.Android.launchExternal(uri);
+        return true;
+      } catch {}
+    }
+
+    // 2. Flutter InAppWebView external application intent bridge
     if (win.flutter_inappwebview?.callHandler) {
       win.flutter_inappwebview.callHandler('launchUrl', uri, 'externalApplication').catch(() => {});
       win.flutter_inappwebview.callHandler('openUrl', { url: uri, mode: 'externalApplication' }).catch(() => {});
       win.flutter_inappwebview.callHandler('launchExternalUrl', uri).catch(() => {});
-    }
-
-    // 2. Custom Android JavascriptInterface bridges (if app is embedded in native Android wrapper)
-    if (win.AndroidBridge?.launchUrl) {
-      win.AndroidBridge.launchUrl(uri);
-      return true;
-    }
-    if (win.Android?.launchExternal) {
-      win.Android.launchExternal(uri);
-      return true;
-    }
-    if (win.Android?.sendSms && recipientPhone) {
-      win.Android.sendSms(recipientPhone, messageBody || '');
-      return true;
     }
 
     // 3. Capacitor App Plugin
@@ -150,32 +231,26 @@ export function launchNativeUri(
       return true;
     }
 
-    // 5. Clean, Safe Ephemeral Anchor Dispatcher
-    // Uses target="_self" and rel="external". NEVER target="_blank" and NEVER iframe.src!
-    const a = document.createElement('a');
-    a.href = uri;
-    a.target = '_self';
-    a.rel = 'external noopener noreferrer';
-    a.style.display = 'none';
-    a.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(a);
-
-    if (typeof a.click === 'function') {
+    // 5. External Intent Dispatch
+    // In Android WebViews and App Creator 24, assigning window.location.href to an 'intent:' URI
+    // triggers WebViewClient.shouldOverrideUrlLoading, which resolves Intent.ACTION_SENDTO
+    // and delegates to the device default SMS app without web navigation crashes.
+    try {
+      window.location.href = uri;
+    } catch {
+      const a = document.createElement('a');
+      a.href = uri;
+      a.target = '_self';
+      a.rel = 'external noopener noreferrer';
+      a.style.display = 'none';
+      document.body.appendChild(a);
       a.click();
-    } else {
-      const clickEvent = new MouseEvent('click', {
-        view: window,
-        bubbles: true,
-        cancelable: true,
-      });
-      a.dispatchEvent(clickEvent);
+      setTimeout(() => {
+        if (document.body.contains(a)) {
+          document.body.removeChild(a);
+        }
+      }, 300);
     }
-
-    setTimeout(() => {
-      if (document.body.contains(a)) {
-        document.body.removeChild(a);
-      }
-    }, 300);
 
     return true;
   } catch (err) {
@@ -185,27 +260,45 @@ export function launchNativeUri(
 }
 
 /**
+ * Universal helper to copy text to the clipboard with zero-fail multi-layer fallback.
+ */
+export function copyTextToClipboard(text: string): boolean {
+  if (!text || typeof window === 'undefined') return false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {
+        fallbackCopyText(text);
+      });
+      return true;
+    } else {
+      return fallbackCopyText(text);
+    }
+  } catch {
+    return fallbackCopyText(text);
+  }
+}
+
+/**
  * Universal helper to trigger native SMS with pre-filled message and recipient(s).
- * Safely copies text to clipboard as an instant backup and launches the native SMS app.
+ * Safely copies text to clipboard as an instant backup and launches the native SMS app via external intent.
  */
 export function triggerNativeSms(
   phoneOrPhones: string | string[],
   body: string = ''
 ): boolean {
   // Always copy text to clipboard first as instant zero-fail backup
-  if (body && typeof navigator !== 'undefined') {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(body).catch(() => {
-        fallbackCopyText(body);
-      });
-    } else {
-      fallbackCopyText(body);
-    }
-  }
+  copyTextToClipboard(body);
 
   const primaryPhone = Array.isArray(phoneOrPhones) ? phoneOrPhones[0] : phoneOrPhones;
-  const uri = buildUniversalSmsUri(phoneOrPhones, body);
-  return launchNativeUri(uri, primaryPhone, body);
+  const cleanPhone = sanitizePhone(primaryPhone);
+
+  // If on Android / App Creator 24, explicitly ensure we pass the Android Intent URI
+  // with action=android.intent.action.SENDTO and scheme=smsto
+  const uri = (isAndroidDevice() || isAndroidWebView())
+    ? buildAndroidSmsIntentUri(cleanPhone, body)
+    : buildUniversalSmsUri(phoneOrPhones, body);
+
+  return launchNativeUri(uri, cleanPhone, body);
 }
 
 /**
