@@ -26,7 +26,11 @@ export function isGeneralMemberByDesignation(designation?: string): boolean {
   if (!designation) return true; // Default to general member if empty
   const des = designation.trim();
   if (!des) return true;
-  // If the designation contains or equals "সদস্য"
+  // Explicit executive positions (e.g. কার্যকরী সদস্য, নির্বাহী সদস্য, Executive Member)
+  if (des.includes('কার্যকরী') || des.includes('নির্বাহী') || des.toLowerCase().includes('executive')) {
+    return false;
+  }
+  // If the designation contains or equals "সদস্য" (e.g., সাধারণ সদস্য, সদস্য, প্রবাসী সদস্য)
   return des.includes('সদস্য') || des.toLowerCase().includes('member');
 }
 

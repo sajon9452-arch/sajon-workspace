@@ -7,17 +7,27 @@
  * - PWAs, Desktop browsers, and iframe-embedded preview environments
  * 
  * Guarantees that:
- * 1. window.location.href is NEVER navigated to custom protocols, preventing net::ERR_UNKNOWN_URL_SCHEME.
- * 2. Pre-fills both target phone number and meeting SMS template body.
- * 3. Native applications (SMS client, Phone dialer) are launched strictly via external application launch mode.
+ * 1. ZERO iframe.src assignments for custom schemes, completely eliminating net::ERR_UNKNOWN_URL_SCHEME.
+ * 2. ZERO target="_blank" on custom protocols, preventing blank WebView error crashes.
+ * 3. Pre-fills both target phone number and SMS template body accurately.
+ * 4. Dispatches strictly via external application intent (LaunchMode.externalApplication / OS Intent Manager).
+ * 5. Auto-copies SMS text to clipboard as an instant fallback.
  */
+
+const BENGALI_TO_ENGLISH_DIGITS: Record<string, string> = {
+  '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+  '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'
+};
 
 /**
  * Normalizes a Bangladeshi or international phone number for dialing and SMS.
+ * Converts Bengali digits to standard English ASCII numerals and ensures proper prefixes.
  */
 export function sanitizePhone(phone: string): string {
   if (!phone) return '';
-  let cleaned = phone.replace(/[^0-9+]/g, '');
+  // Convert Bengali numerals (০-৯) to English ASCII (0-9)
+  const converted = phone.replace(/[০-৯]/g, d => BENGALI_TO_ENGLISH_DIGITS[d] || d);
+  let cleaned = converted.replace(/[^0-9+]/g, '');
   if (cleaned.startsWith('8801') && cleaned.length === 13) {
     cleaned = '+' + cleaned;
   } else if (cleaned.startsWith('01') && cleaned.length === 11) {
@@ -47,8 +57,8 @@ export function isAndroidDevice(): boolean {
 
 /**
  * Builds the native Universal SMS URI scheme.
- * - iOS format: sms:number1,number2&body=message
- * - Android / RFC 5724 format: sms:number1,number2?body=message
+ * - iOS format: sms:number&body=message
+ * - Android / RFC 5724 format: sms:number?body=message
  */
 export function buildUniversalSmsUri(
   phoneOrPhones: string | string[],
@@ -94,58 +104,59 @@ export function buildUniversalTelUri(phone: string): string {
  * 
  * Guarantees that:
  * 1. window.open(uri, '_blank') is NEVER called with custom schemes (which triggers ERR_UNKNOWN_URL_SCHEME in WebViews).
- * 2. An invisible, isolated iframe and safe anchor are used so the host viewport is NEVER navigated away.
- * 3. Bridges for Flutter InAppWebView, Capacitor, and Cordova are handled cleanly.
+ * 2. NO iframe.src assignment is used (iframe loading of sms: always fails with ERR_UNKNOWN_URL_SCHEME).
+ * 3. Bridges for Flutter InAppWebView (LaunchMode.externalApplication), Android JavascriptInterface, Capacitor, and Cordova are handled cleanly.
+ * 4. Safe ephemeral anchor dispatch with target="_self" activates the OS default handler directly.
  */
-export function launchNativeUri(uri: string): boolean {
+export function launchNativeUri(
+  uri: string,
+  recipientPhone?: string,
+  messageBody?: string
+): boolean {
   if (typeof window === 'undefined' || !uri) return false;
 
   try {
     const win = window as any;
 
-    // 1. In-App Browser / Hybrid container bridges (Flutter InAppWebView, Capacitor, Cordova)
+    // 1. Flutter InAppWebView external application intent bridge
     if (win.flutter_inappwebview?.callHandler) {
       win.flutter_inappwebview.callHandler('launchUrl', uri, 'externalApplication').catch(() => {});
+      win.flutter_inappwebview.callHandler('openUrl', { url: uri, mode: 'externalApplication' }).catch(() => {});
       win.flutter_inappwebview.callHandler('launchExternalUrl', uri).catch(() => {});
     }
+
+    // 2. Custom Android JavascriptInterface bridges (if app is embedded in native Android wrapper)
+    if (win.AndroidBridge?.launchUrl) {
+      win.AndroidBridge.launchUrl(uri);
+      return true;
+    }
+    if (win.Android?.launchExternal) {
+      win.Android.launchExternal(uri);
+      return true;
+    }
+    if (win.Android?.sendSms && recipientPhone) {
+      win.Android.sendSms(recipientPhone, messageBody || '');
+      return true;
+    }
+
+    // 3. Capacitor App Plugin
     if (win.Capacitor?.Plugins?.App?.openUrl) {
       win.Capacitor.Plugins.App.openUrl({ url: uri }).catch(() => {});
     }
+
+    // 4. Cordova InAppBrowser (_system opens system default app)
     if (win.cordova?.InAppBrowser?.open) {
       win.cordova.InAppBrowser.open(uri, '_system');
       return true;
     }
 
-    // 2. Safe Hidden Iframe Dispatcher
-    // An isolated 0x0 iframe passes custom schemes (sms:, tel:) directly to the OS Activity Manager
-    // without triggering net::ERR_UNKNOWN_URL_SCHEME or replacing the host application viewport.
-    let iframe = document.getElementById('native-external-intent-dispatcher-frame') as HTMLIFrameElement | null;
-    if (!iframe) {
-      iframe = document.createElement('iframe');
-      iframe.id = 'native-external-intent-dispatcher-frame';
-      iframe.style.position = 'fixed';
-      iframe.style.top = '-9999px';
-      iframe.style.left = '-9999px';
-      iframe.style.width = '0px';
-      iframe.style.height = '0px';
-      iframe.style.border = 'none';
-      iframe.style.opacity = '0';
-      iframe.style.pointerEvents = 'none';
-      iframe.setAttribute('aria-hidden', 'true');
-      document.body.appendChild(iframe);
-    }
-    iframe.src = uri;
-
-    // 3. Ephemeral Anchor Dispatcher (without target="_blank" to prevent child WebView crashes)
-    // For iOS Safari and standard mobile browsers, an anchor with rel="external" cleanly invokes the native app
+    // 5. Clean, Safe Ephemeral Anchor Dispatcher
+    // Uses target="_self" and rel="external". NEVER target="_blank" and NEVER iframe.src!
     const a = document.createElement('a');
     a.href = uri;
+    a.target = '_self';
     a.rel = 'external noopener noreferrer';
-    a.style.position = 'fixed';
-    a.style.top = '-9999px';
-    a.style.left = '-9999px';
-    a.style.opacity = '0';
-    a.style.pointerEvents = 'none';
+    a.style.display = 'none';
     a.setAttribute('aria-hidden', 'true');
     document.body.appendChild(a);
 
@@ -164,7 +175,7 @@ export function launchNativeUri(uri: string): boolean {
       if (document.body.contains(a)) {
         document.body.removeChild(a);
       }
-    }, 500);
+    }, 300);
 
     return true;
   } catch (err) {
@@ -181,14 +192,40 @@ export function triggerNativeSms(
   phoneOrPhones: string | string[],
   body: string = ''
 ): boolean {
-  const uri = buildUniversalSmsUri(phoneOrPhones, body);
-
-  // Copy text to clipboard as a helpful backup for the user
-  if (body && typeof navigator !== 'undefined' && navigator.clipboard) {
-    navigator.clipboard.writeText(body).catch(() => {});
+  // Always copy text to clipboard first as instant zero-fail backup
+  if (body && typeof navigator !== 'undefined') {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(body).catch(() => {
+        fallbackCopyText(body);
+      });
+    } else {
+      fallbackCopyText(body);
+    }
   }
 
-  return launchNativeUri(uri);
+  const primaryPhone = Array.isArray(phoneOrPhones) ? phoneOrPhones[0] : phoneOrPhones;
+  const uri = buildUniversalSmsUri(phoneOrPhones, body);
+  return launchNativeUri(uri, primaryPhone, body);
+}
+
+/**
+ * Fallback clipboard copy using temporary textarea
+ */
+function fallbackCopyText(text: string): boolean {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const success = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return success;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -197,7 +234,7 @@ export function triggerNativeSms(
 export function triggerNativeCall(phone: string): boolean {
   if (!phone) return false;
   const uri = buildUniversalTelUri(phone);
-  return launchNativeUri(uri);
+  return launchNativeUri(uri, phone);
 }
 
 /**
@@ -209,13 +246,6 @@ export function triggerNativeGroupSms(
 ): boolean {
   const validPhones = phones.map(p => sanitizePhone(p)).filter(Boolean);
   if (validPhones.length === 0 && !body) return false;
-
-  // Also copy numbers list and text to clipboard for user convenience
-  if (typeof navigator !== 'undefined' && navigator.clipboard) {
-    if (body) {
-      navigator.clipboard.writeText(body).catch(() => {});
-    }
-  }
 
   return triggerNativeSms(validPhones, body);
 }

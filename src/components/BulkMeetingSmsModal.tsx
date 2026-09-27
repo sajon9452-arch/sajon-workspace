@@ -26,6 +26,7 @@ import {
   isExecutiveMeetingType,
   MeetingSmsRecipient 
 } from '../utils/meetingSmsHelper';
+import { buildUniversalSmsUri } from '../utils/nativeIntentHelper';
 import { loadMembers, saveMembers } from '../utils/storage';
 import { fetchServerDatabase } from '../utils/serverApi';
 
@@ -386,15 +387,23 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSendNextPendingSms}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition whitespace-nowrap"
+              <a
+                href={nextPendingMember ? buildUniversalSmsUri(nextPendingMember.cleanPhone, message) : '#'}
+                target="_self"
+                rel="external"
+                onClick={(e) => {
+                  if (!nextPendingMember) {
+                    e.preventDefault();
+                    return;
+                  }
+                  handleSendNextPendingSms();
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition whitespace-nowrap no-underline"
                 title={`${nextPendingMember.name} কে এসএমএস পাঠান`}
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>পরবর্তী সদস্যকে এসএমএস পাঠান</span>
-              </button>
+              </a>
             </div>
           )}
 
@@ -552,10 +561,12 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
 
                       {/* Direct Individual SMS Trigger Button */}
                       {member.isValidPhone ? (
-                        <button
-                          type="button"
+                        <a
+                          href={buildUniversalSmsUri(member.cleanPhone, message)}
+                          target="_self"
+                          rel="external"
                           onClick={() => handleSendSingleSms(member)}
-                          className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95 ${
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95 no-underline ${
                             member.status === 'sent'
                               ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
                               : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
@@ -564,7 +575,7 @@ export const BulkMeetingSmsModal: React.FC<BulkMeetingSmsModalProps> = ({
                         >
                           <Send className="w-3 h-3" />
                           <span>{member.status === 'sent' ? 'পুনরায় পাঠান' : 'এসএমএস পাঠান'}</span>
-                        </button>
+                        </a>
                       ) : (
                         <span className="text-[11px] text-slate-400 italic px-2">
                           অপ্রাপ্য
