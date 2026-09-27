@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ActiveScreen, 
   Member, 
@@ -65,28 +65,18 @@ import { Header } from './components/Header';
 import { HomeScreen } from './components/HomeScreen';
 import { BottomNav } from './components/BottomNav';
 import { OfflineStatusBanner } from './components/OfflineStatusBanner';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { MemberListScreen } from './components/MemberListScreen';
+import { BloodDonationScreen } from './components/BloodDonationScreen';
+import { NoticeScreen } from './components/NoticeScreen';
+import { FundScreen } from './components/FundScreen';
+import { CalendarScreen } from './components/CalendarScreen';
+import { SupportScreen } from './components/SupportScreen';
+import { AdminPanelScreen } from './components/AdminPanelScreen';
+import { AdminModal } from './components/AdminModal';
+import { EmergencyHelplineModal } from './components/EmergencyHelplineModal';
+import { SheetGuideModal } from './components/SheetGuideModal';
 import { HeartHandshake, MapPin, ShieldCheck, Heart } from 'lucide-react';
-
-// Code-split screens for instant initial landing load & smaller bundle chunks
-const MemberListScreen = lazy(() => import('./components/MemberListScreen').then(m => ({ default: m.MemberListScreen })));
-const BloodDonationScreen = lazy(() => import('./components/BloodDonationScreen').then(m => ({ default: m.BloodDonationScreen })));
-const NoticeScreen = lazy(() => import('./components/NoticeScreen').then(m => ({ default: m.NoticeScreen })));
-const FundScreen = lazy(() => import('./components/FundScreen').then(m => ({ default: m.FundScreen })));
-const CalendarScreen = lazy(() => import('./components/CalendarScreen').then(m => ({ default: m.CalendarScreen })));
-const SupportScreen = lazy(() => import('./components/SupportScreen').then(m => ({ default: m.SupportScreen })));
-const AdminPanelScreen = lazy(() => import('./components/AdminPanelScreen').then(m => ({ default: m.AdminPanelScreen })));
-
-// Code-split modals
-const AdminModal = lazy(() => import('./components/AdminModal').then(m => ({ default: m.AdminModal })));
-const EmergencyHelplineModal = lazy(() => import('./components/EmergencyHelplineModal').then(m => ({ default: m.EmergencyHelplineModal })));
-const SheetGuideModal = lazy(() => import('./components/SheetGuideModal').then(m => ({ default: m.SheetGuideModal })));
-
-const ScreenLoadingFallback = () => (
-  <div className="flex flex-col items-center justify-center py-20 px-4 min-h-[360px]">
-    <div className="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3" />
-    <span className="text-xs font-semibold text-slate-500">পেজ লোড হচ্ছে...</span>
-  </div>
-);
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>('home');
@@ -484,7 +474,7 @@ export default function App() {
 
       {/* Main Screen Content */}
       <main className="max-w-6xl w-full mx-auto px-4 py-6 flex-1">
-        <Suspense fallback={<ScreenLoadingFallback />}>
+        <ErrorBoundary onResetToHome={() => setActiveScreen('home')}>
           {activeScreen === 'home' && (
             <HomeScreen
               profile={profile}
@@ -638,7 +628,7 @@ export default function App() {
               initialActiveTab={adminActiveTab}
             />
           )}
-        </Suspense>
+        </ErrorBoundary>
       </main>
 
       {/* Footer UI */}
@@ -694,7 +684,7 @@ export default function App() {
       />
 
       {/* Modals */}
-      <Suspense fallback={null}>
+      <ErrorBoundary fallback={null}>
         {isAdminModalOpen && (
           <AdminModal
             isOpen={isAdminModalOpen}
@@ -732,7 +722,7 @@ export default function App() {
             onClose={() => setIsSheetGuideOpen(false)}
           />
         )}
-      </Suspense>
+      </ErrorBoundary>
     </div>
   );
 }

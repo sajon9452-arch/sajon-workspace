@@ -1,9 +1,9 @@
 // Service Worker for সিলেট মানব সেবা সংগঠন PWA
 // Provides comprehensive offline caching for member records, member photos, static assets, and app shell
 
-const APP_CACHE_NAME = 'pms-app-cache-v4';
-const PHOTO_CACHE_NAME = 'pms-member-photos-v2';
-const API_CACHE_NAME = 'pms-api-cache-v2';
+const APP_CACHE_NAME = 'pms-app-cache-v5';
+const PHOTO_CACHE_NAME = 'pms-member-photos-v3';
+const API_CACHE_NAME = 'pms-api-cache-v3';
 
 const ALL_CACHES = [APP_CACHE_NAME, PHOTO_CACHE_NAME, API_CACHE_NAME];
 
@@ -26,7 +26,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate Event: Clean up legacy caches
+// Activate Event: Clean up legacy caches and claim clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -47,16 +47,11 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests, dev tools, and dev hot-reloads
+  // Skip non-GET requests and dev tools
   if (
     request.method !== 'GET' ||
     url.protocol.startsWith('chrome-extension') ||
-    url.pathname.startsWith('/@') ||
-    url.pathname.startsWith('/src/') ||
-    url.pathname.includes('/node_modules/') ||
-    url.pathname.includes('hot-update') ||
-    url.search.includes('v=') ||
-    url.search.includes('t=')
+    url.pathname.includes('hot-update')
   ) {
     return;
   }
@@ -77,7 +72,7 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         } catch (fetchErr) {
-          // If offline and not in cache, return an empty 404 image response
+          // If offline and not in cache, return an empty 404 image response without crashing
           return new Response(null, { status: 404, statusText: 'Offline Photo Unavailable' });
         }
       })
@@ -126,7 +121,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Skip any other /api/ write endpoints (like POST/DELETE)
+  // Skip other /api/ endpoints (like POST/DELETE)
   if (url.pathname.startsWith('/api/')) {
     return;
   }
@@ -180,7 +175,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 6. STATIC ASSETS (.js, .css, images, icons, fonts): Stale-While-Revalidate
+  // 6. STATIC ASSETS (.js, .css, images, icons, fonts): Cache-First / Stale-While-Revalidate
   const isStaticAsset = 
     url.pathname.endsWith('.js') || 
     url.pathname.endsWith('.css') || 
@@ -206,7 +201,17 @@ self.addEventListener('fetch', (event) => {
             }
             return networkResponse;
           })
-          .catch(() => cachedResponse);
+          .catch((err) => {
+            if (cachedResponse) return cachedResponse;
+            // For JavaScript modules, if network fails and not in cache, return empty module export
+            // to prevent uncaught syntax or MIME errors
+            if (url.pathname.endsWith('.js')) {
+              return new Response('export default {};', {
+                headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+              });
+            }
+            return new Response('', { status: 504, statusText: 'Gateway Timeout (Offline)' });
+          });
 
         return cachedResponse || fetchPromise;
       })

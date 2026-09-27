@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   ShieldCheck,
   Users,
@@ -47,7 +47,8 @@ import {
   Globe,
   Send
 } from 'lucide-react';
-const ExpenseModal = lazy(() => import('./ExpenseModal').then(m => ({ default: m.ExpenseModal })));
+import { ExpenseModal } from './ExpenseModal';
+import { AdminHomePageManager } from './AdminHomePageManager';
 import { 
   MeetingFields, 
   DEFAULT_MEETING_FIELDS,
@@ -72,7 +73,6 @@ import {
   OrganizationRule,
   CalendarMonthlyBanner
 } from '../types';
-const AdminHomePageManager = lazy(() => import('./AdminHomePageManager').then(m => ({ default: m.AdminHomePageManager })));
 import {
   toBengaliNumber,
   formatTaka,
@@ -4116,27 +4116,20 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
       {/* TAB: HOMEPAGE SETTINGS */}
       {activeTab === 'homepage' && (
-        <Suspense fallback={
-          <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-slate-200">
-            <div className="w-8 h-8 border-3 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mb-2" />
-            <span className="text-xs font-semibold text-slate-500">হোমপেজ সেটিংস লোড হচ্ছে...</span>
-          </div>
-        }>
-          <AdminHomePageManager
-            slides={homeSlides}
-            onUpdateSlides={onUpdateHomeSlides || (() => {})}
-            activities={humanitarianActivities}
-            onUpdateActivities={onUpdateHumanitarianActivities || (() => {})}
-            rules={organizationRules}
-            onUpdateRules={onUpdateOrganizationRules || (() => {})}
-            profile={profile}
-            onUpdateProfile={onUpdateProfile || (() => {})}
-            calendarBanners={calendarBanners}
-            onUpdateCalendarBanners={onUpdateCalendarBanners}
-            notifySuccess={notifySuccess}
-            notifyError={notifyError}
-          />
-        </Suspense>
+        <AdminHomePageManager
+          slides={homeSlides}
+          onUpdateSlides={onUpdateHomeSlides || (() => {})}
+          activities={humanitarianActivities}
+          onUpdateActivities={onUpdateHumanitarianActivities || (() => {})}
+          rules={organizationRules}
+          onUpdateRules={onUpdateOrganizationRules || (() => {})}
+          profile={profile}
+          onUpdateProfile={onUpdateProfile || (() => {})}
+          calendarBanners={calendarBanners}
+          onUpdateCalendarBanners={onUpdateCalendarBanners}
+          notifySuccess={notifySuccess}
+          notifyError={notifyError}
+        />
       )}
 
       {/* MEMBER MODAL (Add / Edit) */}
@@ -4879,34 +4872,32 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
       {/* EXPENSE MODAL (Add / Edit) */}
       {isExpenseModalOpen && (
-        <Suspense fallback={null}>
-          <ExpenseModal
-            isOpen={isExpenseModalOpen}
-            onClose={() => {
-              setIsExpenseModalOpen(false);
-              setEditingExpense(null);
-            }}
-            onSubmit={handleSaveExpense}
-            onSave={handleSaveExpense}
-            initialData={
-              editingExpense
-                ? {
-                    description: editingExpense.description || '',
-                    amount: editingExpense.amount,
-                    disbursedTo: editingExpense.disbursedTo || editingExpense.memberName,
-                    date: editingExpense.date,
-                    category: editingExpense.category || 'ত্রাণ ও খাদ্য সহায়তা',
-                    voucherNo: editingExpense.notes?.includes('ভাউচার:')
-                      ? editingExpense.notes.split('ভাউচার:')[1].split('-')[0].trim()
-                      : '',
-                    notes: editingExpense.notes?.includes('ভাউচার:')
-                      ? (editingExpense.notes.split(' - ').length > 1 ? editingExpense.notes.split(' - ').slice(1).join(' - ').trim() : '')
-                      : (editingExpense.notes || '')
-                  }
-                : null
-            }
-          />
-        </Suspense>
+        <ExpenseModal
+          isOpen={isExpenseModalOpen}
+          onClose={() => {
+            setIsExpenseModalOpen(false);
+            setEditingExpense(null);
+          }}
+          onSubmit={handleSaveExpense}
+          onSave={handleSaveExpense}
+          initialData={
+            editingExpense
+              ? {
+                  description: editingExpense.description || '',
+                  amount: editingExpense.amount,
+                  disbursedTo: editingExpense.disbursedTo || editingExpense.memberName,
+                  date: editingExpense.date,
+                  category: editingExpense.category || 'ত্রাণ ও খাদ্য সহায়তা',
+                  voucherNo: editingExpense.notes?.includes('ভাউচার:')
+                    ? editingExpense.notes.split('ভাউচার:')[1].split('-')[0].trim()
+                    : '',
+                  notes: editingExpense.notes?.includes('ভাউচার:')
+                    ? (editingExpense.notes.split(' - ').length > 1 ? editingExpense.notes.split(' - ').slice(1).join(' - ').trim() : '')
+                    : (editingExpense.notes || '')
+                }
+              : null
+          }
+        />
       )}
 
       {/* NOTICE MODAL (Add / Edit) with Dynamic Meeting Templates */}
