@@ -3,7 +3,7 @@ import { INITIAL_MEMBERS, INITIAL_DONORS, INITIAL_NOTICES, INITIAL_FUNDS, INITIA
 import { syncKeyToServer, resetServerDatabase, clearServerDatabase, ServerDatabasePayload } from './serverApi';
 import { sortMembersOldestFirst } from './helpers';
 import { preloadMembersPhotos } from './photoPreloader';
-import { saveOfflineMembers, getOfflineMembers } from './offlineDb';
+import { saveOfflineMembers, getOfflineMembers, saveOfflineMetadata, getOfflineMetadata } from './offlineDb';
 
 export const STORAGE_KEYS = {
   PROFILE: 'pms_profile_v2',
@@ -151,13 +151,27 @@ function reconcileEntityStorageList<T extends { id: string }>(
     }
   }
 
-  // Local additions (guarantee admin content never vanishes)
+  // Local additions and edits (guarantee admin content never vanishes or gets blanked)
   let hasLocalAdditions = false;
   for (const item of localList) {
     if (item && item.id && !deletedIds.includes(item.id)) {
       if (!map.has(item.id)) {
         map.set(item.id, item);
         hasLocalAdditions = true;
+      } else {
+        const serverItem = map.get(item.id)! as any;
+        const localItem = item as any;
+        const mergedItem: any = { ...serverItem };
+        for (const k of Object.keys(localItem)) {
+          const lVal = localItem[k];
+          const sVal = serverItem[k];
+          if (lVal !== undefined && lVal !== null && lVal !== '') {
+            if (sVal === undefined || sVal === null || sVal === '') {
+              mergedItem[k] = lVal;
+            }
+          }
+        }
+        map.set(item.id, mergedItem as T);
       }
     }
   }
@@ -569,7 +583,55 @@ export async function hydrateFromOfflineDb(): Promise<Member[]> {
         preloadMembersPhotos(sorted);
         notifyDataChange(STORAGE_KEYS.MEMBERS, sorted);
       }
-      return sorted;
+    }
+
+    // Hydrate offline donors, funds, notices if localStorage has no data
+    try {
+      const offDonors = await getOfflineMetadata<BloodDonor[]>('donors');
+      if (Array.isArray(offDonors) && offDonors.length > 0 && !localStorage.getItem(STORAGE_KEYS.DONORS)) {
+        safeSetLocalStorage(STORAGE_KEYS.DONORS, offDonors);
+        notifyDataChange(STORAGE_KEYS.DONORS, offDonors);
+      }
+
+      const offFunds = await getOfflineMetadata<FundRecord[]>('funds');
+      if (Array.isArray(offFunds) && offFunds.length > 0 && !localStorage.getItem(STORAGE_KEYS.FUNDS)) {
+        safeSetLocalStorage(STORAGE_KEYS.FUNDS, offFunds);
+        notifyDataChange(STORAGE_KEYS.FUNDS, offFunds);
+      }
+
+      const offNotices = await getOfflineMetadata<Notice[]>('notices');
+      if (Array.isArray(offNotices) && offNotices.length > 0 && !localStorage.getItem(STORAGE_KEYS.NOTICES)) {
+        safeSetLocalStorage(STORAGE_KEYS.NOTICES, offNotices);
+        notifyDataChange(STORAGE_KEYS.NOTICES, offNotices);
+      }
+
+      const offActs = await getOfflineMetadata<HumanitarianActivity[]>('humanitarianActivities');
+      if (Array.isArray(offActs) && offActs.length > 0 && !localStorage.getItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES)) {
+        safeSetLocalStorage(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, offActs);
+        notifyDataChange(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, offActs);
+      }
+
+      const offSlides = await getOfflineMetadata<HomeSlide[]>('homeSlides');
+      if (Array.isArray(offSlides) && offSlides.length > 0 && !localStorage.getItem(STORAGE_KEYS.HOME_SLIDES)) {
+        safeSetLocalStorage(STORAGE_KEYS.HOME_SLIDES, offSlides);
+        notifyDataChange(STORAGE_KEYS.HOME_SLIDES, offSlides);
+      }
+
+      const offRules = await getOfflineMetadata<OrganizationRule[]>('organizationRules');
+      if (Array.isArray(offRules) && offRules.length > 0 && !localStorage.getItem(STORAGE_KEYS.ORGANIZATION_RULES)) {
+        safeSetLocalStorage(STORAGE_KEYS.ORGANIZATION_RULES, offRules);
+        notifyDataChange(STORAGE_KEYS.ORGANIZATION_RULES, offRules);
+      }
+
+      const offReports = await getOfflineMetadata<SupportReportItem[]>('supportReports');
+      if (Array.isArray(offReports) && offReports.length > 0 && !localStorage.getItem(STORAGE_KEYS.SUPPORT_REPORTS)) {
+        safeSetLocalStorage(STORAGE_KEYS.SUPPORT_REPORTS, offReports);
+        notifyDataChange(STORAGE_KEYS.SUPPORT_REPORTS, offReports);
+      }
+    } catch (metaErr) {}
+
+    if (active.length > 0) {
+      return sortMembersOldestFirst(active);
     }
   } catch (e) {
     console.warn('[OfflineDb] Hydration skipped:', e);
@@ -641,6 +703,7 @@ export function saveDonors(donors: BloodDonor[]): void {
     const filtered = donors.filter(d => !deletedIds.includes(d.id));
     notifyDataChange(STORAGE_KEYS.DONORS, filtered);
     safeSetLocalStorage(STORAGE_KEYS.DONORS, filtered);
+    saveOfflineMetadata('donors', filtered).catch(() => {});
     syncKeyToServer('donors', filtered);
   } catch (e) {
     console.error('Error saving donors', e);
@@ -711,6 +774,7 @@ export function saveNotices(notices: Notice[]): void {
     const filtered = notices.filter(n => !deletedIds.includes(n.id));
     notifyDataChange(STORAGE_KEYS.NOTICES, filtered);
     safeSetLocalStorage(STORAGE_KEYS.NOTICES, filtered);
+    saveOfflineMetadata('notices', filtered).catch(() => {});
     syncKeyToServer('notices', filtered);
   } catch (e) {
     console.error('Error saving notices', e);
@@ -781,6 +845,7 @@ export function saveFunds(funds: FundRecord[]): void {
     const filtered = funds.filter(f => !deletedIds.includes(f.id));
     notifyDataChange(STORAGE_KEYS.FUNDS, filtered);
     safeSetLocalStorage(STORAGE_KEYS.FUNDS, filtered);
+    saveOfflineMetadata('funds', filtered).catch(() => {});
     syncKeyToServer('funds', filtered);
   } catch (e) {
     console.error('Error saving funds', e);
@@ -918,6 +983,7 @@ export function saveSupportReports(reports: SupportReportItem[]): void {
     const filtered = reports.filter(r => !deletedIds.includes(r.id));
     notifyDataChange(STORAGE_KEYS.SUPPORT_REPORTS, filtered);
     safeSetLocalStorage(STORAGE_KEYS.SUPPORT_REPORTS, filtered);
+    saveOfflineMetadata('supportReports', filtered).catch(() => {});
     syncKeyToServer('supportReports', filtered);
   } catch (e) {
     console.error('Error saving support reports', e);
@@ -974,6 +1040,7 @@ export function saveHomeSlides(slides: HomeSlide[]): void {
   try {
     notifyDataChange(STORAGE_KEYS.HOME_SLIDES, slides);
     safeSetLocalStorage(STORAGE_KEYS.HOME_SLIDES, slides);
+    saveOfflineMetadata('homeSlides', slides).catch(() => {});
     syncKeyToServer('homeSlides', slides);
   } catch (e) {
     console.error('Error saving home slides', e);
@@ -1071,6 +1138,7 @@ export function saveHumanitarianActivities(activities: HumanitarianActivity[]): 
     const filtered = activities.filter(a => !deletedIds.includes(a.id));
     notifyDataChange(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, filtered);
     safeSetLocalStorage(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, filtered);
+    saveOfflineMetadata('humanitarianActivities', filtered).catch(() => {});
     syncKeyToServer('humanitarianActivities', filtered);
   } catch (e) {
     console.error('Error saving humanitarian activities', e);
@@ -1141,6 +1209,7 @@ export function saveOrganizationRules(rules: OrganizationRule[]): void {
     const filtered = rules.filter(r => !deletedIds.includes(r.id));
     notifyDataChange(STORAGE_KEYS.ORGANIZATION_RULES, filtered);
     safeSetLocalStorage(STORAGE_KEYS.ORGANIZATION_RULES, filtered);
+    saveOfflineMetadata('organizationRules', filtered).catch(() => {});
     syncKeyToServer('organizationRules', filtered);
   } catch (e) {
     console.error('Error saving organization rules', e);

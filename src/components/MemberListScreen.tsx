@@ -280,7 +280,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
     setName(m.name);
     setDesignation(m.designation);
     setPhone(m.phone);
-    setArea(m.area || (isExp ? '' : 'পতেঙ্গা, চট্টগ্রাম'));
+    setArea(m.area || (isExp ? 'প্রবাসী' : ''));
     setPhotoUrl(getMemberPhotoUrl(m));
     setIsExpatriateForm(isExp);
     setCountryStatus(m.countryStatus || '');
@@ -294,7 +294,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
     setName('');
     setDesignation('');
     setPhone('');
-    setArea(isExp ? '' : 'পতেঙ্গা, চট্টগ্রাম');
+    setArea(isExp ? 'প্রবাসী' : '');
     setPhotoUrl('');
     setIsExpatriateForm(isExp);
     setCountryStatus(''); // STRICTLY BLANK: No default or hardcoded value
@@ -323,7 +323,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
       name: name.trim(),
       designation: designation.trim(),
       phone: phone.trim(),
-      area: area.trim() || (isExpatriateForm ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'),
+      area: area.trim() || (isExpatriateForm ? 'প্রবাসী' : ''),
       photoUrl: finalPhoto,
       avatarUrl: finalPhoto,
       photo_url: finalPhoto,
@@ -514,7 +514,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
               জ্যেষ্ঠতা ক্রম অনুসারে সজ্জিত (#১ থেকে শুরু)
             </span>
           </div>
-          <span>{activeTab === 'general' ? 'ঠিকানা: পতেঙ্গা, চট্টগ্রাম' : 'প্রবাসী ভাইদের তালিকা'}</span>
+          <span>{activeTab === 'general' ? 'সাধারণ সদস্য তালিকা' : 'প্রবাসী ভাইদের তালিকা'}</span>
         </div>
 
         {filteredMembers.length === 0 ? (
@@ -623,7 +623,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                         {isExp && (
                           <p className="text-xs font-semibold text-blue-700 flex items-center gap-1.5">
                             <Globe className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                            <span>দেশ: {member.countryStatus || 'সৌদি আরব'}</span>
+                            <span>দেশ: {member.countryStatus || 'প্রবাসী'}</span>
                           </p>
                         )}
 
@@ -633,7 +633,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                           <span className="truncate">
                             {isExp 
                               ? `অবস্থান: ${member.area || 'প্রবাসী'}` 
-                              : (member.area || 'পতেঙ্গা, চট্টগ্রাম')}
+                              : (member.area || 'সিলেট')}
                           </span>
                         </p>
                       </div>

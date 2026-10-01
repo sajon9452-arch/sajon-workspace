@@ -320,7 +320,7 @@ function writeLocalDatabase(data: Partial<AppDatabase>): AppDatabase {
     }
     const current = readLocalDatabase();
 
-    // Permanent Data Safety & CRUD Integrity: Prevent accidental member data wipes
+    // Permanent Data Safety & CRUD Integrity: Prevent accidental data wipes
     let membersToSave = data.members;
     if (Array.isArray(membersToSave)) {
       if (membersToSave.length === 0 && Array.isArray(current.members) && current.members.length > 0) {
@@ -331,10 +331,73 @@ function writeLocalDatabase(data: Partial<AppDatabase>): AppDatabase {
       }
     }
 
+    let donorsToSave = data.donors;
+    if (Array.isArray(donorsToSave)) {
+      if (donorsToSave.length === 0 && Array.isArray(current.donors) && current.donors.length > 0) {
+        console.warn('[Server] Rejecting attempt to overwrite donors with empty array. Data preserved.');
+        donorsToSave = current.donors;
+      }
+    }
+
+    let fundsToSave = data.funds;
+    if (Array.isArray(fundsToSave)) {
+      if (fundsToSave.length === 0 && Array.isArray(current.funds) && current.funds.length > 0) {
+        console.warn('[Server] Rejecting attempt to overwrite funds with empty array. Data preserved.');
+        fundsToSave = current.funds;
+      }
+    }
+
+    let noticesToSave = data.notices;
+    if (Array.isArray(noticesToSave)) {
+      if (noticesToSave.length === 0 && Array.isArray(current.notices) && current.notices.length > 0) {
+        console.warn('[Server] Rejecting attempt to overwrite notices with empty array. Data preserved.');
+        noticesToSave = current.notices;
+      }
+    }
+
+    let homeSlidesToSave = data.homeSlides;
+    if (Array.isArray(homeSlidesToSave)) {
+      if (homeSlidesToSave.length === 0 && Array.isArray(current.homeSlides) && current.homeSlides.length > 0) {
+        console.warn('[Server] Rejecting attempt to overwrite homeSlides with empty array. Data preserved.');
+        homeSlidesToSave = current.homeSlides;
+      }
+    }
+
+    let humanitarianActivitiesToSave = data.humanitarianActivities;
+    if (Array.isArray(humanitarianActivitiesToSave)) {
+      if (humanitarianActivitiesToSave.length === 0 && Array.isArray(current.humanitarianActivities) && current.humanitarianActivities.length > 0) {
+        console.warn('[Server] Rejecting attempt to overwrite humanitarianActivities with empty array. Data preserved.');
+        humanitarianActivitiesToSave = current.humanitarianActivities;
+      }
+    }
+
+    let organizationRulesToSave = data.organizationRules;
+    if (Array.isArray(organizationRulesToSave)) {
+      if (organizationRulesToSave.length === 0 && Array.isArray(current.organizationRules) && current.organizationRules.length > 0) {
+        console.warn('[Server] Rejecting attempt to overwrite organizationRules with empty array. Data preserved.');
+        organizationRulesToSave = current.organizationRules;
+      }
+    }
+
+    let supportReportsToSave = data.supportReports;
+    if (Array.isArray(supportReportsToSave)) {
+      if (supportReportsToSave.length === 0 && Array.isArray(current.supportReports) && current.supportReports.length > 0) {
+        console.warn('[Server] Rejecting attempt to overwrite supportReports with empty array. Data preserved.');
+        supportReportsToSave = current.supportReports;
+      }
+    }
+
     const updated: AppDatabase = {
       ...current,
       ...data,
       ...(membersToSave !== undefined ? { members: membersToSave } : {}),
+      ...(donorsToSave !== undefined ? { donors: donorsToSave } : {}),
+      ...(fundsToSave !== undefined ? { funds: fundsToSave } : {}),
+      ...(noticesToSave !== undefined ? { notices: noticesToSave } : {}),
+      ...(homeSlidesToSave !== undefined ? { homeSlides: homeSlidesToSave } : {}),
+      ...(humanitarianActivitiesToSave !== undefined ? { humanitarianActivities: humanitarianActivitiesToSave } : {}),
+      ...(organizationRulesToSave !== undefined ? { organizationRules: organizationRulesToSave } : {}),
+      ...(supportReportsToSave !== undefined ? { supportReports: supportReportsToSave } : {}),
       updatedAt: new Date().toISOString()
     };
     // Safe atomic write
@@ -586,6 +649,11 @@ function mapMemberToDb(m: any) {
     avatar: photo,
     blood_group: m.bloodGroup || '',
     join_date: m.joinDate || '',
+    email: m.email || '',
+    status: m.status || 'সক্রিয়',
+    is_executive: Boolean(m.isExecutive ?? (m.category === 'কার্যকরী কমিটি' || m.committeeType === 'executive')),
+    category: m.category || (m.isExecutive ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য'),
+    committee_type: m.committeeType || (m.isExecutive ? 'executive' : 'general'),
     serial: typeof m.serial === 'number' ? m.serial : null,
     created_at: m.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString()
@@ -594,6 +662,7 @@ function mapMemberToDb(m: any) {
 
 function mapDbToMember(r: any, supabaseUrl?: string): any {
   const photo = extractMemberPhoto(r, supabaseUrl);
+  const isExec = Boolean(r.is_executive ?? r.isExecutive ?? (r.category === 'কার্যকরী কমিটি' || r.committee_type === 'executive' || r.committeeType === 'executive'));
   return {
     id: r.id,
     name: r.name || '',
@@ -605,8 +674,14 @@ function mapDbToMember(r: any, supabaseUrl?: string): any {
     memberType: r.member_type || r.memberType || (r.is_expatriate ? 'expatriate' : 'general'),
     photoUrl: photo,
     avatarUrl: photo,
+    avatar: photo,
     bloodGroup: r.blood_group || r.bloodGroup || '',
     joinDate: r.join_date || r.joinDate || '',
+    email: r.email || '',
+    status: r.status || 'সক্রিয়',
+    isExecutive: isExec,
+    category: r.category || (isExec ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য'),
+    committeeType: r.committee_type || r.committeeType || (isExec ? 'executive' : 'general'),
     serial: r.serial != null ? Number(r.serial) : undefined,
     createdAt: r.created_at || r.createdAt || new Date().toISOString()
   };
@@ -620,6 +695,8 @@ function mapDonorToDb(d: any) {
     phone: d.phone || '',
     area: d.area || '',
     last_donation_date: d.lastDonationDate || '',
+    next_eligible_date: d.nextEligibleDate || '',
+    notes: d.notes || '',
     is_available: d.isAvailable !== false,
     total_donations: Number(d.totalDonations) || 0,
     created_at: d.createdAt || new Date().toISOString(),
@@ -635,6 +712,8 @@ function mapDbToDonor(r: any): any {
     phone: r.phone || '',
     area: r.area || '',
     lastDonationDate: r.last_donation_date || r.lastDonationDate || '',
+    nextEligibleDate: r.next_eligible_date || r.nextEligibleDate || '',
+    notes: r.notes || '',
     isAvailable: r.is_available !== false,
     totalDonations: Number(r.total_donations ?? r.totalDonations) || 0,
     createdAt: r.created_at || r.createdAt || new Date().toISOString()
@@ -652,10 +731,15 @@ function mapFundToDb(f: any) {
     year: f.year || '',
     member_id: f.memberId || '',
     member_name: f.memberName || '',
-    payment_method: f.paymentMethod || '',
+    payment_method: f.paymentMethod || f.gateway || '',
+    gateway: f.gateway || f.paymentMethod || '',
     trx_id: f.trxId || '',
-    sender_phone: f.senderPhone || '',
-    notes: f.notes || '',
+    sender_phone: f.senderPhone || f.phone || '',
+    phone: f.phone || f.senderPhone || '',
+    description: f.description || f.notes || '',
+    notes: f.notes || f.description || '',
+    disbursed_to: f.disbursedTo || '',
+    approved_at: f.approvedAt || '',
     status: f.status || 'approved',
     created_at: f.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString()
@@ -673,10 +757,15 @@ function mapDbToFund(r: any): any {
     year: r.year || '',
     memberId: r.member_id || r.memberId || '',
     memberName: r.member_name || r.memberName || '',
-    paymentMethod: r.payment_method || r.paymentMethod || '',
+    paymentMethod: r.payment_method || r.paymentMethod || r.gateway || '',
+    gateway: r.gateway || r.payment_method || r.paymentMethod || '',
     trxId: r.trx_id || r.trxId || '',
-    senderPhone: r.sender_phone || r.senderPhone || '',
-    notes: r.notes || '',
+    senderPhone: r.sender_phone || r.senderPhone || r.phone || '',
+    phone: r.phone || r.sender_phone || r.senderPhone || '',
+    description: r.description || r.notes || '',
+    notes: r.notes || r.description || '',
+    disbursedTo: r.disbursed_to || r.disbursedTo || '',
+    approvedAt: r.approved_at || r.approvedAt || '',
     status: r.status || 'approved',
     createdAt: r.created_at || r.createdAt || new Date().toISOString()
   };
@@ -686,6 +775,8 @@ function mapNoticeToDb(n: any) {
   return {
     id: n.id,
     notice_text: n.noticeText || '',
+    title: n.title || '',
+    priority: n.priority || 'সাধারণ',
     date: n.date || '',
     category: n.category || 'সাধারণ',
     is_pinned: Boolean(n.isPinned),
@@ -698,6 +789,8 @@ function mapDbToNotice(r: any): any {
   return {
     id: r.id,
     noticeText: r.notice_text || r.noticeText || '',
+    title: r.title || '',
+    priority: r.priority || 'সাধারণ',
     date: r.date || '',
     category: r.category || 'সাধারণ',
     isPinned: Boolean(r.is_pinned ?? r.isPinned),
@@ -948,11 +1041,12 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
                 map.set(m.id, m);
               } else if (map.has(m.id)) {
                 const cloudM = map.get(m.id);
-                // If cloud member record has no photo, but local record has a valid photo, preserve it
+                const combined = { ...m, ...cloudM };
                 if (!cloudM.photoUrl && m.photoUrl) {
-                  cloudM.photoUrl = m.photoUrl;
-                  cloudM.avatarUrl = m.photoUrl;
+                  combined.photoUrl = m.photoUrl;
+                  combined.avatarUrl = m.photoUrl;
                 }
+                map.set(m.id, combined);
               }
             });
           }
@@ -974,6 +1068,8 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
             merged.donors.forEach((d: any) => {
               if (!map.has(d.id) && !deletedDonorIds.includes(d.id)) {
                 map.set(d.id, d);
+              } else if (map.has(d.id)) {
+                map.set(d.id, { ...d, ...map.get(d.id) });
               }
             });
           }
@@ -995,6 +1091,8 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
             merged.funds.forEach((f: any) => {
               if (!map.has(f.id) && !deletedFundIds.includes(f.id)) {
                 map.set(f.id, f);
+              } else if (map.has(f.id)) {
+                map.set(f.id, { ...f, ...map.get(f.id) });
               }
             });
           }
@@ -1016,6 +1114,8 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
             merged.notices.forEach((n: any) => {
               if (!map.has(n.id) && !deletedNoticeIds.includes(n.id)) {
                 map.set(n.id, n);
+              } else if (map.has(n.id)) {
+                map.set(n.id, { ...n, ...map.get(n.id) });
               }
             });
           }
@@ -1037,6 +1137,8 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
             merged.humanitarianActivities.forEach((a: any) => {
               if (!map.has(a.id) && !deletedActIds.includes(a.id)) {
                 map.set(a.id, a);
+              } else if (map.has(a.id)) {
+                map.set(a.id, { ...a, ...map.get(a.id) });
               }
             });
           }
@@ -1058,6 +1160,8 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
             merged.supportReports.forEach((r: any) => {
               if (!map.has(r.id) && !deletedReportIds.includes(r.id)) {
                 map.set(r.id, r);
+              } else if (map.has(r.id)) {
+                map.set(r.id, { ...r, ...map.get(r.id) });
               }
             });
           }
@@ -1079,6 +1183,8 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
             merged.homeSlides.forEach((s: any) => {
               if (!map.has(s.id) && !deletedSlideIds.includes(s.id)) {
                 map.set(s.id, s);
+              } else if (map.has(s.id)) {
+                map.set(s.id, { ...s, ...map.get(s.id) });
               }
             });
           }
@@ -1100,6 +1206,8 @@ async function syncFromSupabase(): Promise<AppDatabase | null> {
             merged.organizationRules.forEach((r: any) => {
               if (!map.has(r.id) && !deletedRuleIds.includes(r.id)) {
                 map.set(r.id, r);
+              } else if (map.has(r.id)) {
+                map.set(r.id, { ...r, ...map.get(r.id) });
               }
             });
           }

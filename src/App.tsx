@@ -186,9 +186,20 @@ export default function App() {
   const handleAddMember = async (newMember: Omit<Member, 'id'>): Promise<Member> => {
     const timestamp = Date.now();
     const memberId = `m-${timestamp}-${Math.random().toString(36).substring(2, 6)}`;
+
+    // Auto-calculate serial number if not provided
+    let serial = (newMember as any).serial;
+    if (typeof serial !== 'number' || isNaN(serial)) {
+      const maxSerial = members.reduce((max, m) => {
+        return typeof m.serial === 'number' && !isNaN(m.serial) ? Math.max(max, m.serial) : max;
+      }, 0);
+      serial = maxSerial + 1;
+    }
+
     const member: Member = {
       ...newMember,
       id: memberId,
+      serial,
       createdAt: (newMember as any).createdAt || new Date(timestamp).toISOString(),
     };
     
@@ -208,7 +219,14 @@ export default function App() {
   const handleEditMember = async (updatedMember: Member): Promise<void> => {
     clearDeletedMemberId(updatedMember.id);
     setMembers(prev => {
-      const updated = prev.map(m => m.id === updatedMember.id ? updatedMember : m);
+      const existing = prev.find(m => m.id === updatedMember.id);
+      const mergedMember: Member = {
+        ...existing,
+        ...updatedMember,
+        serial: updatedMember.serial !== undefined ? updatedMember.serial : existing?.serial,
+        createdAt: existing?.createdAt || updatedMember.createdAt || new Date().toISOString()
+      };
+      const updated = prev.map(m => m.id === updatedMember.id ? mergedMember : m);
       saveMembers(updated);
       syncKeyToServer('members', updated).catch(() => {});
       return updated;
@@ -246,7 +264,12 @@ export default function App() {
   const handleEditDonor = async (updatedDonor: BloodDonor): Promise<void> => {
     clearDeletedDonorId(updatedDonor.id);
     setDonors(prev => {
-      const updated = prev.map(d => d.id === updatedDonor.id ? updatedDonor : d);
+      const existing = prev.find(d => d.id === updatedDonor.id);
+      const mergedDonor: BloodDonor = {
+        ...existing,
+        ...updatedDonor
+      };
+      const updated = prev.map(d => d.id === updatedDonor.id ? mergedDonor : d);
       saveDonors(updated);
       syncKeyToServer('donors', updated).catch(() => {});
       return updated;
@@ -284,7 +307,12 @@ export default function App() {
   const handleEditNotice = async (updatedNotice: Notice): Promise<void> => {
     clearDeletedNoticeId(updatedNotice.id);
     setNotices(prev => {
-      const updated = prev.map(n => n.id === updatedNotice.id ? updatedNotice : n);
+      const existing = prev.find(n => n.id === updatedNotice.id);
+      const mergedNotice: Notice = {
+        ...existing,
+        ...updatedNotice
+      };
+      const updated = prev.map(n => n.id === updatedNotice.id ? mergedNotice : n);
       saveNotices(updated);
       syncKeyToServer('notices', updated).catch(() => {});
       return updated;
@@ -322,7 +350,12 @@ export default function App() {
   const handleEditFund = async (updatedFund: FundRecord): Promise<void> => {
     clearDeletedFundId(updatedFund.id);
     setFunds(prev => {
-      const updated = prev.map(f => f.id === updatedFund.id ? updatedFund : f);
+      const existing = prev.find(f => f.id === updatedFund.id);
+      const mergedFund: FundRecord = {
+        ...existing,
+        ...updatedFund
+      };
+      const updated = prev.map(f => f.id === updatedFund.id ? mergedFund : f);
       saveFunds(updated);
       syncKeyToServer('funds', updated).catch(() => {});
       return updated;

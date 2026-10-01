@@ -259,7 +259,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [memberNameInput, setMemberNameInput] = useState('');
   const [memberDesignationInput, setMemberDesignationInput] = useState('সদস্য');
   const [memberPhoneInput, setMemberPhoneInput] = useState('');
-  const [memberAreaInput, setMemberAreaInput] = useState('পতেঙ্গা, চট্টগ্রাম');
+  const [memberAreaInput, setMemberAreaInput] = useState('');
   const [memberJoinDateInput, setMemberJoinDateInput] = useState(new Date().toISOString().split('T')[0]);
   const [memberEmailInput, setMemberEmailInput] = useState('');
   const [memberStatusInput, setMemberStatusInput] = useState<'সক্রিয়' | 'স্থগিত'>('সক্রিয়');
@@ -273,7 +273,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       setMemberNameInput(editingMember.name || '');
       setMemberDesignationInput(editingMember.designation || 'সদস্য');
       setMemberPhoneInput(editingMember.phone || '');
-      setMemberAreaInput(editingMember.area || (editingMember.isExpatriate ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'));
+      setMemberAreaInput(editingMember.area || (editingMember.isExpatriate ? 'প্রবাসী' : ''));
       setMemberJoinDateInput(editingMember.joinDate || new Date().toISOString().split('T')[0]);
       setMemberEmailInput(editingMember.email || '');
       setMemberStatusInput(editingMember.status || 'সক্রিয়');
@@ -288,7 +288,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       setMemberNameInput('');
       setMemberDesignationInput('সদস্য');
       setMemberPhoneInput('');
-      setMemberAreaInput('পতেঙ্গা, চট্টগ্রাম');
+      setMemberAreaInput('');
       setMemberJoinDateInput(new Date().toISOString().split('T')[0]);
       setMemberEmailInput('');
       setMemberStatusInput('সক্রিয়');
@@ -765,9 +765,9 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
     let name = memberNameInput.trim();
     let designation = memberDesignationInput.trim() || 'সদস্য';
     let phone = memberPhoneInput.trim();
-    let area = memberAreaInput.trim() || 'পতেঙ্গা, চট্টগ্রাম';
+    let area = memberAreaInput.trim();
     let photoUrl = memberPhotoBase64.trim();
-    let joinDate = memberJoinDateInput || new Date().toISOString().split('T')[0];
+    let joinDate = memberJoinDateInput || (editingMember ? editingMember.joinDate : new Date().toISOString().split('T')[0]);
     let email = memberEmailInput.trim();
     let status = memberStatusInput || 'সক্রিয়';
 
@@ -795,9 +795,9 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       name,
       designation: designation || 'সদস্য',
       phone,
-      area: area || (memberIsExpatriateInput ? 'প্রবাসী' : 'পতেঙ্গা, চট্টগ্রাম'),
-      photoUrl: photoUrl || '',
-      joinDate: joinDate || new Date().toISOString().split('T')[0],
+      area: area || (memberIsExpatriateInput ? 'প্রবাসী' : (editingMember?.area || '')),
+      photoUrl: photoUrl || (editingMember?.photoUrl || ''),
+      joinDate: joinDate || (editingMember?.joinDate || new Date().toISOString().split('T')[0]),
       email: email || '',
       status: status || 'সক্রিয়',
       isExpatriate: memberIsExpatriateInput,
@@ -810,8 +810,12 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
 
     if (editingMember) {
       const updatedMember: Member = {
+        ...editingMember,
         ...memberData,
         id: editingMember.id,
+        serial: editingMember.serial,
+        createdAt: editingMember.createdAt,
+        bloodGroup: editingMember.bloodGroup,
         isExecutive: isExec,
         category: isExec ? 'কার্যকরী কমিটি' : 'সাধারণ সদস্য',
         committeeType: isExec ? 'executive' : 'general'
