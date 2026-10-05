@@ -15,7 +15,8 @@ import {
   HelpCircle,
   ArrowRight
 } from 'lucide-react';
-import { PaymentGatewayConfig } from '../types';
+import { PaymentGatewayConfig, Member } from '../types';
+import { findMemberInDirectory } from '../utils/memberFundLinker';
 
 // Custom high-fidelity brand SVGs
 export const BkashLogo: React.FC<{ className?: string }> = ({ className = "w-5 h-5" }) => (
@@ -61,6 +62,7 @@ export interface PaymentGatewaySectionProps {
   onSubmit: (e: React.FormEvent) => void;
   isPaymentModalOpen: boolean;
   onTogglePaymentModal: (open: boolean) => void;
+  members?: Member[];
 }
 
 export const PaymentGatewaySection: React.FC<PaymentGatewaySectionProps> = ({
@@ -82,6 +84,7 @@ export const PaymentGatewaySection: React.FC<PaymentGatewaySectionProps> = ({
   onSubmit,
   isPaymentModalOpen,
   onTogglePaymentModal,
+  members = [],
 }) => {
   // Method metadata config
   const methods = [
@@ -262,11 +265,38 @@ export const PaymentGatewaySection: React.FC<PaymentGatewaySectionProps> = ({
                 <input
                   type="text"
                   required
+                  list="deposit-members-datalist"
                   value={depositMemberName}
-                  onChange={(e) => onChangeMemberName(e.target.value)}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    onChangeMemberName(name);
+                    if (members && members.length > 0) {
+                      const matched = findMemberInDirectory({ memberName: name }, members);
+                      if (matched && matched.phone && !depositSenderPhone) {
+                        onChangeSenderPhone(matched.phone);
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    if (depositMemberName.trim() && members && members.length > 0) {
+                      const matched = findMemberInDirectory({ memberName: depositMemberName }, members);
+                      if (matched && matched.phone && !depositSenderPhone) {
+                        onChangeSenderPhone(matched.phone);
+                      }
+                    }
+                  }}
                   placeholder="যেমন: মোহাম্মদ সাহেদ আলম"
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition"
                 />
+                {members && members.length > 0 && (
+                  <datalist id="deposit-members-datalist">
+                    {members.map((m) => (
+                      <option key={m.id} value={m.name}>
+                        {m.name}{m.designation ? ` (${m.designation})` : ''}{m.phone ? ` - ${m.phone}` : ''}
+                      </option>
+                    ))}
+                  </datalist>
+                )}
               </div>
 
               <div>

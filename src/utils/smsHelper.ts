@@ -1,5 +1,6 @@
 import { Member } from '../types';
 import { toBengaliNumber } from './helpers';
+import { findMemberInDirectory } from './memberFundLinker';
 import {
   sanitizePhone,
   buildUniversalSmsUri,
@@ -135,27 +136,25 @@ export function generateDueReminderSms(params: {
 
 /**
  * Resolves a member's contact phone number from available fields or matching member record.
+ * Dynamically links to the Member List / Executive Committee database for up-to-date phone numbers.
  */
 export function resolveMemberPhone(
   target: { phone?: string; memberName?: string; memberId?: string },
   members: Member[] = []
 ): string {
+  // If linked to a member in directory, prioritize the member's current database phone
+  if (target.memberId || target.memberName) {
+    const found = findMemberInDirectory(target, members);
+    if (found?.phone && found.phone.trim()) {
+      return found.phone.trim();
+    }
+  }
+
+  // Fallback to recorded phone if member not found in directory
   if (target.phone && target.phone.trim()) {
     return target.phone.trim();
   }
-  if (target.memberId) {
-    const found = members.find(m => m.id === target.memberId);
-    if (found?.phone && found.phone.trim()) {
-      return found.phone.trim();
-    }
-  }
-  if (target.memberName) {
-    const trimmed = target.memberName.trim().toLowerCase();
-    const found = members.find(m => m.name.trim().toLowerCase() === trimmed);
-    if (found?.phone && found.phone.trim()) {
-      return found.phone.trim();
-    }
-  }
+
   return '';
 }
 

@@ -32,6 +32,7 @@ import {
 import { FundRecord, PaymentStatus, PaymentGatewayConfig, Member } from '../types';
 import { toBengaliCurrency, toBengaliNumber, formatBengaliDate, getCleanFundDescription } from '../utils/helpers';
 import { loadPaymentSettings, loadMembers } from '../utils/storage';
+import { findMemberInDirectory, resolveLinkedFundData } from '../utils/memberFundLinker';
 import { ExpenseModal } from './ExpenseModal';
 import { DueSmsModal } from './DueSmsModal';
 import { PaymentGatewaySection } from './PaymentGatewaySection';
@@ -91,6 +92,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
 
   // Form State
   const [memberName, setMemberName] = useState('');
+  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [amount, setAmount] = useState<number | ''>(500);
   const [status, setStatus] = useState<PaymentStatus>('Paid');
   const [description, setDescription] = useState('মাসিক নিয়মিত চাঁদা');
@@ -166,26 +168,28 @@ export const FundScreen: React.FC<FundScreenProps> = ({
       return;
     }
 
-    const resolvedPhone = formPhone.trim() || resolveMemberPhone({ memberName: memberName.trim() }, allMembers);
+    const linked = findMemberInDirectory({ memberId: selectedMemberId, memberName: memberName.trim() }, allMembers);
+    const resolvedPhone = formPhone.trim() || linked?.phone || resolveMemberPhone({ memberName: memberName.trim() }, allMembers);
+    const resolvedMemberName = linked?.name || memberName.trim();
     const moneyVal = amount !== '' ? amount : 0;
 
     let smsText = '';
     if (status === 'Paid') {
       smsText = generateDirectSimPaidSms({
-        memberName: memberName.trim(),
+        memberName: resolvedMemberName,
         months: formMonth.trim() || 'চলতি',
         money: moneyVal
       });
     } else if (status === 'Due') {
       smsText = generateDirectSimDueSms({
-        memberName: memberName.trim(),
+        memberName: resolvedMemberName,
         money: moneyVal,
         monthCount: arrearsMonthCount,
         pastMonthsText: pastMonthsText.trim()
       });
     } else {
       smsText = generateDirectSimPaidSms({
-        memberName: memberName.trim(),
+        memberName: resolvedMemberName,
         months: formMonth.trim() || 'চলতি',
         money: moneyVal
       });
@@ -215,9 +219,11 @@ export const FundScreen: React.FC<FundScreenProps> = ({
 
     // Auto-trigger Direct SIM SMS when payment is approved or marked as Paid
     if (nextStatus === 'Paid') {
-      const memberPhone = resolveMemberPhone(record, allMembers);
+      const linked = resolveLinkedFundData(record, allMembers);
+      const memberPhone = linked.displayPhone || resolveMemberPhone(record, allMembers);
+      const resolvedMemberName = linked.displayName || record.memberName;
       const smsText = generatePaidConfirmationSms({
-        memberName: record.memberName,
+        memberName: resolvedMemberName,
         amount: record.amount,
         month: record.month,
         trxId: record.trxId
@@ -228,13 +234,13 @@ export const FundScreen: React.FC<FundScreenProps> = ({
       }
 
       setPaidSmsToast({
-        memberName: record.memberName,
+        memberName: resolvedMemberName,
         phone: memberPhone,
         amount: record.amount,
         smsText
       });
       setTimeout(() => {
-        setPaidSmsToast(prev => prev?.memberName === record.memberName ? null : prev);
+        setPaidSmsToast(prev => prev?.memberName === resolvedMemberName ? null : prev);
       }, 9000);
     }
   };
@@ -297,14 +303,18 @@ export const FundScreen: React.FC<FundScreenProps> = ({
     const gatewayName = selectedGateway === 'bkash' ? 'বিকাশ (bKash)' : selectedGateway === 'nagad' ? 'নগদ (Nagad)' : 'রকেট (Rocket)';
     const noteText = `মাসিক চাঁদা (${gatewayName} - TrxID: ${depositTrxId.trim()}${depositSenderPhone.trim() ? `, প্রেরক: ${depositSenderPhone.trim()}` : ''})`;
 
+    const matchedMember = findMemberInDirectory({ memberName: depositMemberName.trim() }, allMembers);
+    const finalPhone = depositSenderPhone.trim() || matchedMember?.phone || '';
+
     onAddFundRecord({
+      memberId: matchedMember?.id,
       memberName: depositMemberName.trim(),
       amount: Number(depositAmount),
       status: 'Pending', // User deposits start as Pending until verified and approved by admin
       description: noteText,
       date: new Date().toISOString().split('T')[0],
       category: 'মাসিক চাঁদা',
-      phone: depositSenderPhone.trim() || '',
+      phone: finalPhone,
       trxId: depositTrxId.trim(),
       senderPhone: depositSenderPhone.trim() || '',
       gateway: selectedGateway,
@@ -453,15 +463,17 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   }, [fundRecords, searchTerm, statusFilter]);
 
   const handleOpenEdit = (rec: FundRecord) => {
+    const linked = resolveLinkedFundData(rec, allMembers);
     setEditingRecord(rec);
-    setMemberName(rec.memberName);
+    setMemberName(linked.displayName || rec.memberName);
+    setSelectedMemberId(linked.memberId || rec.memberId || '');
     setAmount(rec.amount);
     setStatus(rec.status);
     setDescription(rec.description || '');
     setDate(rec.date);
     setCategory((rec.category as any) || 'মাসিক চাঁদা');
     setFormMonth(rec.month || rec.description || 'মার্চ ২০২৬');
-    setFormPhone(rec.phone || resolveMemberPhone(rec, allMembers) || '');
+    setFormPhone(linked.displayPhone || rec.phone || '');
     const parsedArrears = extractArrearsMonthCount(rec);
     setArrearsMonthCount(parsedArrears.monthCount);
     setPastMonthsText(parsedArrears.pastMonthsText);
@@ -480,32 +492,43 @@ export const FundScreen: React.FC<FundScreenProps> = ({
       return;
     }
 
+    const matched = selectedMemberId
+      ? allMembers.find(m => m.id === selectedMemberId)
+      : findMemberInDirectory({ memberName: memberName.trim() }, allMembers);
+
+    const linkedMemberId = matched?.id || (editingRecord?.memberId) || undefined;
+    const finalPhone = formPhone.trim() || matched?.phone || undefined;
+    const finalMemberName = memberName.trim();
+
     if (editingRecord && onEditFundRecord) {
       onEditFundRecord({
         ...editingRecord,
-        memberName: memberName.trim(),
+        memberId: linkedMemberId,
+        memberName: finalMemberName,
         amount: Number(amount),
         status,
         description: description.trim(),
         date,
         month: formMonth.trim() || undefined,
-        phone: formPhone.trim() || undefined,
+        phone: finalPhone,
         category
       });
     } else {
       onAddFundRecord({
-        memberName: memberName.trim(),
+        memberId: linkedMemberId,
+        memberName: finalMemberName,
         amount: Number(amount),
         status,
         description: description.trim() || 'মাসিক অনুদান',
         date,
         month: formMonth.trim() || undefined,
-        phone: formPhone.trim() || undefined,
+        phone: finalPhone,
         category
       });
     }
 
     setMemberName('');
+    setSelectedMemberId('');
     setAmount(500);
     setStatus('Paid');
     setDescription('মাসিক নিয়মিত চাঁদা');
@@ -552,26 +575,28 @@ export const FundScreen: React.FC<FundScreenProps> = ({
 
   // Instant SIM SMS trigger directly from fund card or table row
   const handleDirectSimSmsForRecord = (record: FundRecord) => {
-    const memberPhone = resolveMemberPhone(record, allMembers);
+    const linked = resolveLinkedFundData(record, allMembers);
+    const memberPhone = linked.displayPhone || resolveMemberPhone(record, allMembers);
+    const resolvedMemberName = linked.displayName || record.memberName;
     let smsText = '';
 
     if (record.status === 'Paid') {
       smsText = generateDirectSimPaidSms({
-        memberName: record.memberName,
+        memberName: resolvedMemberName,
         months: record.month || record.description || 'চলতি',
         money: record.amount
       });
     } else if (record.status === 'Due') {
       const arrears = extractArrearsMonthCount(record);
       smsText = generateDirectSimDueSms({
-        memberName: record.memberName,
+        memberName: resolvedMemberName,
         money: record.amount,
         monthCount: arrears.monthCount,
         pastMonthsText: arrears.pastMonthsText
       });
     } else {
       smsText = generateDirectSimPaidSms({
-        memberName: record.memberName,
+        memberName: resolvedMemberName,
         months: record.month || record.description || 'চলতি',
         money: record.amount
       });
@@ -587,13 +612,13 @@ export const FundScreen: React.FC<FundScreenProps> = ({
 
     // Show feedback toast with full details
     setPaidSmsToast({
-      memberName: record.memberName,
+      memberName: resolvedMemberName,
       phone: memberPhone,
       amount: record.amount,
       smsText
     });
     setTimeout(() => {
-      setPaidSmsToast(prev => (prev?.memberName === record.memberName ? null : prev));
+      setPaidSmsToast(prev => (prev?.memberName === resolvedMemberName ? null : prev));
     }, 9000);
   };
 
@@ -881,16 +906,21 @@ export const FundScreen: React.FC<FundScreenProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {fundRecords.filter(r => r.status === 'Pending').map((pRecord) => (
+            {fundRecords.filter(r => r.status === 'Pending').map((pRecord) => {
+              const linked = resolveLinkedFundData(pRecord, allMembers);
+              const pMemberName = linked.displayName;
+              const pPhone = linked.displayPhone;
+
+              return (
               <div key={pRecord.id} className="bg-white rounded-2xl p-4 border border-amber-200/90 shadow-xs flex flex-col justify-between gap-3 hover:border-amber-400 transition">
                 <div className="space-y-2.5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 font-black text-sm flex items-center justify-center">
-                        {pRecord.memberName.charAt(0)}
+                        {pMemberName.charAt(0)}
                       </div>
                       <div>
-                        <h4 className="font-bold text-slate-900 text-sm leading-tight">{pRecord.memberName}</h4>
+                        <h4 className="font-bold text-slate-900 text-sm leading-tight">{pMemberName}</h4>
                         <span className="text-[11px] text-slate-500">{formatBengaliDate(pRecord.date)}</span>
                       </div>
                     </div>
@@ -925,16 +955,16 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                       </div>
                     </div>
 
-                    {pRecord.phone && (
+                    {pPhone && (
                       <div className="flex items-center justify-between">
                         <span className="text-slate-500 text-[11px] font-medium">প্রেরক মোবাইল:</span>
                         <button
                           type="button"
-                          onClick={() => triggerNativeCall(pRecord.phone)}
+                          onClick={() => triggerNativeCall(pPhone)}
                           className="font-mono text-emerald-700 font-semibold hover:underline cursor-pointer"
                           title="সরাসরি কল দিন"
                         >
-                          {pRecord.phone}
+                          {pPhone}
                         </button>
                       </div>
                     )}
@@ -980,7 +1010,8 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1005,6 +1036,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
         onSubmit={handleQuickDepositSubmit}
         isPaymentModalOpen={isPaymentModalOpen}
         onTogglePaymentModal={setIsPaymentModalOpen}
+        members={allMembers}
       />
 
       {/* Filter and Search Bar */}
@@ -1207,8 +1239,10 @@ export const FundScreen: React.FC<FundScreenProps> = ({
           /* Responsive Fund Cards Grid (Matches Member Directory Design) */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredRecords.map((record, idx) => {
+              const linkedData = resolveLinkedFundData(record, allMembers);
+              const displayMemberName = linkedData.displayName;
+              const memberPhone = linkedData.displayPhone;
               const cleanDesc = getCleanFundDescription(record);
-              const memberPhone = resolveMemberPhone(record, allMembers);
               const arrearsInfo = formatDynamicArrearsText(record);
 
               return (
@@ -1245,11 +1279,11 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                               : 'bg-rose-100 text-rose-800'
                           }`}
                         >
-                          {record.memberName.charAt(0)}
+                          {displayMemberName.charAt(0)}
                         </div>
                         <div className="min-w-0 flex-1">
                           <h4 className="font-bold text-slate-900 text-sm sm:text-base truncate leading-snug">
-                            {record.memberName}
+                            {displayMemberName}
                           </h4>
                           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                             {memberPhone ? (
@@ -1401,11 +1435,11 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                               type="button"
                               onClick={() =>
                                 setDueSmsTarget({
-                                  memberName: record.memberName,
+                                  memberName: displayMemberName,
                                   phone: memberPhone,
                                   amount: record.amount,
                                   month: record.month || arrearsInfo.formattedText,
-                                  memberId: record.memberId,
+                                  memberId: linkedData.memberId || record.memberId,
                                 })
                               }
                               className="px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1 cursor-pointer shrink-0"
@@ -1621,18 +1655,44 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                 <input
                   type="text"
                   required
+                  list="fund-modal-members-datalist"
                   value={memberName}
                   onChange={(e) => {
                     const name = e.target.value;
                     setMemberName(name);
-                    if (!formPhone) {
-                      const matched = resolveMemberPhone({ memberName: name }, allMembers);
-                      if (matched) setFormPhone(matched);
+                    const matched = findMemberInDirectory({ memberName: name }, allMembers);
+                    if (matched) {
+                      setSelectedMemberId(matched.id);
+                      if (matched.phone) setFormPhone(matched.phone);
+                    } else {
+                      setSelectedMemberId('');
+                    }
+                  }}
+                  onBlur={() => {
+                    if (memberName.trim()) {
+                      const matched = findMemberInDirectory({ memberName: memberName.trim() }, allMembers);
+                      if (matched) {
+                        setSelectedMemberId(matched.id);
+                        if (!formPhone || formPhone.trim() === '') {
+                          setFormPhone(matched.phone || '');
+                        }
+                      }
                     }
                   }}
                   placeholder="যেমন: মো: কামরুল ইসলাম"
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none"
                 />
+                <datalist id="fund-modal-members-datalist">
+                  {allMembers.map((m) => {
+                    const role = m.designation ? ` (${m.designation})` : (m.isExecutive ? ' (কার্যকরী কমিটি)' : '');
+                    const phoneStr = m.phone ? ` - ${m.phone}` : '';
+                    return (
+                      <option key={m.id} value={m.name}>
+                        {m.name}{role}{phoneStr}
+                      </option>
+                    );
+                  })}
+                </datalist>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

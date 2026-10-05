@@ -84,6 +84,7 @@ import {
   sortMembersOldestFirst,
   getMemberPhotoUrl
 } from '../utils/helpers';
+import { findMemberInDirectory, resolveLinkedFundData } from '../utils/memberFundLinker';
 import {
   resetAllData,
   clearAllData,
@@ -407,11 +408,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       lastAddFundOpenRef.current = false;
 
       const parsedArrears = extractArrearsMonthCount(editingFund);
-      setFundFormMemberName(editingFund.memberName || '');
+      const linked = resolveLinkedFundData(editingFund, members);
+      setFundFormMemberName(linked.displayName || editingFund.memberName || '');
       setFundFormAmount(editingFund.amount || 1000);
       setFundFormStatus(editingFund.status || 'Paid');
       setFundFormMonth(editingFund.month || 'মার্চ ২০২৬');
-      setFundFormPhone(editingFund.phone || resolveMemberPhone(editingFund, members) || '');
+      setFundFormPhone(linked.displayPhone || editingFund.phone || '');
       setFundFormNotes(editingFund.notes || '');
       setFundArrearsMonthCount(parsedArrears.monthCount);
       setFundPastMonthsText(parsedArrears.pastMonthsText);
@@ -1008,25 +1010,32 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       return;
     }
 
+    const matched = findMemberInDirectory({ memberName: memberName.trim(), phone: phone.trim() }, members);
+    const linkedMemberId = matched?.id || (editingFund?.memberId) || undefined;
+    const finalPhone = phone.trim() || matched?.phone || '';
+    const finalMemberName = memberName.trim();
+
     if (editingFund) {
       if (onEditFund) {
         onEditFund({
           ...editingFund,
-          memberName: memberName.trim(),
+          memberId: linkedMemberId,
+          memberName: finalMemberName,
           amount,
           status,
           month: month.trim() || 'চলতি মাস',
-          phone: phone.trim(),
+          phone: finalPhone,
           notes: notes.trim()
         });
       } else if (setFunds) {
         setFunds(prev => prev.map(f => f.id === editingFund.id ? {
           ...f,
-          memberName: memberName.trim(),
+          memberId: linkedMemberId,
+          memberName: finalMemberName,
           amount,
           status,
           month: month.trim() || 'চলতি মাস',
-          phone: phone.trim(),
+          phone: finalPhone,
           notes: notes.trim()
         } : f));
       }
@@ -1035,24 +1044,26 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
     } else {
       if (onAddFund) {
         onAddFund({
-          memberName: memberName.trim(),
+          memberId: linkedMemberId,
+          memberName: finalMemberName,
           amount,
           status,
           date: new Date().toISOString().split('T')[0],
           month: month.trim() || 'চলতি মাস',
-          phone: phone.trim(),
+          phone: finalPhone,
           notes: notes.trim() || (status === 'Paid' ? 'পরিশোধিত' : status === 'Expense' ? 'সংগঠনের ব্যয়' : 'বকেয়া'),
           type: status === 'Expense' ? 'expense' : 'income'
         });
       } else if (setFunds) {
         const newFund: FundRecord = {
           id: `f-${Date.now()}`,
-          memberName: memberName.trim(),
+          memberId: linkedMemberId,
+          memberName: finalMemberName,
           amount,
           status,
           date: new Date().toISOString().split('T')[0],
           month: month.trim() || 'চলতি মাস',
-          phone: phone.trim(),
+          phone: finalPhone,
           notes: notes.trim() || (status === 'Paid' ? 'পরিশোধিত' : status === 'Expense' ? 'সংগঠনের ব্যয়' : 'বকেয়া'),
           type: status === 'Expense' ? 'expense' : 'income'
         };
@@ -1060,10 +1071,10 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
       }
       setIsAddFundOpen(false);
       if (status === 'Paid') {
-        const targetPhone = phone.trim() || resolveMemberPhone({ memberName: memberName.trim() }, members);
+        const targetPhone = finalPhone || resolveMemberPhone({ memberName: finalMemberName }, members);
         if (targetPhone) {
           const smsText = generatePaidConfirmationSms({
-            memberName: memberName.trim(),
+            memberName: finalMemberName,
             amount,
             month: month.trim()
           });
@@ -2279,7 +2290,9 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
             return (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 {filteredFunds.map(f => {
-                  const memberPhone = resolveMemberPhone(f, members);
+                  const linked = resolveLinkedFundData(f, members);
+                  const displayMemberName = linked.displayName;
+                  const memberPhone = linked.displayPhone;
                   const arrearsInfo = formatDynamicArrearsText(f);
 
                   return (
@@ -2305,7 +2318,7 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                         <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-100">
                           <div className="min-w-0 flex-1">
                             <h4 className="font-bold text-slate-900 text-sm truncate">
-                              {f.memberName}
+                              {displayMemberName}
                             </h4>
                             {memberPhone && (
                               <div className="flex items-center gap-1 text-[11px] text-emerald-700 font-mono font-semibold mt-0.5">
@@ -2397,7 +2410,7 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                                   onClick={() => {
                                     const arrears = extractArrearsMonthCount(f);
                                     const body = generateDirectSimDueSms({
-                                      memberName: f.memberName,
+                                      memberName: displayMemberName,
                                       money: f.amount,
                                       monthCount: arrears.monthCount,
                                       pastMonthsText: arrears.pastMonthsText
@@ -2406,11 +2419,11 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                                       triggerDirectSimSms(memberPhone, body);
                                     } else {
                                       setDueSmsTarget({
-                                        memberName: f.memberName,
+                                        memberName: displayMemberName,
                                         phone: '',
                                         amount: f.amount,
                                         month: f.month || arrearsInfo.formattedText,
-                                        memberId: f.memberId
+                                        memberId: linked.memberId || f.memberId
                                       });
                                     }
                                   }}
@@ -2423,11 +2436,11 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                                 <button
                                   type="button"
                                   onClick={() => setDueSmsTarget({
-                                    memberName: f.memberName,
+                                    memberName: displayMemberName,
                                     phone: memberPhone,
                                     amount: f.amount,
                                     month: f.month || arrearsInfo.formattedText,
-                                    memberId: f.memberId
+                                    memberId: linked.memberId || f.memberId
                                   })}
                                   className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
                                   title="কাস্টমাইজ ও প্রিভিউ"
@@ -2442,7 +2455,7 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                                 type="button"
                                 onClick={() => {
                                   const body = generateDirectSimPaidSms({
-                                    memberName: f.memberName,
+                                    memberName: displayMemberName,
                                     months: f.month || f.category || 'চলতি',
                                     money: f.amount
                                   });
@@ -4640,18 +4653,38 @@ CREATE POLICY "Activities Public Access" ON humanitarian_activities FOR ALL USIN
                   type="text"
                   name="memberName"
                   required
+                  list="admin-fund-modal-members-datalist"
                   value={fundFormMemberName}
                   onChange={(e) => {
                     const name = e.target.value;
                     setFundFormMemberName(name);
-                    if (!fundFormPhone) {
-                      const matched = resolveMemberPhone({ memberName: name }, members);
-                      if (matched) setFundFormPhone(matched);
+                    const matched = findMemberInDirectory({ memberName: name }, members);
+                    if (matched && matched.phone) {
+                      setFundFormPhone(matched.phone);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (fundFormMemberName.trim()) {
+                      const matched = findMemberInDirectory({ memberName: fundFormMemberName.trim() }, members);
+                      if (matched && matched.phone && (!fundFormPhone || fundFormPhone.trim() === '')) {
+                        setFundFormPhone(matched.phone);
+                      }
                     }
                   }}
                   placeholder="যেমন: মোহাম্মদ সাহেদুল আলম"
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-teal-500/20 focus:outline-none"
                 />
+                <datalist id="admin-fund-modal-members-datalist">
+                  {members.map((m) => {
+                    const role = m.designation ? ` (${m.designation})` : (m.isExecutive ? ' (কার্যকরী কমিটি)' : '');
+                    const phoneStr = m.phone ? ` - ${m.phone}` : '';
+                    return (
+                      <option key={m.id} value={m.name}>
+                        {m.name}{role}{phoneStr}
+                      </option>
+                    );
+                  })}
+                </datalist>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
