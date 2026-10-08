@@ -23,6 +23,7 @@ interface HeaderProps {
   setActiveScreen: (screen: ActiveScreen) => void;
   isAdmin: boolean;
   setIsAdmin: (val: boolean) => void;
+  onLogout?: () => void;
   openAdminModal: () => void;
   openEmergencyModal: () => void;
 }
@@ -33,9 +34,18 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveScreen,
   isAdmin,
   setIsAdmin,
+  onLogout,
   openAdminModal,
   openEmergencyModal,
 }) => {
+  const handleLogout = () => {
+    setIsAdmin(false);
+    setActiveScreen('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (onLogout) {
+      onLogout();
+    }
+  };
   return (
     <header className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 text-white shadow-lg sticky top-0 z-40 border-b border-emerald-700/40">
       {/* Top Hotline Bar */}
@@ -129,7 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>অ্যাডমিন</span>
               </button>
               <button
-                onClick={() => setIsAdmin(false)}
+                onClick={handleLogout}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs text-rose-300 hover:text-white hover:bg-rose-900/60 font-semibold cursor-pointer transition"
                 title="লগআউট"
               >

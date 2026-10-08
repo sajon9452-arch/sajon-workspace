@@ -19,7 +19,8 @@ import {
   MapPin,
   Globe,
   ShieldCheck,
-  UserPlus
+  UserPlus,
+  LogOut
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
@@ -46,14 +47,15 @@ interface AdminPanelScreenProps {
   onAddMember: (member: Omit<Member, 'id'>) => Promise<Member>;
   onEditMember: (member: Member) => Promise<void>;
   onDeleteMember: (id: string) => Promise<void>;
-  donors: BloodDonor[];
-  onAddDonor: (donor: Omit<BloodDonor, 'id'>) => Promise<BloodDonor>;
-  onEditDonor: (donor: BloodDonor) => Promise<void>;
-  onDeleteDonor: (id: string) => Promise<void>;
-  funds: any[];
+  donors?: BloodDonor[];
+  onAddDonor?: (donor: Omit<BloodDonor, 'id'>) => Promise<BloodDonor>;
+  onEditDonor?: (donor: BloodDonor) => Promise<void>;
+  onDeleteDonor?: (id: string) => Promise<void>;
+  funds?: any[];
   paymentConfig: PaymentGatewayConfig;
   onUpdatePaymentConfig: (config: PaymentGatewayConfig) => void;
   onBack: () => void;
+  onLogout?: () => void;
 }
 
 export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
@@ -65,7 +67,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onDeleteMember,
   paymentConfig,
   onUpdatePaymentConfig,
-  onBack
+  onBack,
+  onLogout
 }) => {
   const [activeTab, setActiveTab] = useState<'members' | 'profile' | 'payments' | 'security'>('members');
   
@@ -326,12 +329,24 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={onBack}
-          className="px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition cursor-pointer"
-        >
-          হোমে ফিরে যান
-        </button>
+        <div className="flex items-center gap-2">
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition cursor-pointer shadow-sm active:scale-95"
+              title="অ্যাডমিন প্যানেল থেকে লগআউট করুন"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>লগআউট</span>
+            </button>
+          )}
+          <button
+            onClick={onBack}
+            className="px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition cursor-pointer"
+          >
+            হোমে ফিরে যান
+          </button>
+        </div>
       </div>
 
       {noticeMsg && (

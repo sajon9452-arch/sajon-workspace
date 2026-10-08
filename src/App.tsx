@@ -76,6 +76,21 @@ export default function App() {
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
 
+  // Instant logout handler with immediate redirect
+  const handleAdminLogout = () => {
+    setIsAdmin(false);
+    setActiveScreen('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Automatic redirect safety: If admin session is terminated while on admin screen, immediately return to home
+  useEffect(() => {
+    if (!isAdmin && activeScreen === 'admin') {
+      setActiveScreen('home');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [isAdmin, activeScreen]);
+
   // Sync state across local tabs/windows safely
   useEffect(() => {
     const handleSync = (e: any) => {
@@ -323,6 +338,7 @@ export default function App() {
         setActiveScreen={setActiveScreen}
         isAdmin={isAdmin}
         setIsAdmin={setIsAdmin}
+        onLogout={handleAdminLogout}
         openAdminModal={() => setIsAdminModalOpen(true)}
         openEmergencyModal={() => setIsEmergencyModalOpen(true)}
       />
@@ -427,6 +443,7 @@ export default function App() {
             paymentConfig={paymentConfig}
             onUpdatePaymentConfig={handleUpdatePaymentConfig}
             onBack={() => setActiveScreen('home')}
+            onLogout={handleAdminLogout}
           />
         )}
       </main>
