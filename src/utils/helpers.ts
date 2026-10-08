@@ -1,289 +1,135 @@
-import { BloodDonor, BloodGroup, Member } from '../types';
+import { Member } from '../types';
 
-// Convert English numerals to Bengali
-export function toBengaliNumber(num: number | string): string {
-  const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
-  return num.toString().replace(/\d/g, (d) => banglaDigits[parseInt(d, 10)]);
+/**
+ * Converts English digits to Bengali numerals
+ */
+export function toBengaliNumber(num: number | string | undefined | null): string {
+  if (num === undefined || num === null) return '০';
+  const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return num
+    .toString()
+    .replace(/[0-9]/g, (digit) => bengaliDigits[parseInt(digit, 10)]);
 }
 
-// Format Bangladeshi Taka
-export function formatTaka(amount: number): string {
-  const formatted = new Intl.NumberFormat('en-IN').format(amount);
-  return `৳ ${toBengaliNumber(formatted)}`;
+/**
+ * Converts Bengali digits to standard English number
+ */
+export function fromBengaliNumber(str: string): number {
+  if (!str) return 0;
+  const bengaliToEnglish: Record<string, string> = {
+    '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+    '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'
+  };
+  const converted = str.replace(/[০-৯]/g, (d) => bengaliToEnglish[d] || d);
+  const parsed = parseFloat(converted.replace(/[^0-9.-]/g, ''));
+  return isNaN(parsed) ? 0 : parsed;
 }
 
-export const toBengaliCurrency = formatTaka;
-
-// Calculate Next Eligible Donation Date (+6 months / 180 days from last donation date)
-export function calculateNextEligibleDate(lastDateStr: string): string {
-  if (!lastDateStr) return '';
-  try {
-    const date = new Date(lastDateStr);
-    if (isNaN(date.getTime())) return '';
-    // 6-month (180 days) interval
-    date.setDate(date.getDate() + 180);
-    return date.toISOString().split('T')[0];
-  } catch {
-    return '';
-  }
+/**
+ * Format currency in Bangladeshi Taka with Bengali numerals
+ */
+export function formatBengaliCurrency(amount: number | string | undefined | null): string {
+  const num = typeof amount === 'string' ? fromBengaliNumber(amount) : (amount || 0);
+  return `৳ ${toBengaliNumber(num.toLocaleString('en-US'))}`;
 }
 
-// Check if donor is currently eligible (based on 6-month / 180 days interval from last donation)
-export function isDonorEligible(donor: BloodDonor): { eligible: boolean; daysRemaining: number } {
-  if (!donor.lastDonationDate) {
-    return { eligible: true, daysRemaining: 0 };
-  }
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Automatically calculate 6 months (180 days) from last donation date
-  const autoNextDateStr = calculateNextEligibleDate(donor.lastDonationDate);
-  const eligibleDate = autoNextDateStr
-    ? new Date(autoNextDateStr)
-    : (donor.nextEligibleDate ? new Date(donor.nextEligibleDate) : null);
-  
-  if (!eligibleDate || isNaN(eligibleDate.getTime())) {
-    return { eligible: true, daysRemaining: 0 };
-  }
-
-  eligibleDate.setHours(0, 0, 0, 0);
-
-  const diffTime = eligibleDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-  if (diffDays <= 0) {
-    return { eligible: true, daysRemaining: 0 };
-  }
-  return { eligible: false, daysRemaining: diffDays };
-}
-
-// Format date to Bengali readable string
-export function formatBengaliDate(dateStr?: string): string {
-  if (!dateStr) return 'নির্ধারিত নয়';
-  try {
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      const year = toBengaliNumber(parts[0]);
-      const monthNum = parseInt(parts[1], 10);
-      const day = toBengaliNumber(parts[2]);
-      
-      const months = [
-        'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
-        'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
-      ];
-      const monthName = months[monthNum - 1] || parts[1];
-      return `${day} ${monthName}, ${year}`;
-    }
-    return toBengaliNumber(dateStr);
-  } catch {
-    return toBengaliNumber(dateStr);
-  }
-}
-
-// Get Blood Group Color Badge Styling
-export function getBloodGroupBadge(group: BloodGroup): { bg: string; text: string; border: string } {
-  switch (group) {
-    case 'A+':
-    case 'A-':
-      return { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' };
-    case 'B+':
-    case 'B-':
-      return { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' };
-    case 'O+':
-    case 'O-':
-      return { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' };
-    case 'AB+':
-    case 'AB-':
-      return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' };
-    default:
-      return { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' };
-  }
-}
-
-// Clean phone number for tel: or wa.me links
-export function sanitizePhone(phone: string): string {
-  let cleaned = phone.replace(/[^0-9+]/g, '');
-  if (cleaned.startsWith('01') && cleaned.length === 11) {
-    cleaned = '+88' + cleaned;
+/**
+ * Normalizes phone numbers by stripping whitespace, dashes, and country code
+ */
+export function sanitizePhone(phone?: string | null): string {
+  if (!phone) return '';
+  let cleaned = phone.replace(/[^0-9]/g, '');
+  if (cleaned.startsWith('880')) {
+    cleaned = '0' + cleaned.slice(3);
   }
   return cleaned;
 }
 
 /**
- * Extracts addition/registration timestamp or serial order for seniority-based sorting.
- * Ensures ascending (oldest-first) ordering so earlier members stay at the top (#1, #2...)
- * and newly added members append at the very bottom.
+ * Normalizes Bengali names for robust matching
  */
-export function getMemberSortKey(member: Member, originalIndex: number = 0): number {
-  // 1. Explicit serial property
-  if (typeof member.serial === 'number' && !isNaN(member.serial)) {
-    return member.serial;
-  }
-  // 2. Explicit createdAt timestamp
-  if (member.createdAt) {
-    const time = new Date(member.createdAt).getTime();
-    if (!isNaN(time) && time > 0) return time;
-  }
-  // 3. Timestamp embedded in ID (e.g. m-1788313942545-xxxx or 1788313942545)
-  if (member.id) {
-    const tsMatch = member.id.match(/(\d{10,14})/);
-    if (tsMatch) {
-      const parsed = parseInt(tsMatch[1], 10);
-      if (!isNaN(parsed) && parsed > 1500000000) {
-        return parsed < 10000000000 ? parsed * 1000 : parsed;
-      }
-    }
-    // Sequential ID like m-1, m-2, member-1
-    const seqMatch = member.id.match(/^[a-zA-Z_-]*(\d+)$/);
-    if (seqMatch) {
-      const num = parseInt(seqMatch[1], 10);
-      if (!isNaN(num)) return num;
-    }
-  }
-  // 4. Join date if formatted YYYY-MM-DD
-  if (member.joinDate && /^\d{4}-\d{2}-\d{2}$/.test(member.joinDate)) {
-    const joinTime = new Date(member.joinDate).getTime();
-    if (!isNaN(joinTime)) return joinTime;
-  }
-  // 5. Array order index fallback
-  return originalIndex;
+export function normalizeBengaliName(name?: string | null): string {
+  if (!name) return '';
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\.\,\-_]+/g, '')
+    .replace(/মোঃ/g, 'মো')
+    .replace(/মাওঃ/g, 'মাও')
+    .replace(/মাওলানা/g, 'মাও')
+    .replace(/ইঞ্জিঃ/g, 'ইঞ্জি');
 }
 
 /**
- * Sorts members in ascending (oldest-first / seniority) order:
- * - Members who registered / were added first stay at the top of the list (starting from #1).
- * - Newly added members are automatically appended to the very bottom.
- * - Prevents LIFO (Last-In, First-Out) disorder to strictly maintain seniority hierarchy.
+ * Check if a member belongs to Executive Committee
+ */
+export function isExecutiveCommitteeMember(member?: Member | null): boolean {
+  if (!member) return false;
+  if (member.isExecutive === true) return true;
+  if (member.memberType === 'executive') return true;
+  if (member.category === 'কার্যকরী কমিটি') return true;
+  const des = (member.designation || '').toLowerCase();
+  return (
+    des.includes('সভাপতি') ||
+    des.includes('সম্পাদক') ||
+    des.includes('দপ্তর') ||
+    des.includes('কোষাধ্যক্ষ') ||
+    des.includes('কার্যকরী') ||
+    des.includes('উপদেষ্টা')
+  );
+}
+
+/**
+ * Check if a member is Expatriate
+ */
+export function isExpatriateMember(member?: Member | null): boolean {
+  if (!member) return false;
+  if (member.isExpatriate === true) return true;
+  if (member.memberType === 'expatriate') return true;
+  const des = (member.designation || '').toLowerCase();
+  const area = (member.area || '').toLowerCase();
+  return des.includes('প্রবাসী') || area.includes('প্রবাসী') || Boolean(member.countryStatus);
+}
+
+/**
+ * Strictly sorts members in ascending seniority order (oldest first).
+ * The earliest members (#1, #2, #3...) remain at the top.
+ * Newly added members appear at the very bottom in sequential order.
  */
 export function sortMembersOldestFirst(members: Member[]): Member[] {
+  if (!Array.isArray(members)) return [];
   return [...members].sort((a, b) => {
-    // 1. Serial comparison if both have numerical serials
-    if (typeof a.serial === 'number' && typeof b.serial === 'number') {
-      return a.serial - b.serial;
+    // 1. Explicit serial comparison
+    const serialA = typeof a.serial === 'number' && !isNaN(a.serial) && a.serial > 0 ? a.serial : null;
+    const serialB = typeof b.serial === 'number' && !isNaN(b.serial) && b.serial > 0 ? b.serial : null;
+    if (serialA !== null && serialB !== null) {
+      return serialA - serialB;
+    }
+    if (serialA !== null) return -1;
+    if (serialB !== null) return 1;
+
+    // 2. Creation or registration timestamp comparison
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    if (timeA !== timeB && timeA > 0 && timeB > 0) {
+      return timeA - timeB;
     }
 
-    // 2. Addition timestamp or ID timestamp comparison (Ascending: Oldest first)
-    const keyA = getMemberSortKey(a);
-    const keyB = getMemberSortKey(b);
-    if (keyA !== keyB) {
-      return keyA - keyB;
-    }
-
-    // 3. Fallback: joinDate or ID comparison
-    if (a.joinDate && b.joinDate && a.joinDate !== b.joinDate) {
-      return a.joinDate.localeCompare(b.joinDate);
-    }
-    return (a.id || '').localeCompare(b.id || '');
+    // 3. JoinDate comparison
+    const joinA = a.joinDate ? a.joinDate : '';
+    const joinB = b.joinDate ? b.joinDate : '';
+    return joinA.localeCompare(joinB);
   });
 }
 
 /**
- * Resolves the displayable profile image URL for a member.
- * Supports:
- * - Direct base64 / data URLs ('data:image/...')
- * - Standard HTTP/HTTPS URLs (including public Supabase Storage URLs)
- * - Supabase Storage relative paths (e.g. 'avatars/pic.jpg', 'members/pic.png', '/storage/v1/object/public/...')
- * - All avatar/photo property aliases ('photoUrl', 'photo_url', 'avatarUrl', 'avatar_url', 'avatar', 'imageUrl', 'image_url', 'photo', 'image')
- * - Dynamic fallback to server photo endpoint (/api/member-photo/:id) if available
+ * Safely resolves member photo URL without returning empty strings
  */
 export function getMemberPhotoUrl(member?: Partial<Member> | null): string {
   if (!member) return '';
-
-  const candidateKeys = [
-    'photoUrl',
-    'photo_url',
-    'avatarUrl',
-    'avatar_url',
-    'avatar',
-    'imageUrl',
-    'image_url',
-    'photo',
-    'image',
-    'profile_photo',
-    'profile_image',
-    'picture',
-    'file_url',
-    'file_path'
-  ];
-
-  // 1. In-memory data URLs or blob URLs (immediate 0ms rendering)
-  for (const k of candidateKeys) {
-    const val = (member as any)[k];
-    if (typeof val === 'string') {
-      const trimmed = val.trim();
-      if (trimmed.startsWith('data:image/') || trimmed.startsWith('blob:')) {
-        return trimmed;
-      }
-    }
+  const photo = member.photoUrl;
+  if (typeof photo === 'string' && photo.trim().length > 0) {
+    return photo.trim();
   }
-
-  // 2. Full HTTP/HTTPS URLs (including CDN & storage)
-  for (const k of candidateKeys) {
-    const val = (member as any)[k];
-    if (typeof val === 'string') {
-      const trimmed = val.trim();
-      if (/^https?:\/\//i.test(trimmed)) {
-        return trimmed;
-      }
-    }
-  }
-
-  // 3. Direct server binary stream endpoint by member ID (supported by disk cache)
-  if (member.id && typeof member.id === 'string' && !member.id.startsWith('temp-')) {
-    return `/api/member-photo/${encodeURIComponent(member.id)}`;
-  }
-
-  // 4. Any direct relative /api/ endpoint if specified
-  for (const k of candidateKeys) {
-    const val = (member as any)[k];
-    if (typeof val === 'string') {
-      const trimmed = val.trim();
-      if (trimmed.startsWith('/api/member-photo/')) {
-        return trimmed;
-      }
-    }
-  }
-
   return '';
-}
-
-/**
- * Clean up fund description and category to prevent duplicate or overlapping text
- * (e.g. preventing duplicate "মাসিক চাঁদা" when description already is "মাসিক নিয়মিত চাঁদা")
- */
-export function getCleanFundDescription(record: {
-  description?: string;
-  category?: string;
-}): {
-  primaryText: string;
-  showCategoryBadge: boolean;
-  categoryBadgeText: string;
-} {
-  const desc = (record.description || '').trim();
-  const cat = (record.category || '').trim();
-
-  if (!desc) {
-    return {
-      primaryText: cat || 'মাসিক নিয়মিত চাঁদা',
-      showCategoryBadge: false,
-      categoryBadgeText: '',
-    };
-  }
-
-  const isMonthlyDesc = desc.includes('মাসিক') || desc.includes('চাঁদা');
-  const isMonthlyCat = cat.includes('মাসিক') || cat.includes('চাঁদা');
-
-  const isRedundant =
-    !cat ||
-    desc.toLowerCase() === cat.toLowerCase() ||
-    (isMonthlyDesc && isMonthlyCat) ||
-    desc.includes(cat) ||
-    cat.includes(desc);
-
-  return {
-    primaryText: desc,
-    showCategoryBadge: !isRedundant,
-    categoryBadgeText: cat,
-  };
 }

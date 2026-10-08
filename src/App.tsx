@@ -1,500 +1,302 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ActiveScreen, 
   Member, 
   BloodDonor, 
   Notice, 
   FundRecord, 
-  OrganizationStats, 
   OrganizationProfile, 
-  PaymentStatus, 
-  PaymentGatewayConfig,
-  SupportReportItem,
-  HomeSlide,
-  HumanitarianActivity,
+  PaymentGatewayConfig, 
+  HomeSlide, 
+  HumanitarianActivity, 
   OrganizationRule,
-  CalendarMonthlyBanner
+  SupportReportItem,
+  PaymentStatus 
 } from './types';
 import { 
+  loadOrgProfile, 
+  saveOrgProfile, 
   loadMembers, 
   saveMembers, 
   loadDonors, 
   saveDonors, 
-  loadNotices, 
-  saveNotices, 
   loadFunds, 
   saveFunds, 
-  loadOrgProfile, 
-  saveOrgProfile, 
-  loadManualTotalBalance, 
-  saveManualTotalBalance, 
+  loadNotices, 
+  saveNotices, 
+  loadHomeSlides, 
+  saveHomeSlides, 
+  loadHumanitarianActivities, 
+  saveHumanitarianActivities, 
+  loadOrganizationRules, 
+  saveOrganizationRules, 
+  loadSupportReports, 
+  saveSupportReports, 
   loadPaymentSettings, 
-  savePaymentSettings,
-  loadSupportReports,
-  saveSupportReports,
-  loadHomeSlides,
-  saveHomeSlides,
-  loadHumanitarianActivities,
-  saveHumanitarianActivities,
-  loadOrganizationRules,
-  saveOrganizationRules,
-  loadCalendarBanners,
-  saveCalendarBanners,
-  loadDeletedMemberIds,
-  recordDeletedMemberId,
-  clearDeletedMemberId,
-  recordDeletedDonorId,
-  clearDeletedDonorId,
-  recordDeletedNoticeId,
-  clearDeletedNoticeId,
-  recordDeletedFundId,
-  clearDeletedFundId,
-  recordDeletedReportId,
-  clearDeletedReportId,
-  populateLocalStorageFromServer, 
-  resetAllData, 
-  clearAllData,
-  hydrateFromOfflineDb,
-  PMS_SYNC_EVENT_NAME
+  savePaymentSettings, 
+  loadManualTotalBalance, 
+  saveManualTotalBalance,
+  PMS_SYNC_EVENT 
 } from './utils/storage';
-import { fetchServerDatabase, syncKeyToServer } from './utils/serverApi';
-import { isDonorEligible, sortMembersOldestFirst } from './utils/helpers';
-import { preloadMembersPhotos } from './utils/photoPreloader';
-import { initBackgroundSync } from './utils/backgroundSync';
+import { sortMembersOldestFirst } from './utils/helpers';
+import { autoSyncMembersToFunds } from './utils/memberFundLinker';
+import { fetchSupabaseData } from './utils/supabaseClient';
+
 import { Header } from './components/Header';
-import { HomeScreen } from './components/HomeScreen';
 import { BottomNav } from './components/BottomNav';
-import { OfflineStatusBanner } from './components/OfflineStatusBanner';
-import { ErrorBoundary } from './components/ErrorBoundary';
+import { HomeScreen } from './components/HomeScreen';
 import { MemberListScreen } from './components/MemberListScreen';
 import { BloodDonationScreen } from './components/BloodDonationScreen';
-import { NoticeScreen } from './components/NoticeScreen';
 import { FundScreen } from './components/FundScreen';
+import { NoticeScreen } from './components/NoticeScreen';
 import { CalendarScreen } from './components/CalendarScreen';
 import { SupportScreen } from './components/SupportScreen';
 import { AdminPanelScreen } from './components/AdminPanelScreen';
 import { AdminModal } from './components/AdminModal';
 import { EmergencyHelplineModal } from './components/EmergencyHelplineModal';
-import { SheetGuideModal } from './components/SheetGuideModal';
-import { HeartHandshake, MapPin, ShieldCheck, Heart } from 'lucide-react';
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>('home');
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  
-  // Data States initialized from localStorage
+
+  // Data States
   const [profile, setProfile] = useState<OrganizationProfile>(() => loadOrgProfile());
   const [members, setMembers] = useState<Member[]>(() => sortMembersOldestFirst(loadMembers()));
   const [donors, setDonors] = useState<BloodDonor[]>(() => loadDonors());
   const [notices, setNotices] = useState<Notice[]>(() => loadNotices());
-  const [funds, setFunds] = useState<FundRecord[]>(() => loadFunds());
-  const [supportReports, setSupportReports] = useState<SupportReportItem[]>(() => loadSupportReports());
+  const [funds, setFunds] = useState<FundRecord[]>(() => autoSyncMembersToFunds(loadMembers(), loadFunds()));
   const [homeSlides, setHomeSlides] = useState<HomeSlide[]>(() => loadHomeSlides());
   const [humanitarianActivities, setHumanitarianActivities] = useState<HumanitarianActivity[]>(() => loadHumanitarianActivities());
   const [organizationRules, setOrganizationRules] = useState<OrganizationRule[]>(() => loadOrganizationRules());
-  const [calendarBanners, setCalendarBanners] = useState<Record<number, CalendarMonthlyBanner>>(() => loadCalendarBanners());
-  const [adminActiveTab, setAdminActiveTab] = useState<'overview' | 'homepage' | 'members' | 'donors' | 'funds' | 'notices' | 'payments' | 'reports' | 'settings'>('overview');
-  const [manualTotalBalance, setManualTotalBalance] = useState<number | null>(() => loadManualTotalBalance());
+  const [supportReports, setSupportReports] = useState<SupportReportItem[]>(() => loadSupportReports());
   const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(() => loadPaymentSettings());
-  const [selectedBloodGroupFilter, setSelectedBloodGroupFilter] = useState<string>('all');
+  const [manualTotalBalance, setManualTotalBalance] = useState<number | null>(() => loadManualTotalBalance());
 
   // Modals
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
-  const [isSheetGuideOpen, setIsSheetGuideOpen] = useState(false);
 
-  // Sync state with local storage & optional local backend
+  // Sync state across local tabs/windows safely
   useEffect(() => {
-    let isMounted = true;
-
-    const syncAllFromStorage = () => {
-      if (!isMounted) return;
-      setProfile(loadOrgProfile());
-      setMembers(sortMembersOldestFirst(loadMembers()));
-      setDonors(loadDonors());
-      setNotices(loadNotices());
-      setFunds(loadFunds());
-      setSupportReports(loadSupportReports());
-      setHomeSlides(loadHomeSlides());
-      setHumanitarianActivities(loadHumanitarianActivities());
-      setOrganizationRules(loadOrganizationRules());
-      setCalendarBanners(loadCalendarBanners());
-      setManualTotalBalance(loadManualTotalBalance());
-      setPaymentConfig(loadPaymentSettings());
-    };
-
-    // 1. Instantly hydrate from local IndexedDB if offline or on fresh launch
-    hydrateFromOfflineDb().then((offlineMembers) => {
-      if (isMounted && offlineMembers && offlineMembers.length > 0) {
-        setMembers(sortMembersOldestFirst(offlineMembers));
-        preloadMembersPhotos(offlineMembers);
+    const handleSync = (e: any) => {
+      const key = e.detail?.key;
+      if (!key) {
+        setProfile(loadOrgProfile());
+        setMembers(sortMembersOldestFirst(loadMembers()));
+        setDonors(loadDonors());
+        setNotices(loadNotices());
+        setFunds(loadFunds());
       }
-    }).catch(() => {});
+    };
+    window.addEventListener(PMS_SYNC_EVENT, handleSync);
 
-    // 2. Initialize automatic background sync for seamless network restoration
-    const cleanupBackgroundSync = initBackgroundSync();
-
-    // 3. Hydrate from server / Supabase Cloud database
-    fetchServerDatabase().then((serverData) => {
-      if (serverData && isMounted) {
-        populateLocalStorageFromServer(serverData, true);
-        syncAllFromStorage();
-        if (Array.isArray(serverData.members) && serverData.members.length > 0) {
-          const deletedMemberIds = loadDeletedMemberIds();
-          const activeMembers = serverData.members.filter((m: any) => m && m.id && !deletedMemberIds.includes(m.id));
-          setMembers(sortMembersOldestFirst(activeMembers));
+    // Safely check and load any cloud data from Supabase without modifying or deleting anything
+    const loadFromSupabase = async () => {
+      try {
+        const cloudMembers = await fetchSupabaseData<Member>('members');
+        if (cloudMembers && cloudMembers.length > 0) {
+          const sorted = sortMembersOldestFirst(cloudMembers);
+          setMembers(sorted);
+          saveMembers(sorted);
         }
+
+        const cloudFunds = await fetchSupabaseData<FundRecord>('funds');
+        if (cloudFunds && cloudFunds.length > 0) {
+          setFunds(cloudFunds);
+          saveFunds(cloudFunds);
+        }
+
+        const cloudDonors = await fetchSupabaseData<BloodDonor>('donors');
+        if (cloudDonors && cloudDonors.length > 0) {
+          setDonors(cloudDonors);
+          saveDonors(cloudDonors);
+        }
+
+        const cloudNotices = await fetchSupabaseData<Notice>('notices');
+        if (cloudNotices && cloudNotices.length > 0) {
+          setNotices(cloudNotices);
+          saveNotices(cloudNotices);
+        }
+      } catch (err) {
+        console.warn('Supabase initial fetch skipped:', err);
       }
-    }).catch(() => {
-      // Fallback seamlessly to local storage & IndexedDB cache
-    });
-
-    // Cross-tab and in-app synchronization listeners
-    window.addEventListener('storage', syncAllFromStorage);
-    window.addEventListener(PMS_SYNC_EVENT_NAME, syncAllFromStorage);
-
-    return () => {
-      isMounted = false;
-      cleanupBackgroundSync();
-      window.removeEventListener('storage', syncAllFromStorage);
-      window.removeEventListener(PMS_SYNC_EVENT_NAME, syncAllFromStorage);
     };
+    loadFromSupabase();
+
+    return () => window.removeEventListener(PMS_SYNC_EVENT, handleSync);
   }, []);
 
-  // Preload and cache member directory images in browser memory on boot & updates
-  useEffect(() => {
-    if (members && members.length > 0) {
-      preloadMembersPhotos(members);
-    }
-  }, [members]);
-
-  // Organization Profile Update Handler
-  const handleUpdateProfile = (newProfile: OrganizationProfile) => {
-    setProfile(newProfile);
-    saveOrgProfile(newProfile);
-    syncKeyToServer('profile', newProfile).catch(() => {});
-  };
-
-  // Payment Gateway Configuration Handler
-  const handleUpdatePaymentConfig = (newConfig: PaymentGatewayConfig) => {
-    setPaymentConfig(newConfig);
-    savePaymentSettings(newConfig);
-    syncKeyToServer('paymentConfig', newConfig).catch(() => {});
-  };
-
-  // Member Handlers (Ascending / Oldest-First Seniority Ordering)
+  // 1. Member Handlers
+  // Strictly append newly added members to the very bottom in sequential order
   const handleAddMember = async (newMember: Omit<Member, 'id'>): Promise<Member> => {
-    const timestamp = Date.now();
-    const memberId = `m-${timestamp}-${Math.random().toString(36).substring(2, 6)}`;
-
-    // Auto-calculate serial number if not provided
-    let serial = (newMember as any).serial;
-    if (typeof serial !== 'number' || isNaN(serial)) {
-      const maxSerial = members.reduce((max, m) => {
-        return typeof m.serial === 'number' && !isNaN(m.serial) ? Math.max(max, m.serial) : max;
-      }, 0);
-      serial = maxSerial + 1;
-    }
+    const id = `m-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    
+    // Ensure strict bottom sequential serial
+    let maxSerial = 0;
+    members.forEach(m => {
+      if (typeof m.serial === 'number' && !isNaN(m.serial) && m.serial > maxSerial) {
+        maxSerial = m.serial;
+      }
+    });
+    const serial = Math.max(maxSerial, members.length) + 1;
 
     const member: Member = {
       ...newMember,
-      id: memberId,
+      id,
       serial,
-      createdAt: (newMember as any).createdAt || new Date(timestamp).toISOString(),
+      createdAt: new Date().toISOString()
     };
-    
-    clearDeletedMemberId(member.id);
-    setMembers(prev => {
-      // Strict Seniority Maintenance:
-      // Filter out duplicate if updating and append the newly registered member at the very bottom
-      const existing = prev.filter(m => m.id !== member.id);
-      const updated = [...existing, member];
-      saveMembers(updated);
-      syncKeyToServer('members', updated).catch(() => {});
-      return updated;
+
+    // Append to the bottom
+    const updatedMembers = sortMembersOldestFirst([...members, member]);
+    setMembers(updatedMembers);
+    saveMembers(updatedMembers);
+
+    // Auto-sync into Fund section immediately so no member is missing
+    setFunds(prevFunds => {
+      const synced = autoSyncMembersToFunds(updatedMembers, prevFunds);
+      saveFunds(synced);
+      return synced;
     });
+
     return member;
   };
 
   const handleEditMember = async (updatedMember: Member): Promise<void> => {
-    clearDeletedMemberId(updatedMember.id);
-    setMembers(prev => {
-      const existing = prev.find(m => m.id === updatedMember.id);
-      const mergedMember: Member = {
-        ...existing,
-        ...updatedMember,
-        serial: updatedMember.serial !== undefined ? updatedMember.serial : existing?.serial,
-        createdAt: existing?.createdAt || updatedMember.createdAt || new Date().toISOString()
-      };
-      const updated = prev.map(m => m.id === updatedMember.id ? mergedMember : m);
-      saveMembers(updated);
-      syncKeyToServer('members', updated).catch(() => {});
-      return updated;
+    const updated = members.map(m => m.id === updatedMember.id ? updatedMember : m);
+    const sorted = sortMembersOldestFirst(updated);
+    setMembers(sorted);
+    saveMembers(sorted);
+
+    // Auto-sync updated member details in Fund records
+    setFunds(prevFunds => {
+      const synced = autoSyncMembersToFunds(sorted, prevFunds);
+      saveFunds(synced);
+      return synced;
     });
   };
 
-  const handleDeleteMember = async (id: string, _name?: string): Promise<void> => {
-    recordDeletedMemberId(id);
-    setMembers(prev => {
-      const updated = prev.filter(m => m.id !== id);
-      saveMembers(updated);
-      syncKeyToServer('members', updated).catch(() => {});
-      return updated;
-    });
+  const handleDeleteMember = async (id: string): Promise<void> => {
+    const updated = members.filter(m => m.id !== id);
+    setMembers(updated);
+    saveMembers(updated);
   };
 
-  // Blood Donor Handlers
-  const handleAddDonor = async (newDonor: Omit<BloodDonor, 'id'>): Promise<BloodDonor> => {
-    const donorId = `d-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const donor: BloodDonor = {
-      ...newDonor,
-      id: donorId
-    };
-    
-    clearDeletedDonorId(donor.id);
-    setDonors(prev => {
-      const updated = [donor, ...prev.filter(d => d.id !== donor.id)];
-      saveDonors(updated);
-      syncKeyToServer('donors', updated).catch(() => {});
-      return updated;
-    });
-    return donor;
-  };
-
-  const handleEditDonor = async (updatedDonor: BloodDonor): Promise<void> => {
-    clearDeletedDonorId(updatedDonor.id);
-    setDonors(prev => {
-      const existing = prev.find(d => d.id === updatedDonor.id);
-      const mergedDonor: BloodDonor = {
-        ...existing,
-        ...updatedDonor
-      };
-      const updated = prev.map(d => d.id === updatedDonor.id ? mergedDonor : d);
-      saveDonors(updated);
-      syncKeyToServer('donors', updated).catch(() => {});
-      return updated;
-    });
-  };
-
-  const handleDeleteDonor = async (id: string, _name?: string): Promise<void> => {
-    recordDeletedDonorId(id);
-    setDonors(prev => {
-      const updated = prev.filter(d => d.id !== id);
-      saveDonors(updated);
-      syncKeyToServer('donors', updated).catch(() => {});
-      return updated;
-    });
-  };
-
-  // Notice Handlers
-  const handleAddNotice = async (newNotice: Omit<Notice, 'id'>): Promise<Notice> => {
-    const noticeId = `n-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const notice: Notice = {
-      ...newNotice,
-      id: noticeId
-    };
-
-    clearDeletedNoticeId(notice.id);
-    setNotices(prev => {
-      const updated = [notice, ...prev.filter(n => n.id !== notice.id)];
-      saveNotices(updated);
-      syncKeyToServer('notices', updated).catch(() => {});
-      return updated;
-    });
-    return notice;
-  };
-
-  const handleEditNotice = async (updatedNotice: Notice): Promise<void> => {
-    clearDeletedNoticeId(updatedNotice.id);
-    setNotices(prev => {
-      const existing = prev.find(n => n.id === updatedNotice.id);
-      const mergedNotice: Notice = {
-        ...existing,
-        ...updatedNotice
-      };
-      const updated = prev.map(n => n.id === updatedNotice.id ? mergedNotice : n);
-      saveNotices(updated);
-      syncKeyToServer('notices', updated).catch(() => {});
-      return updated;
-    });
-  };
-
-  const handleDeleteNotice = async (id: string): Promise<void> => {
-    recordDeletedNoticeId(id);
-    setNotices(prev => {
-      const updated = prev.filter(n => n.id !== id);
-      saveNotices(updated);
-      syncKeyToServer('notices', updated).catch(() => {});
-      return updated;
-    });
-  };
-
-  // Fund Handlers
+  // 2. Fund Handlers
   const handleAddFund = async (newFund: Omit<FundRecord, 'id'>): Promise<FundRecord> => {
-    const fundId = `f-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const id = `f-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const fund: FundRecord = {
       ...newFund,
-      id: fundId
+      id
     };
-
-    clearDeletedFundId(fund.id);
-    setFunds(prev => {
-      const updated = [fund, ...prev.filter(f => f.id !== fund.id)];
-      saveFunds(updated);
-      syncKeyToServer('funds', updated).catch(() => {});
-      return updated;
-    });
+    const updated = [fund, ...funds.filter(f => f.id !== id)];
+    setFunds(updated);
+    saveFunds(updated);
     return fund;
   };
 
   const handleEditFund = async (updatedFund: FundRecord): Promise<void> => {
-    clearDeletedFundId(updatedFund.id);
-    setFunds(prev => {
-      const existing = prev.find(f => f.id === updatedFund.id);
-      const mergedFund: FundRecord = {
-        ...existing,
-        ...updatedFund
-      };
-      const updated = prev.map(f => f.id === updatedFund.id ? mergedFund : f);
-      saveFunds(updated);
-      syncKeyToServer('funds', updated).catch(() => {});
-      return updated;
-    });
+    const updated = funds.map(f => f.id === updatedFund.id ? updatedFund : f);
+    setFunds(updated);
+    saveFunds(updated);
   };
 
   const handleDeleteFund = async (id: string): Promise<void> => {
-    recordDeletedFundId(id);
-    setFunds(prev => {
-      const updated = prev.filter(f => f.id !== id);
-      saveFunds(updated);
-      syncKeyToServer('funds', updated).catch(() => {});
-      return updated;
-    });
+    const updated = funds.filter(f => f.id !== id);
+    setFunds(updated);
+    saveFunds(updated);
   };
 
   const handleToggleFundStatus = async (id: string, newStatus: PaymentStatus): Promise<void> => {
-    setFunds(prev => {
-      const updated = prev.map(f => {
-        if (f.id === id) {
-          return {
-            ...f,
-            status: newStatus,
-            approvedAt: newStatus === 'Paid' ? new Date().toISOString() : f.approvedAt,
-            date: f.date || new Date().toISOString().split('T')[0]
-          };
-        }
-        return f;
-      });
-      saveFunds(updated);
-      syncKeyToServer('funds', updated).catch(() => {});
-      return updated;
+    const updated = funds.map(f => {
+      if (f.id === id) {
+        return {
+          ...f,
+          status: newStatus,
+          approvedAt: newStatus === 'Paid' ? new Date().toISOString() : f.approvedAt
+        };
+      }
+      return f;
     });
+    setFunds(updated);
+    saveFunds(updated);
   };
 
-  // Support & Report Handlers
-  const handleAddSupportReport = async (newReport: Omit<SupportReportItem, 'id'>): Promise<SupportReportItem> => {
-    const reportId = `rep-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const report: SupportReportItem = {
+  const handleUpdateManualTotalBalance = (amount: number | null) => {
+    setManualTotalBalance(amount);
+    saveManualTotalBalance(amount);
+  };
+
+  // 3. Donor Handlers
+  const handleAddDonor = async (newDonor: Omit<BloodDonor, 'id'>): Promise<BloodDonor> => {
+    const id = `d-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const donor: BloodDonor = {
+      ...newDonor,
+      id
+    };
+    const updated = [donor, ...donors];
+    setDonors(updated);
+    saveDonors(updated);
+    return donor;
+  };
+
+  const handleEditDonor = async (updatedDonor: BloodDonor): Promise<void> => {
+    const updated = donors.map(d => d.id === updatedDonor.id ? updatedDonor : d);
+    setDonors(updated);
+    saveDonors(updated);
+  };
+
+  const handleDeleteDonor = async (id: string): Promise<void> => {
+    const updated = donors.filter(d => d.id !== id);
+    setDonors(updated);
+    saveDonors(updated);
+  };
+
+  // 4. Notice Handlers
+  const handleAddNotice = async (newNotice: Omit<Notice, 'id'>): Promise<Notice> => {
+    const id = `n-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const notice: Notice = {
+      ...newNotice,
+      id
+    };
+    const updated = [notice, ...notices];
+    setNotices(updated);
+    saveNotices(updated);
+    return notice;
+  };
+
+  const handleDeleteNotice = async (id: string): Promise<void> => {
+    const updated = notices.filter(n => n.id !== id);
+    setNotices(updated);
+    saveNotices(updated);
+  };
+
+  // 5. Support Report Handlers
+  const handleAddReport = async (newReport: Omit<SupportReportItem, 'id'>): Promise<SupportReportItem> => {
+    const id = `sup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const item: SupportReportItem = {
       ...newReport,
-      id: reportId
+      id
     };
-
-    clearDeletedReportId(report.id);
-    setSupportReports(prev => {
-      const updated = [report, ...prev.filter(r => r.id !== report.id)];
-      saveSupportReports(updated);
-      syncKeyToServer('supportReports', updated).catch(() => {});
-      return updated;
-    });
-    return report;
+    const updated = [item, ...supportReports];
+    setSupportReports(updated);
+    saveSupportReports(updated);
+    return item;
   };
 
-  const handleEditSupportReport = async (updatedReport: SupportReportItem): Promise<void> => {
-    clearDeletedReportId(updatedReport.id);
-    setSupportReports(prev => {
-      const updated = prev.map(r => r.id === updatedReport.id ? updatedReport : r);
-      saveSupportReports(updated);
-      syncKeyToServer('supportReports', updated).catch(() => {});
-      return updated;
-    });
+  // 6. Organization Profile & Payment Settings
+  const handleUpdateProfile = (newProfile: OrganizationProfile) => {
+    setProfile(newProfile);
+    saveOrgProfile(newProfile);
   };
 
-  const handleDeleteSupportReport = async (id: string): Promise<void> => {
-    recordDeletedReportId(id);
-    setSupportReports(prev => {
-      const updated = prev.filter(r => r.id !== id);
-      saveSupportReports(updated);
-      syncKeyToServer('supportReports', updated).catch(() => {});
-      return updated;
-    });
+  const handleUpdatePaymentConfig = (newConfig: PaymentGatewayConfig) => {
+    setPaymentConfig(newConfig);
+    savePaymentSettings(newConfig);
   };
-
-  const handleUpdateManualTotalBalance = (val: number | null) => {
-    setManualTotalBalance(val);
-    saveManualTotalBalance(val);
-    syncKeyToServer('manualTotalBalance', val).catch(() => {});
-  };
-
-  // Home Page Dynamic Section Handlers
-  const handleUpdateHomeSlides = (updated: HomeSlide[]) => {
-    setHomeSlides(updated);
-    saveHomeSlides(updated);
-    syncKeyToServer('homeSlides', updated).catch(() => {});
-  };
-
-  const handleUpdateHumanitarianActivities = (updated: HumanitarianActivity[]) => {
-    setHumanitarianActivities(updated);
-    saveHumanitarianActivities(updated);
-    syncKeyToServer('humanitarianActivities', updated).catch(() => {});
-  };
-
-  const handleUpdateOrganizationRules = (updated: OrganizationRule[]) => {
-    setOrganizationRules(updated);
-    saveOrganizationRules(updated);
-    syncKeyToServer('organizationRules', updated).catch(() => {});
-  };
-
-  const handleUpdateCalendarBanners = (updated: Record<number, CalendarMonthlyBanner>) => {
-    setCalendarBanners(updated);
-    saveCalendarBanners(updated);
-    syncKeyToServer('calendarBanners', updated).catch(() => {});
-  };
-
-  const handleResetData = () => {
-    if (confirm('আপনি কি সকল ডাটা রিসেট করে ডিফল্ট অবস্থায় ফিরিয়ে নিতে চান?')) {
-      resetAllData();
-      window.location.reload();
-    }
-  };
-
-  // Aggregated Stats
-  const stats: OrganizationStats = useMemo(() => {
-    const readyDonors = donors.filter(d => isDonorEligible(d).eligible).length;
-    const paidAmt = funds.filter(f => f.status === 'Paid').reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-    const dueAmt = funds.filter(f => f.status === 'Due').reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-    const expAmt = funds.filter(f => f.status === 'Expense').reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-    const netBal = paidAmt - expAmt;
-
-    return {
-      totalMembers: members.length,
-      totalDonors: donors.length,
-      readyDonors,
-      totalFundBalance: manualTotalBalance !== null ? manualTotalBalance : netBal,
-      totalPaidAmount: paidAmt,
-      totalDueAmount: dueAmt,
-      activeNotices: notices.length,
-    };
-  }, [members, donors, notices, funds, manualTotalBalance]);
-
-  // Latest notice for ticker
-  const latestNotice = notices[0];
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-between text-slate-800 selection:bg-emerald-200">
-      {/* Offline Status Reassurance Banner */}
-      <OfflineStatusBanner />
-
-      {/* Top Header */}
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col antialiased">
       <Header
         profile={profile}
         activeScreen={activeScreen}
@@ -505,257 +307,134 @@ export default function App() {
         openEmergencyModal={() => setIsEmergencyModalOpen(true)}
       />
 
-      {/* Main Screen Content */}
-      <main className="max-w-6xl w-full mx-auto px-4 py-6 flex-1">
-        <ErrorBoundary onResetToHome={() => setActiveScreen('home')}>
-          {activeScreen === 'home' && (
-            <HomeScreen
-              profile={profile}
-              onNavigate={(screen) => {
-                if (screen === 'blood') {
-                  setSelectedBloodGroupFilter('all');
-                }
-                setActiveScreen(screen);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              onSelectBloodGroup={(bg) => {
-                setSelectedBloodGroupFilter(bg);
-                setActiveScreen('blood');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              donors={donors}
-              stats={stats}
-              latestNotice={latestNotice}
-              isAdmin={isAdmin}
-              openAdminModal={() => setIsAdminModalOpen(true)}
-              openEmergencyModal={() => setIsEmergencyModalOpen(true)}
-              homeSlides={homeSlides}
-              humanitarianActivities={humanitarianActivities}
-              organizationRules={organizationRules}
-              onNavigateAdminTab={(tab) => {
-                setAdminActiveTab(tab);
-                setActiveScreen('admin');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-            />
-          )}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
+        {activeScreen === 'home' && (
+          <HomeScreen
+            profile={profile}
+            members={members}
+            donors={donors}
+            notices={notices}
+            funds={funds}
+            homeSlides={homeSlides}
+            humanitarianActivities={humanitarianActivities}
+            organizationRules={organizationRules}
+            manualTotalBalance={manualTotalBalance}
+            onNavigate={(screen) => {
+              setActiveScreen(screen);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            openEmergencyModal={() => setIsEmergencyModalOpen(true)}
+          />
+        )}
 
-          {activeScreen === 'members' && (
-            <MemberListScreen
-              members={members}
-              onAddMember={handleAddMember}
-              onEditMember={handleEditMember}
-              onDeleteMember={handleDeleteMember}
-              isAdmin={isAdmin}
-              onBack={() => setActiveScreen('home')}
-            />
-          )}
+        {activeScreen === 'members' && (
+          <MemberListScreen
+            members={members}
+            onAddMember={handleAddMember}
+            onEditMember={handleEditMember}
+            onDeleteMember={handleDeleteMember}
+            isAdmin={isAdmin}
+            onBack={() => setActiveScreen('home')}
+          />
+        )}
 
-          {activeScreen === 'blood' && (
-            <BloodDonationScreen
-              donors={donors}
-              initialBloodGroup={selectedBloodGroupFilter}
-              onAddDonor={handleAddDonor}
-              onEditDonor={handleEditDonor}
-              onDeleteDonor={handleDeleteDonor}
-              isAdmin={isAdmin}
-              onBack={() => {
-                setSelectedBloodGroupFilter('all');
-                setActiveScreen('home');
-              }}
-            />
-          )}
+        {activeScreen === 'blood' && (
+          <BloodDonationScreen
+            donors={donors}
+            onAddDonor={handleAddDonor}
+            onEditDonor={handleEditDonor}
+            onDeleteDonor={handleDeleteDonor}
+            isAdmin={isAdmin}
+            onBack={() => setActiveScreen('home')}
+          />
+        )}
 
-          {activeScreen === 'notices' && (
-            <NoticeScreen
-              notices={notices}
-              members={members}
-              isAdmin={isAdmin}
-              onAddNotice={handleAddNotice}
-              onEditNotice={handleEditNotice}
-              onDeleteNotice={handleDeleteNotice}
-              onBack={() => setActiveScreen('home')}
-            />
-          )}
+        {activeScreen === 'fund' && (
+          <FundScreen
+            fundRecords={funds}
+            members={members}
+            onAddFundRecord={handleAddFund}
+            onEditFundRecord={handleEditFund}
+            onDeleteFundRecord={handleDeleteFund}
+            onToggleStatus={handleToggleFundStatus}
+            manualTotalBalance={manualTotalBalance}
+            onUpdateManualTotalBalance={handleUpdateManualTotalBalance}
+            paymentConfig={paymentConfig}
+            isAdmin={isAdmin}
+            onBack={() => setActiveScreen('home')}
+          />
+        )}
 
-          {activeScreen === 'fund' && (
-            <FundScreen
-              fundRecords={funds}
-              members={members}
-              onAddFundRecord={handleAddFund}
-              onEditFundRecord={handleEditFund}
-              onDeleteFundRecord={handleDeleteFund}
-              onToggleStatus={handleToggleFundStatus}
-              manualTotalBalance={manualTotalBalance}
-              onUpdateManualTotalBalance={handleUpdateManualTotalBalance}
-              paymentConfig={paymentConfig}
-              isAdmin={isAdmin}
-              onBack={() => setActiveScreen('home')}
-            />
-          )}
+        {activeScreen === 'notices' && (
+          <NoticeScreen
+            notices={notices}
+            onAddNotice={handleAddNotice}
+            onDeleteNotice={handleDeleteNotice}
+            isAdmin={isAdmin}
+            onBack={() => setActiveScreen('home')}
+          />
+        )}
 
-          {activeScreen === 'calendar' && (
-            <CalendarScreen
-              profile={profile}
-              notices={notices}
-              humanitarianActivities={humanitarianActivities}
-              onBack={() => setActiveScreen('home')}
-              onNavigate={(screen) => setActiveScreen(screen)}
-              isAdmin={isAdmin}
-              calendarBanners={calendarBanners}
-              onUpdateCalendarBanners={handleUpdateCalendarBanners}
-            />
-          )}
+        {activeScreen === 'calendar' && (
+          <CalendarScreen
+            onBack={() => setActiveScreen('home')}
+          />
+        )}
 
-          {activeScreen === 'support' && (
-            <SupportScreen
-              reports={supportReports}
-              profile={profile}
-              isAdmin={isAdmin}
-              onNavigateHome={() => setActiveScreen('home')}
-              onNavigateAdmin={() => setActiveScreen('admin')}
-              onBack={() => setActiveScreen('home')}
-            />
-          )}
+        {activeScreen === 'support' && (
+          <SupportScreen
+            reports={supportReports}
+            profile={profile}
+            onAddReport={handleAddReport}
+            isAdmin={isAdmin}
+            onBack={() => setActiveScreen('home')}
+          />
+        )}
 
-          {activeScreen === 'admin' && (
-            <AdminPanelScreen
-              profile={profile}
-              members={members}
-              donors={donors}
-              notices={notices}
-              funds={funds}
-              supportReports={supportReports}
-              onAddSupportReport={handleAddSupportReport}
-              onEditSupportReport={handleEditSupportReport}
-              onDeleteSupportReport={handleDeleteSupportReport}
-              setSupportReports={setSupportReports}
-              paymentConfig={paymentConfig}
-              onUpdatePaymentConfig={handleUpdatePaymentConfig}
-              onUpdateProfile={handleUpdateProfile}
-              onAddMember={handleAddMember}
-              onEditMember={handleEditMember}
-              onDeleteMember={handleDeleteMember}
-              onAddDonor={handleAddDonor}
-              onEditDonor={handleEditDonor}
-              onDeleteDonor={handleDeleteDonor}
-              onAddNotice={handleAddNotice}
-              onEditNotice={handleEditNotice}
-              onDeleteNotice={handleDeleteNotice}
-              onAddFund={handleAddFund}
-              onEditFund={handleEditFund}
-              onDeleteFund={handleDeleteFund}
-              onToggleFundStatus={handleToggleFundStatus}
-              onResetAll={handleResetData}
-              isAdmin={isAdmin}
-              setIsAdmin={setIsAdmin}
-              onBack={() => setActiveScreen('home')}
-              homeSlides={homeSlides}
-              onUpdateHomeSlides={handleUpdateHomeSlides}
-              humanitarianActivities={humanitarianActivities}
-              onUpdateHumanitarianActivities={handleUpdateHumanitarianActivities}
-              organizationRules={organizationRules}
-              onUpdateOrganizationRules={handleUpdateOrganizationRules}
-              calendarBanners={calendarBanners}
-              onUpdateCalendarBanners={handleUpdateCalendarBanners}
-              initialActiveTab={adminActiveTab}
-            />
-          )}
-        </ErrorBoundary>
+        {activeScreen === 'admin' && (
+          <AdminPanelScreen
+            profile={profile}
+            onUpdateProfile={handleUpdateProfile}
+            members={members}
+            onAddMember={handleAddMember}
+            onEditMember={handleEditMember}
+            onDeleteMember={handleDeleteMember}
+            donors={donors}
+            onAddDonor={handleAddDonor}
+            onEditDonor={handleEditDonor}
+            onDeleteDonor={handleDeleteDonor}
+            funds={funds}
+            paymentConfig={paymentConfig}
+            onUpdatePaymentConfig={handleUpdatePaymentConfig}
+            onBack={() => setActiveScreen('home')}
+          />
+        )}
       </main>
 
-      {/* Footer UI */}
-      <footer className="bg-white border-t border-slate-200 text-slate-600 text-xs py-6 px-4 mb-14 sm:mb-0">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <HeartHandshake className="w-4 h-4 text-emerald-600" />
-            <span className="font-bold text-slate-800">{profile.name}</span>
-            <span className="text-slate-400">|</span>
-            <span className="text-amber-700 font-semibold text-xs bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-              {profile.establishedDate || 'স্থাপিত : ১৫/০৮/২০২২ইং'}
-            </span>
-            <span className="text-slate-400">|</span>
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3 h-3 text-emerald-600" />
-              {profile.address}
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-4 text-slate-500">
-            {/* Organization Slogan */}
-            <div className="flex items-center gap-1.5 text-emerald-700 font-bold bg-emerald-50 border border-emerald-200/80 px-3 py-1 rounded-full text-xs">
-              <Heart className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
-              <span>মানবতার কল্যাণে নিবেদিত প্রাণ</span>
-            </div>
-
-            {/* Admin Access Option */}
-            <button
-              onClick={() => {
-                if (isAdmin) {
-                  setActiveScreen('admin');
-                } else {
-                  setIsAdminModalOpen(true);
-                }
-              }}
-              className="hover:text-amber-700 flex items-center gap-1 font-bold text-amber-700 transition"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>ইন-অ্যাপ এডমিন প্যানেল</span>
-            </button>
-          </div>
-        </div>
-      </footer>
-
-      {/* Bottom Navigation for Mobile */}
+      {/* Mobile Bottom Navigation */}
       <BottomNav
         activeScreen={activeScreen}
-        setActiveScreen={(scr) => {
-          setActiveScreen(scr);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-        noticeCount={notices.length}
+        setActiveScreen={setActiveScreen}
+        isAdmin={isAdmin}
+        openAdminModal={() => setIsAdminModalOpen(true)}
       />
 
-      {/* Modals */}
-      <ErrorBoundary fallback={null}>
-        {isAdminModalOpen && (
-          <AdminModal
-            isOpen={isAdminModalOpen}
-            onClose={() => setIsAdminModalOpen(false)}
-            onSuccessLogin={() => {
-              setIsAdmin(true);
-              setActiveScreen('admin');
-            }}
-          />
-        )}
+      {/* Admin Login Modal */}
+      <AdminModal
+        isOpen={isAdminModalOpen}
+        onClose={() => setIsAdminModalOpen(false)}
+        onSuccess={() => {
+          setIsAdmin(true);
+          setActiveScreen('admin');
+        }}
+      />
 
-        {isEmergencyModalOpen && (
-          <EmergencyHelplineModal
-            isOpen={isEmergencyModalOpen}
-            onClose={() => setIsEmergencyModalOpen(false)}
-            profile={profile}
-            onUpdateProfile={(updatedProfile) => {
-              setProfile(updatedProfile);
-              saveOrgProfile(updatedProfile);
-            }}
-            isAdmin={isAdmin}
-            onNavigateToAdmin={() => {
-              if (isAdmin) {
-                setActiveScreen('admin');
-              } else {
-                setIsAdminModalOpen(true);
-              }
-            }}
-          />
-        )}
-
-        {isSheetGuideOpen && (
-          <SheetGuideModal
-            isOpen={isSheetGuideOpen}
-            onClose={() => setIsSheetGuideOpen(false)}
-          />
-        )}
-      </ErrorBoundary>
+      {/* Emergency Helpline Modal */}
+      <EmergencyHelplineModal
+        isOpen={isEmergencyModalOpen}
+        onClose={() => setIsEmergencyModalOpen(false)}
+        profile={profile}
+      />
     </div>
   );
 }

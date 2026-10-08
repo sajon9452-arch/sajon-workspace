@@ -1,79 +1,52 @@
-/**
- * Client-Side High Performance Image Compressor
- * Resizes large smartphone/camera photos to optimal dimensions with high visual fidelity.
- * Dramatically reduces storage footprint (from 5MB+ down to ~35KB-50KB).
- */
-
 export interface CompressOptions {
   maxWidth?: number;
   maxHeight?: number;
   quality?: number;
 }
 
-export function compressImageFile(
-  file: File,
-  options: CompressOptions = {}
-): Promise<string> {
-  const { maxWidth = 900, maxHeight = 900, quality = 0.8 } = options;
+/**
+ * Compresses an image File using HTML5 Canvas
+ * Produces clean Base64 JPEG data URL suitable for instant storage & sync
+ */
+export async function compressImageFile(file: File, options: CompressOptions = {}): Promise<string> {
+  const { maxWidth = 800, maxHeight = 800, quality = 0.8 } = options;
 
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-      return;
-    }
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
 
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      let { width, height } = img;
-
-      // Calculate aspect-ratio preserved dimensions
-      if (width > maxWidth || height > maxHeight) {
-        if (width / maxWidth > height / maxHeight) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        } else {
-          width = Math.round((width * maxHeight) / height);
-          height = maxHeight;
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
         }
-      }
 
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(width, 1);
-      canvas.height = Math.max(height, 1);
-      const ctx = canvas.getContext('2d');
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
 
-      if (!ctx) {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-        return;
-      }
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
 
-      // Smooth scaling
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-      // Output as optimized JPEG data URL
-      const dataUrl = canvas.toDataURL('image/jpeg', quality);
-      resolve(dataUrl);
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.src = e.target?.result as string;
     };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    };
-
-    img.src = objectUrl;
+    reader.readAsDataURL(file);
   });
 }

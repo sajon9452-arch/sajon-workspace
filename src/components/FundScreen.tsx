@@ -1,65 +1,46 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Wallet, 
-  Plus, 
-  ArrowLeft, 
   Search, 
+  PlusCircle, 
   CheckCircle2, 
-  AlertCircle, 
+  Clock, 
+  ArrowDownLeft, 
+  CreditCard, 
+  Phone, 
+  Copy, 
+  Check, 
+  Edit, 
+  Trash2, 
+  X, 
   TrendingUp, 
   TrendingDown, 
-  Coins, 
-  Receipt, 
-  UserCheck, 
-  Edit2, 
-  Trash2, 
-  Calendar, 
-  X,
-  Sparkles,
-  RotateCcw,
-  Check,
-  Copy,
-  Smartphone,
   Send,
-  ShieldCheck,
-  CreditCard,
-  Clock,
-  FileText,
-  Layers,
-  MessageSquare,
-  ExternalLink
+  AlertCircle,
+  FileSpreadsheet,
+  Filter
 } from 'lucide-react';
-import { FundRecord, PaymentStatus, PaymentGatewayConfig, Member } from '../types';
-import { toBengaliCurrency, toBengaliNumber, formatBengaliDate, getCleanFundDescription } from '../utils/helpers';
-import { loadPaymentSettings, loadMembers } from '../utils/storage';
-import { findMemberInDirectory, resolveLinkedFundData } from '../utils/memberFundLinker';
-import { ExpenseModal } from './ExpenseModal';
-import { DueSmsModal } from './DueSmsModal';
-import { PaymentGatewaySection } from './PaymentGatewaySection';
-import { triggerNativeCall, triggerNativeSms } from '../utils/nativeIntentHelper';
+import { FundRecord, Member, PaymentStatus, PaymentGatewayConfig } from '../types';
 import { 
-  triggerDirectSimSms, 
-  generatePaidConfirmationSms, 
-  generateDirectSimPaidSms,
-  generateDirectSimDueSms,
-  resolveMemberPhone,
-  buildDirectSimSmsUrl,
-  extractArrearsMonthCount,
-  formatDynamicArrearsText,
-  ARREARS_MONTH_OPTIONS
-} from '../utils/smsHelper';
+  toBengaliNumber, 
+  formatBengaliCurrency, 
+  sanitizePhone 
+} from '../utils/helpers';
+import { autoSyncMembersToFunds } from '../utils/memberFundLinker';
+import { generateDirectSimPaidSms, generateDirectSimDueSms, triggerDirectSimSms } from '../utils/smsHelper';
+import { PaymentGatewaySection } from './PaymentGatewaySection';
 
 interface FundScreenProps {
   fundRecords: FundRecord[];
-  members?: Member[];
-  onAddFundRecord: (record: Omit<FundRecord, 'id'>) => void;
-  onToggleStatus?: (id: string, newStatus: PaymentStatus) => void;
-  onEditFundRecord?: (record: FundRecord) => void;
-  onDeleteFundRecord?: (id: string) => void;
-  manualTotalBalance?: number | null;
+  members: Member[];
+  onAddFundRecord: (fund: Omit<FundRecord, 'id'>) => Promise<FundRecord>;
+  onEditFundRecord: (fund: FundRecord) => Promise<void>;
+  onDeleteFundRecord: (id: string) => Promise<void>;
+  onToggleStatus: (id: string, newStatus: PaymentStatus) => Promise<void>;
+  manualTotalBalance: number | null;
   onUpdateManualTotalBalance?: (amount: number | null) => void;
-  paymentConfig?: PaymentGatewayConfig;
-  isAdmin?: boolean;
+  paymentConfig: PaymentGatewayConfig;
+  isAdmin: boolean;
   onBack: () => void;
 }
 
@@ -67,1885 +48,813 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   fundRecords,
   members,
   onAddFundRecord,
-  onToggleStatus,
   onEditFundRecord,
   onDeleteFundRecord,
-  manualTotalBalance = null,
+  onToggleStatus,
+  manualTotalBalance,
   onUpdateManualTotalBalance,
-  paymentConfig: passedPaymentConfig,
-  isAdmin = false,
-  onBack,
+  paymentConfig,
+  isAdmin,
+  onBack
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentStatus>('all');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  
+  // Modals
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<FundRecord | null>(null);
+  const [isAdjustBalanceOpen, setIsAdjustBalanceOpen] = useState(false);
+  const [newManualBalance, setNewManualBalance] = useState<string>(manualTotalBalance !== null ? manualTotalBalance.toString() : '');
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const [smsSentNotice, setSmsSentNotice] = useState<string | null>(null);
 
-  // Expense Breakdown Modal State
-  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<FundRecord | null>(null);
+  // Form states for Add/Edit
+  const [formRecordType, setFormRecordType] = useState<'income' | 'expense'>('income');
+  const [formSelectedMemberId, setFormSelectedMemberId] = useState<string>('');
+  const [formMemberName, setFormMemberName] = useState<string>('');
+  const [formPhone, setFormPhone] = useState<string>('');
+  const [formAmount, setFormAmount] = useState<number | ''>(500);
+  const [formStatus, setFormStatus] = useState<PaymentStatus>('Paid');
+  const [formMonth, setFormMonth] = useState<string>('মার্চ ২০২৬');
+  const [formDate, setFormDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [formCategory, setFormCategory] = useState<string>('মাসিক চাঁদা');
+  const [formDescription, setFormDescription] = useState<string>('মাসিক নিয়মিত চাঁদা');
+  const [formDisbursedTo, setFormDisbursedTo] = useState<string>('');
+  const [formVoucherNo, setFormVoucherNo] = useState<string>('');
+  const [formNotes, setFormNotes] = useState<string>('');
+  const [formError, setFormError] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Manual Total Balance Modal State
-  const [isEditBalanceModalOpen, setIsEditBalanceModalOpen] = useState(false);
-  const [manualBalanceInput, setManualBalanceInput] = useState<string>('');
-  const [balanceSaveSuccess, setBalanceSaveSuccess] = useState(false);
+  // 1. 100% COMPLETE AUTO-SYNC: All members are automatically populated into Fund Management
+  const effectiveFundRecords = useMemo(() => {
+    return autoSyncMembersToFunds(members, fundRecords);
+  }, [members, fundRecords]);
 
-  // Form State
-  const [memberName, setMemberName] = useState('');
-  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
-  const [amount, setAmount] = useState<number | ''>(500);
-  const [status, setStatus] = useState<PaymentStatus>('Paid');
-  const [description, setDescription] = useState('মাসিক নিয়মিত চাঁদা');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [category, setCategory] = useState<'মাসিক চাঁদা' | 'এককালীন অনুদান' | 'জরুরি সাহায্য' | 'খরচ'>('মাসিক চাঁদা');
-  const [formError, setFormError] = useState('');
-  const [formMonth, setFormMonth] = useState('মার্চ ২০২৬');
-  const [formPhone, setFormPhone] = useState('');
-  const [arrearsMonthCount, setArrearsMonthCount] = useState<number>(1);
-  const [pastMonthsText, setPastMonthsText] = useState<string>('');
-  const [modalSmsNotice, setModalSmsNotice] = useState<string | null>(null);
+  // Financial Statistics
+  const totalIncome = useMemo(() => {
+    return effectiveFundRecords
+      .filter(f => f.status === 'Paid')
+      .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+  }, [effectiveFundRecords]);
 
-  // Payment Gateway Selection & Direct Subscription State (Default: null - collapsed by default)
-  const paymentConfig = passedPaymentConfig || loadPaymentSettings();
-  const [selectedGateway, setSelectedGateway] = useState<'bkash' | 'nagad' | 'rocket' | null>(null);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const totalExpense = useMemo(() => {
+    return effectiveFundRecords
+      .filter(f => f.status === 'Expense')
+      .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+  }, [effectiveFundRecords]);
 
-  // Quick Deposit/Subscription Form State
-  const [depositMemberName, setDepositMemberName] = useState('');
-  const [depositAmount, setDepositAmount] = useState<number | ''>(500);
-  const [depositTrxId, setDepositTrxId] = useState('');
-  const [depositSenderPhone, setDepositSenderPhone] = useState('');
-  const [depositSuccessMsg, setDepositSuccessMsg] = useState('');
-  const [depositErrorMsg, setDepositErrorMsg] = useState('');
+  const totalDue = useMemo(() => {
+    return effectiveFundRecords
+      .filter(f => f.status === 'Due')
+      .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+  }, [effectiveFundRecords]);
 
-  // SMS Integration States: Paid Auto-Trigger & Due Manual Trigger
-  const allMembers = useMemo(() => {
-    return members && members.length > 0 ? members : loadMembers();
-  }, [members]);
+  const netBalance = manualTotalBalance !== null ? manualTotalBalance : (totalIncome - totalExpense);
 
-  const [paidSmsToast, setPaidSmsToast] = useState<{
-    memberName: string;
-    phone: string;
-    amount: number;
-    smsText: string;
-  } | null>(null);
-
-  const [dueSmsTarget, setDueSmsTarget] = useState<{
-    memberName: string;
-    phone?: string;
-    amount?: number;
-    month?: string;
-    memberId?: string;
-  } | null>(null);
-
-  // Computed Live SMS Preview for Fund Modal
-  const currentModalSmsPreview = useMemo(() => {
-    const moneyVal = amount !== '' ? amount : 0;
-    const nameVal = memberName.trim() || '[সদস্যের নাম]';
-    if (status === 'Paid') {
-      return generateDirectSimPaidSms({
-        memberName: nameVal,
-        months: formMonth.trim() || 'চলতি',
-        money: moneyVal
-      });
-    }
-    if (status === 'Due') {
-      return generateDirectSimDueSms({
-        memberName: nameVal,
-        money: moneyVal,
-        monthCount: arrearsMonthCount,
-        pastMonthsText: pastMonthsText.trim()
-      });
-    }
-    return '';
-  }, [memberName, amount, status, formMonth, arrearsMonthCount, pastMonthsText]);
-
-  // Handle direct SMS click from modal
-  const handleSendDirectSmsFromModal = () => {
-    if (!memberName.trim()) {
-      setFormError('অনুগ্রহ করে সদস্যের নাম লিখুন');
-      return;
-    }
-
-    const linked = findMemberInDirectory({ memberId: selectedMemberId, memberName: memberName.trim() }, allMembers);
-    const resolvedPhone = formPhone.trim() || linked?.phone || resolveMemberPhone({ memberName: memberName.trim() }, allMembers);
-    const resolvedMemberName = linked?.name || memberName.trim();
-    const moneyVal = amount !== '' ? amount : 0;
-
-    let smsText = '';
-    if (status === 'Paid') {
-      smsText = generateDirectSimPaidSms({
-        memberName: resolvedMemberName,
-        months: formMonth.trim() || 'চলতি',
-        money: moneyVal
-      });
-    } else if (status === 'Due') {
-      smsText = generateDirectSimDueSms({
-        memberName: resolvedMemberName,
-        money: moneyVal,
-        monthCount: arrearsMonthCount,
-        pastMonthsText: pastMonthsText.trim()
-      });
-    } else {
-      smsText = generateDirectSimPaidSms({
-        memberName: resolvedMemberName,
-        months: formMonth.trim() || 'চলতি',
-        money: moneyVal
-      });
-    }
-
-    // Trigger Direct SIM SMS intent
-    triggerDirectSimSms(resolvedPhone, smsText);
-
-    // Also copy to clipboard for user convenience
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(smsText).catch(() => {});
-    }
-
-    setModalSmsNotice(
-      resolvedPhone
-        ? `${resolvedPhone} নম্বরে সরাসরি SIM SMS অ্যাপ চালু হয়েছে এবং মেসেজ কপি হয়েছে`
-        : 'সরাসরি SIM SMS অ্যাপ চালু হয়েছে এবং মেসেজ ক্লিপবোর্ডে কপি হয়েছে'
-    );
-    setTimeout(() => setModalSmsNotice(null), 5000);
-  };
-
-  const handleApproveOrTogglePaid = (record: FundRecord, targetStatus?: PaymentStatus) => {
-    const nextStatus: PaymentStatus = targetStatus || (record.status === 'Paid' ? 'Due' : 'Paid');
-    if (onToggleStatus) {
-      onToggleStatus(record.id, nextStatus);
-    }
-
-    // Auto-trigger Direct SIM SMS when payment is approved or marked as Paid
-    if (nextStatus === 'Paid') {
-      const linked = resolveLinkedFundData(record, allMembers);
-      const memberPhone = linked.displayPhone || resolveMemberPhone(record, allMembers);
-      const resolvedMemberName = linked.displayName || record.memberName;
-      const smsText = generatePaidConfirmationSms({
-        memberName: resolvedMemberName,
-        amount: record.amount,
-        month: record.month,
-        trxId: record.trxId
-      });
-
-      if (memberPhone) {
-        triggerDirectSimSms(memberPhone, smsText);
-      }
-
-      setPaidSmsToast({
-        memberName: resolvedMemberName,
-        phone: memberPhone,
-        amount: record.amount,
-        smsText
-      });
-      setTimeout(() => {
-        setPaidSmsToast(prev => prev?.memberName === resolvedMemberName ? null : prev);
-      }, 9000);
-    }
-  };
-
-  const handleCopyNumber = (num: string, gatewayKey: string) => {
-    if (!num) return;
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(num).catch(() => {
-          fallbackCopyText(num);
-        });
-      } else {
-        fallbackCopyText(num);
-      }
-    } catch {
-      fallbackCopyText(num);
-    }
-    setCopiedField(gatewayKey);
-    setTimeout(() => setCopiedField(null), 2500);
-  };
-
-  const fallbackCopyText = (text: string) => {
-    try {
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-999999px';
-      textArea.style.top = '-999999px';
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
-      document.execCommand('copy');
-      textArea.remove();
-    } catch {
-      // Ignore if document is restricted
-    }
-  };
-
-  // Submits user subscription as PENDING verification
-  const handleQuickDepositSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setDepositErrorMsg('');
-    if (!selectedGateway) {
-      setDepositErrorMsg('অনুগ্রহ করে একটি পেমেন্ট মেথড (বিকাশ / নগদ / রকেট) নির্বাচন করুন');
-      return;
-    }
-    if (!depositMemberName.trim()) {
-      setDepositErrorMsg('অনুগ্রহ করে আপনার নাম লিখুন');
-      return;
-    }
-    if (!depositAmount || Number(depositAmount) <= 0) {
-      setDepositErrorMsg('সঠিক চাঁদার পরিমাণ লিখুন');
-      return;
-    }
-    if (!depositTrxId.trim()) {
-      setDepositErrorMsg('অনুগ্রহ করে Transaction ID (TrxID) লিখুন');
-      return;
-    }
-
-    const gatewayName = selectedGateway === 'bkash' ? 'বিকাশ (bKash)' : selectedGateway === 'nagad' ? 'নগদ (Nagad)' : 'রকেট (Rocket)';
-    const noteText = `মাসিক চাঁদা (${gatewayName} - TrxID: ${depositTrxId.trim()}${depositSenderPhone.trim() ? `, প্রেরক: ${depositSenderPhone.trim()}` : ''})`;
-
-    const matchedMember = findMemberInDirectory({ memberName: depositMemberName.trim() }, allMembers);
-    const finalPhone = depositSenderPhone.trim() || matchedMember?.phone || '';
-
-    onAddFundRecord({
-      memberId: matchedMember?.id,
-      memberName: depositMemberName.trim(),
-      amount: Number(depositAmount),
-      status: 'Pending', // User deposits start as Pending until verified and approved by admin
-      description: noteText,
-      date: new Date().toISOString().split('T')[0],
-      category: 'মাসিক চাঁদা',
-      phone: finalPhone,
-      trxId: depositTrxId.trim(),
-      senderPhone: depositSenderPhone.trim() || '',
-      gateway: selectedGateway,
-      notes: `অপেক্ষমান যাচাই (TrxID: ${depositTrxId.trim()})`
-    });
-
-    setDepositSuccessMsg(`ধন্যবাদ ${depositMemberName.trim()}! আপনার ${gatewayName} চাঁদার লেনদেনটি (TrxID: ${depositTrxId.trim()}) পেন্ডিং (Pending) হিসেবে সফলভাবে জমা হয়েছে। সংগঠনের অ্যাডমিন ভেরিফাই করে অনুমোদন করার পরই এটি মূল পেইড (Paid) তালিকায় যুক্ত হবে।`);
-    setDepositMemberName('');
-    setDepositAmount(500);
-    setDepositTrxId('');
-    setDepositSenderPhone('');
-    setTimeout(() => setDepositSuccessMsg(''), 10000);
-  };
-
-  // Expense Handlers
-  const handleOpenAddExpense = () => {
-    setEditingExpense(null);
-    setIsExpenseModalOpen(true);
-  };
-
-  const handleOpenEditExpense = (rec: FundRecord) => {
-    setEditingExpense(rec);
-    setIsExpenseModalOpen(true);
-  };
-
-  const handleSaveExpense = (data: {
-    description: string;
-    amount: number;
-    disbursedTo: string;
-    date: string;
-    category: string;
-    voucherNo?: string;
-    notes?: string;
-  }) => {
-    let noteText = '';
-    const cleanVoucher = data.voucherNo ? data.voucherNo.trim() : '';
-    const cleanNotes = data.notes ? data.notes.trim() : '';
-
-    if (cleanVoucher && cleanNotes) {
-      noteText = `ভাউচার: ${cleanVoucher} - ${cleanNotes}`;
-    } else if (cleanVoucher) {
-      noteText = `ভাউচার: ${cleanVoucher}`;
-    } else if (cleanNotes) {
-      noteText = cleanNotes;
-    }
-
-    if (editingExpense && onEditFundRecord) {
-      onEditFundRecord({
-        ...editingExpense,
-        memberName: data.disbursedTo,
-        amount: data.amount,
-        status: 'Expense',
-        type: 'expense',
-        description: data.description,
-        date: data.date,
-        category: (data.category as any) || 'বিবিধ ও অন্যান্য ব্যয়',
-        disbursedTo: data.disbursedTo,
-        notes: noteText
-      });
-    } else if (onAddFundRecord) {
-      onAddFundRecord({
-        memberName: data.disbursedTo,
-        amount: data.amount,
-        status: 'Expense',
-        type: 'expense',
-        description: data.description,
-        date: data.date,
-        category: (data.category as any) || 'বিবিধ ও অন্যান্য ব্যয়',
-        disbursedTo: data.disbursedTo,
-        notes: noteText
-      });
-      // Switch filter so user can immediately view the added expense breakdown in the table
-      setStatusFilter('Expense');
-    }
-    setIsExpenseModalOpen(false);
-    setEditingExpense(null);
-  };
-
-  // Live Auto Calculations from records
-  const stats = useMemo(() => {
-    let totalPaid = 0;
-    let totalDue = 0;
-    let totalExpense = 0;
-    let totalPending = 0;
-    let paidCount = 0;
-    let dueCount = 0;
-    let expenseCount = 0;
-    let pendingCount = 0;
-
-    fundRecords.forEach(r => {
-      const amt = Number(r.amount) || 0;
-      if (r.status === 'Expense') {
-        totalExpense += amt;
-        expenseCount++;
-      } else if (r.status === 'Paid') {
-        totalPaid += amt;
-        paidCount++;
-      } else if (r.status === 'Pending') {
-        totalPending += amt;
-        pendingCount++;
-      } else if (r.status === 'Due') {
-        totalDue += amt;
-        dueCount++;
-      }
-    });
-
-    const netBalance = totalPaid - totalExpense;
-
-    return {
-      totalPaid,
-      totalDue,
-      totalExpense,
-      totalPending,
-      netBalance,
-      paidCount,
-      dueCount,
-      expenseCount,
-      pendingCount,
-      totalRecords: fundRecords.length
-    };
-  }, [fundRecords]);
-
-  // Effective Total Organization Balance (Manual or Calculated)
-  const displayTotalBalance = useMemo(() => {
-    if (manualTotalBalance !== null && manualTotalBalance !== undefined) {
-      return manualTotalBalance;
-    }
-    return stats.netBalance;
-  }, [manualTotalBalance, stats.netBalance]);
-
-  // Filtered records
+  // Filtered Records
   const filteredRecords = useMemo(() => {
-    return fundRecords.filter(r => {
-      const matchesSearch = 
-        r.memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (r.description && r.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (r.disbursedTo && r.disbursedTo.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (r.trxId && r.trxId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (r.notes && r.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (r.category && r.category.toLowerCase().includes(searchTerm.toLowerCase()));
-      
-      const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
+    return effectiveFundRecords.filter(f => {
+      if (statusFilter !== 'all' && f.status !== statusFilter) return false;
 
-      return matchesSearch && matchesStatus;
+      if (searchTerm.trim()) {
+        const q = searchTerm.trim().toLowerCase();
+        const matchesName = (f.memberName || '').toLowerCase().includes(q);
+        const matchesPhone = (f.phone || '').includes(q);
+        const matchesDesc = (f.description || '').toLowerCase().includes(q);
+        const matchesMonth = (f.month || '').toLowerCase().includes(q);
+        return matchesName || matchesPhone || matchesDesc || matchesMonth;
+      }
+      return true;
     });
-  }, [fundRecords, searchTerm, statusFilter]);
+  }, [effectiveFundRecords, statusFilter, searchTerm]);
 
-  const handleOpenEdit = (rec: FundRecord) => {
-    const linked = resolveLinkedFundData(rec, allMembers);
-    setEditingRecord(rec);
-    setMemberName(linked.displayName || rec.memberName);
-    setSelectedMemberId(linked.memberId || rec.memberId || '');
-    setAmount(rec.amount);
-    setStatus(rec.status);
-    setDescription(rec.description || '');
-    setDate(rec.date);
-    setCategory((rec.category as any) || 'মাসিক চাঁদা');
-    setFormMonth(rec.month || rec.description || 'মার্চ ২০২৬');
-    setFormPhone(linked.displayPhone || rec.phone || '');
-    const parsedArrears = extractArrearsMonthCount(rec);
-    setArrearsMonthCount(parsedArrears.monthCount);
-    setPastMonthsText(parsedArrears.pastMonthsText);
-    setModalSmsNotice(null);
-    setIsAddModalOpen(true);
+  // Handle member selection in modal (Strict rule: NO manual typing of name or number)
+  const handleMemberSelect = (memberId: string) => {
+    setFormSelectedMemberId(memberId);
+    const target = members.find(m => m.id === memberId);
+    if (target) {
+      setFormMemberName(target.name);
+      setFormPhone(target.phone || '');
+    } else {
+      setFormMemberName('');
+      setFormPhone('');
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!memberName.trim()) {
-      setFormError('সদস্য বা দাতার নাম লিখুন');
-      return;
-    }
-    if (amount === '' || Number(amount) <= 0) {
-      setFormError('সঠিক টাকার পরিমাণ দিন');
-      return;
-    }
-
-    const matched = selectedMemberId
-      ? allMembers.find(m => m.id === selectedMemberId)
-      : findMemberInDirectory({ memberName: memberName.trim() }, allMembers);
-
-    const linkedMemberId = matched?.id || (editingRecord?.memberId) || undefined;
-    const finalPhone = formPhone.trim() || matched?.phone || undefined;
-    const finalMemberName = memberName.trim();
-
-    if (editingRecord && onEditFundRecord) {
-      onEditFundRecord({
-        ...editingRecord,
-        memberId: linkedMemberId,
-        memberName: finalMemberName,
-        amount: Number(amount),
-        status,
-        description: description.trim(),
-        date,
-        month: formMonth.trim() || undefined,
-        phone: finalPhone,
-        category
-      });
+  const handleOpenAddModal = (isExpense = false) => {
+    setFormRecordType(isExpense ? 'expense' : 'income');
+    if (!isExpense && members.length > 0) {
+      const first = members[0];
+      setFormSelectedMemberId(first.id);
+      setFormMemberName(first.name);
+      setFormPhone(first.phone || '');
     } else {
-      onAddFundRecord({
-        memberId: linkedMemberId,
-        memberName: finalMemberName,
-        amount: Number(amount),
-        status,
-        description: description.trim() || 'মাসিক অনুদান',
-        date,
-        month: formMonth.trim() || undefined,
-        phone: finalPhone,
-        category
-      });
+      setFormSelectedMemberId('');
+      setFormMemberName('');
+      setFormPhone('');
     }
-
-    setMemberName('');
-    setSelectedMemberId('');
-    setAmount(500);
-    setStatus('Paid');
-    setDescription('মাসিক নিয়মিত চাঁদা');
-    setDate(new Date().toISOString().split('T')[0]);
-    setCategory('মাসিক চাঁদা');
+    setFormAmount(isExpense ? 1000 : 500);
+    setFormStatus(isExpense ? 'Expense' : 'Paid');
     setFormMonth('মার্চ ২০২৬');
-    setFormPhone('');
-    setArrearsMonthCount(1);
-    setPastMonthsText('');
-    setModalSmsNotice(null);
-    setEditingRecord(null);
+    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormCategory(isExpense ? 'খরচ' : 'মাসিক চাঁদা');
+    setFormDescription(isExpense ? 'জরুরি ত্রাণ ও খাদ্য সহায়তা' : 'মাসিক নিয়মিত চাঁদা');
+    setFormDisbursedTo('');
+    setFormVoucherNo('');
+    setFormNotes('');
     setFormError('');
-    setIsAddModalOpen(false);
+    setEditingRecord(null);
+    setIsModalOpen(true);
   };
 
-  // Open Edit Total Balance Modal
-  const handleOpenBalanceModal = () => {
-    setManualBalanceInput(displayTotalBalance.toString());
-    setIsEditBalanceModalOpen(true);
-    setBalanceSaveSuccess(false);
+  const handleOpenEditModal = (rec: FundRecord) => {
+    setEditingRecord(rec);
+    const isExp = rec.status === 'Expense';
+    setFormRecordType(isExp ? 'expense' : 'income');
+    setFormSelectedMemberId(rec.memberId || '');
+    setFormMemberName(rec.memberName);
+    setFormPhone(rec.phone || '');
+    setFormAmount(rec.amount);
+    setFormStatus(rec.status);
+    setFormMonth(rec.month || 'মার্চ ২০২৬');
+    setFormDate(rec.date || new Date().toISOString().split('T')[0]);
+    setFormCategory(rec.category || (isExp ? 'খরচ' : 'মাসিক চাঁদা'));
+    setFormDescription(rec.description || '');
+    setFormDisbursedTo(rec.disbursedTo || '');
+    setFormVoucherNo(rec.voucherNo || '');
+    setFormNotes(rec.notes || '');
+    setFormError('');
+    setIsModalOpen(true);
   };
 
-  // Save manual total balance
-  const handleSaveManualBalance = (e: React.FormEvent) => {
+  const handleSubmitFund = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = Number(manualBalanceInput);
-    if (!isNaN(parsed) && onUpdateManualTotalBalance) {
-      onUpdateManualTotalBalance(parsed);
-      setBalanceSaveSuccess(true);
-      setTimeout(() => {
-        setBalanceSaveSuccess(false);
-        setIsEditBalanceModalOpen(false);
-      }, 1000);
+    if (formRecordType === 'income' && !formMemberName.trim()) {
+      setFormError('অনুগ্রহ করে ড্রপডাউন থেকে একজন সদস্য নির্বাচন করুন');
+      return;
+    }
+    if (formRecordType === 'expense' && !formDescription.trim()) {
+      setFormError('ব্যয়ের সঠিক বিবরণ ও কারণ লিখুন');
+      return;
+    }
+    if (formAmount === '' || Number(formAmount) <= 0) {
+      setFormError('সঠিক টাকার পরিমাণ লিখুন');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError('');
+
+    try {
+      if (editingRecord) {
+        const updated: FundRecord = {
+          ...editingRecord,
+          memberId: formRecordType === 'income' ? formSelectedMemberId : undefined,
+          memberName: formRecordType === 'income' ? formMemberName.trim() : (formDisbursedTo.trim() || 'সাধারণ ব্যয়'),
+          phone: formPhone.trim(),
+          amount: Number(formAmount),
+          status: formStatus,
+          date: formDate,
+          month: formMonth,
+          category: formCategory,
+          description: formDescription.trim(),
+          disbursedTo: formDisbursedTo.trim(),
+          voucherNo: formVoucherNo.trim(),
+          notes: formNotes.trim(),
+          approvedAt: formStatus === 'Paid' ? new Date().toISOString() : undefined
+        };
+        await onEditFundRecord(updated);
+      } else {
+        const newRecord: Omit<FundRecord, 'id'> = {
+          memberId: formRecordType === 'income' ? formSelectedMemberId : undefined,
+          memberName: formRecordType === 'income' ? formMemberName.trim() : (formDisbursedTo.trim() || 'সাধারণ ব্যয়'),
+          phone: formPhone.trim(),
+          amount: Number(formAmount),
+          status: formStatus,
+          date: formDate,
+          month: formMonth,
+          category: formCategory,
+          description: formDescription.trim(),
+          disbursedTo: formDisbursedTo.trim(),
+          voucherNo: formVoucherNo.trim(),
+          notes: formNotes.trim(),
+          approvedAt: formStatus === 'Paid' ? new Date().toISOString() : undefined
+        };
+        await onAddFundRecord(newRecord);
+      }
+      setIsModalOpen(false);
+      setEditingRecord(null);
+    } catch {
+      setFormError('ফান্ড রেকর্ড সংরক্ষণে সমস্যা হয়েছে');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Reset to auto-calculated balance
-  const handleResetToAutoBalance = () => {
-    if (onUpdateManualTotalBalance) {
-      onUpdateManualTotalBalance(null);
-      setIsEditBalanceModalOpen(false);
+  const handleSendSms = (rec: FundRecord) => {
+    const phone = rec.phone;
+    if (!phone) {
+      alert('এই সদস্যের মোবাইল নম্বর যুক্ত নেই');
+      return;
     }
-  };
 
-  // Instant SIM SMS trigger directly from fund card or table row
-  const handleDirectSimSmsForRecord = (record: FundRecord) => {
-    const linked = resolveLinkedFundData(record, allMembers);
-    const memberPhone = linked.displayPhone || resolveMemberPhone(record, allMembers);
-    const resolvedMemberName = linked.displayName || record.memberName;
-    let smsText = '';
-
-    if (record.status === 'Paid') {
-      smsText = generateDirectSimPaidSms({
-        memberName: resolvedMemberName,
-        months: record.month || record.description || 'চলতি',
-        money: record.amount
-      });
-    } else if (record.status === 'Due') {
-      const arrears = extractArrearsMonthCount(record);
-      smsText = generateDirectSimDueSms({
-        memberName: resolvedMemberName,
-        money: record.amount,
-        monthCount: arrears.monthCount,
-        pastMonthsText: arrears.pastMonthsText
+    let text = '';
+    if (rec.status === 'Paid') {
+      text = generateDirectSimPaidSms({
+        memberName: rec.memberName,
+        months: rec.month || 'চলতি',
+        money: rec.amount
       });
     } else {
-      smsText = generateDirectSimPaidSms({
-        memberName: resolvedMemberName,
-        months: record.month || record.description || 'চলতি',
-        money: record.amount
+      text = generateDirectSimDueSms({
+        memberName: rec.memberName,
+        money: rec.amount,
+        monthCount: 1
       });
     }
 
-    // Trigger direct native SIM SMS intent
-    triggerDirectSimSms(memberPhone, smsText);
+    triggerDirectSimSms(phone, text);
+    navigator.clipboard.writeText(text);
+    setSmsSentNotice(`${rec.memberName}-এর জন্য মেসেজ ক্লিপবোর্ডে কপি হয়েছে`);
+    setTimeout(() => setSmsSentNotice(null), 3500);
+  };
 
-    // Copy to clipboard fallback
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(smsText).catch(() => {});
+  const handleSaveAdjustBalance = () => {
+    if (onUpdateManualTotalBalance) {
+      const val = newManualBalance.trim() ? parseFloat(newManualBalance.trim()) : null;
+      onUpdateManualTotalBalance(val);
+      setIsAdjustBalanceOpen(false);
     }
-
-    // Show feedback toast with full details
-    setPaidSmsToast({
-      memberName: resolvedMemberName,
-      phone: memberPhone,
-      amount: record.amount,
-      smsText
-    });
-    setTimeout(() => {
-      setPaidSmsToast(prev => (prev?.memberName === resolvedMemberName ? null : prev));
-    }, 9000);
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-12">
-      {/* Top Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            id="fund-back-btn"
-            className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition"
-            title="হোমে ফিরুন"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
+    <div className="space-y-6 pb-20 sm:pb-8">
+      {/* 1. Header & Summary Bar */}
+      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-              <span className="text-xs font-semibold text-emerald-700">পতেঙ্গা, চট্টগ্রাম • ফান্ড ও আর্থিক হিসাব</span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-emerald-600" />
-              সংগঠনের ফান্ড ও চাঁদা হিসাব (Fund Sheet)
-            </h2>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Add Expense Button (Admin Only) */}
-          {isAdmin && (
-            <button
-              onClick={handleOpenAddExpense}
-              id="fund-add-expense-btn"
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl shadow-2xs transition cursor-pointer"
-              title="নতুন খরচের হিসাব লিপিবদ্ধ করুন"
-            >
-              <FileText className="w-4 h-4 text-rose-600" />
-              <span>নতুন খরচ এন্ট্রি</span>
-            </button>
-          )}
-
-          {/* Admin Only: New Deposit Entry Button */}
-          {isAdmin && (
-            <button
-              onClick={() => {
-                setEditingRecord(null);
-                setMemberName('');
-                setAmount(500);
-                setStatus('Paid');
-                setDescription('মাসিক নিয়মিত চাঁদা');
-                setDate(new Date().toISOString().split('T')[0]);
-                setCategory('মাসিক চাঁদা');
-                setFormMonth('মার্চ ২০২৬');
-                setFormPhone('');
-                setArrearsMonthCount(1);
-                setPastMonthsText('');
-                setModalSmsNotice(null);
-                setIsAddModalOpen(true);
-              }}
-              id="fund-add-entry-btn"
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>নতুন চাঁদা / জমা এন্ট্রি</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* 1. SEPARATE CARD: সংগঠনের মোট তহবিলের পরিমাণ (Total Organization Balance) */}
-      <div 
-        id="org-total-balance-section"
-        className="bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 text-white rounded-3xl p-6 sm:p-7 shadow-md border border-emerald-500/30 relative overflow-hidden"
-      >
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-400/30">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>সংগঠনের মূল রিজার্ভ তহবিল</span>
-              {manualTotalBalance !== null && (
-                <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.2 rounded-full">
-                  ম্যানুয়াল আপডেট
-                </span>
-              )}
-            </div>
-            <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              সংগঠনের মোট তহবিলের পরিমাণ
-            </h3>
-            <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
-              সিলেট মানবসেবা সংগঠনের বর্তমান নিট রিজার্ভ ব্যালেন্স (মোট আদায় - মোট খরচ)।
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-4 bg-white/5 backdrop-blur-xs p-4 rounded-2xl border border-white/10">
-            <div className="text-left sm:text-right">
-              <span className="text-[11px] text-emerald-300 font-semibold uppercase tracking-wider block">
-                সর্বমোট মূল ব্যালেন্স
-              </span>
-              <div className="text-3xl sm:text-4xl font-black text-amber-300 font-mono tracking-tight">
-                {toBengaliCurrency(displayTotalBalance)}
-              </div>
-            </div>
-
-            {/* Admin Only: Edit Balance Option */}
-            {isAdmin && (
-              <button
-                onClick={handleOpenBalanceModal}
-                id="fund-edit-total-balance-btn"
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
-                title="মোট তহবিল ব্যালেন্স পরিবর্তন করুন"
-              >
-                <Edit2 className="w-4 h-4" />
-                <span>ব্যালেন্স এডিট করুন</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Ambient glow decoration */}
-        <div className="absolute -right-8 -bottom-8 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
-      </div>
-
-      {/* Auto Balance Summary Dashboard - 4 Column Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Paid Balance */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-              <Coins className="w-4 h-4 text-emerald-600" />
-              শিট হিসাব অনুযায়ী মোট আদায়
-            </span>
-            <div className="text-2xl font-bold text-emerald-700 mt-2 font-mono">
-              {toBengaliCurrency(stats.totalPaid)}
-            </div>
-          </div>
-          <div className="text-[11px] text-slate-500 mt-3 pt-2.5 border-t border-slate-100 flex justify-between items-center">
-            <span>পরিশোধিত এন্ট্রি:</span>
-            <span className="font-bold text-slate-800">{toBengaliNumber(stats.paidCount)} টি</span>
-          </div>
-        </div>
-
-        {/* Total Expense */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-                <TrendingDown className="w-4 h-4 text-rose-600" />
-                সংগঠনের মোট খরচ
-              </span>
-              <button
-                onClick={() => setStatusFilter('Expense')}
-                className="text-[10px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-md transition"
-              >
-                খতিয়ান দেখুন
-              </button>
-            </div>
-            <div className="text-2xl font-bold text-rose-700 mt-2 font-mono">
-              {toBengaliCurrency(stats.totalExpense)}
-            </div>
-          </div>
-          <div className="text-[11px] text-slate-500 mt-3 pt-2.5 border-t border-slate-100 flex justify-between items-center">
-            <span>মোট ভাউচার সংখ্যা:</span>
-            <span className="font-bold text-slate-800">{toBengaliNumber(stats.expenseCount)} টি</span>
-          </div>
-        </div>
-
-        {/* Pending Approvals */}
-        <div className={`rounded-2xl p-5 border shadow-xs flex flex-col justify-between transition ${
-          stats.pendingCount > 0 ? 'bg-amber-50/60 border-amber-300' : 'bg-white border-slate-200'
-        }`}>
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-                <Clock className={`w-4 h-4 ${stats.pendingCount > 0 ? 'text-amber-600 animate-spin' : 'text-slate-400'}`} />
-                অপেক্ষমান অনুমোদন (Pending)
-              </span>
-              {stats.pendingCount > 0 && (
-                <button
-                  onClick={() => setStatusFilter('Pending')}
-                  className="text-[10px] font-black text-amber-800 bg-amber-200/80 hover:bg-amber-300 px-2 py-0.5 rounded-md transition"
-                >
-                  যাচাই করুন
-                </button>
-              )}
-            </div>
-            <div className="text-2xl font-bold text-amber-700 mt-2 font-mono">
-              {toBengaliCurrency(stats.totalPending)}
-            </div>
-          </div>
-          <div className="text-[11px] text-slate-500 mt-3 pt-2.5 border-t border-slate-100 flex justify-between items-center">
-            <span>অনুমোদন অপেক্ষায়:</span>
-            <span className={`font-bold ${stats.pendingCount > 0 ? 'text-amber-800' : 'text-slate-800'}`}>
-              {toBengaliNumber(stats.pendingCount)} টি লেনদেন
-            </span>
-          </div>
-        </div>
-
-        {/* Total Due */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-              <AlertCircle className="w-4 h-4 text-amber-500" />
-              বকেয়া চাঁদা (Due Balance)
-            </span>
-            <div className="text-2xl font-bold text-amber-700 mt-2 font-mono">
-              {toBengaliCurrency(stats.totalDue)}
-            </div>
-          </div>
-          <div className="text-[11px] text-slate-500 mt-3 pt-2.5 border-t border-slate-100 flex justify-between items-center">
-            <span>বকেয়া সদস্য:</span>
-            <span className="font-bold text-amber-700">{toBengaliNumber(stats.dueCount)} জন</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Paid Auto-Trigger SMS Feedback Notification Banner */}
-      {paidSmsToast && (
-        <div className="bg-emerald-50 border-2 border-emerald-400 text-emerald-950 p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
-              <Check className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-sm font-bold">
-                {paidSmsToast.memberName}-এর পেমেন্ট সফলভাবে পেইড ও অনুমোদিত হয়েছে!
-              </p>
-              <p className="text-xs text-emerald-800 mt-0.5">
-                {paidSmsToast.phone 
-                  ? `সদস্যের নম্বরে (${paidSmsToast.phone}) সরাসরি SIM SMS মেসেজ ট্রিগার করা হয়েছে।` 
-                  : 'সদস্যের ফোন নম্বর প্রোফাইলে না থাকায় ম্যানুয়ালি এসএমএস পাঠান।'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 self-end sm:self-center">
-            {paidSmsToast.phone && (
-              <button
-                onClick={() => triggerDirectSimSms(paidSmsToast.phone, paidSmsToast.smsText)}
-                className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-2xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition"
-                title="ডিভাইসের মেসেজ অ্যাপ পুনরায় ওপেন করুন"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>পুনরায় SMS পাঠান</span>
-              </button>
-            )}
-            <button
-              onClick={() => setPaidSmsToast(null)}
-              className="p-1.5 rounded-lg text-slate-500 hover:bg-emerald-100 transition cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* PENDING TRANSACTIONS VERIFICATION ACTION CENTER (Visible when there are pending submissions) */}
-      {stats.pendingCount > 0 && (
-        <div id="pending-transactions-verification-section" className="bg-gradient-to-br from-amber-50 via-orange-50/50 to-amber-100/40 rounded-3xl p-5 sm:p-6 border-2 border-amber-300 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/80">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
-                <Clock className="w-5 h-5" />
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                <Wallet className="w-5 h-5 text-emerald-700" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-extrabold text-amber-950">
-                    যাচাই ও অনুমোদনের অপেক্ষমান ট্রানজেকশন (Pending Approvals)
-                  </h3>
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white text-xs font-black shadow-2xs">
-                    {toBengaliNumber(stats.pendingCount)} টি অপেক্ষমান
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
+                    তহবিল ও চাঁদা ব্যবস্থাপনা
+                  </h2>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                    অটো-সিঙ্ক সক্রিয়
                   </span>
                 </div>
-                <p className="text-xs text-amber-900/80 mt-0.5">
-                  ইউজারদের সাবমিটকৃত চাঁদার ট্রানজেকশন আইডি (TrxID) নিচে দেওয়া হলো। অ্যাডমিন যাচাই করে অনুমোদন দিলে তা মূল পেইড তালিকায় যুক্ত হবে।
+                <p className="text-xs text-slate-500 mt-0.5">
+                  সকল কার্যকরী ও সাধারণ সদস্যদের চাঁদা আদায়, বকেয়া হিসাব ও খরচের ডিজিটাল ক্যাশবুক
                 </p>
               </div>
             </div>
-
-            {isAdmin && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-200/80 text-amber-950 text-xs font-bold rounded-xl border border-amber-300">
-                <ShieldCheck className="w-4 h-4 text-amber-800" />
-                অ্যাডমিন ভেরিফিকেশন প্যানেল
-              </span>
-            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {fundRecords.filter(r => r.status === 'Pending').map((pRecord) => {
-              const linked = resolveLinkedFundData(pRecord, allMembers);
-              const pMemberName = linked.displayName;
-              const pPhone = linked.displayPhone;
-
-              return (
-              <div key={pRecord.id} className="bg-white rounded-2xl p-4 border border-amber-200/90 shadow-xs flex flex-col justify-between gap-3 hover:border-amber-400 transition">
-                <div className="space-y-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 font-black text-sm flex items-center justify-center">
-                        {pMemberName.charAt(0)}
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-slate-900 text-sm leading-tight">{pMemberName}</h4>
-                        <span className="text-[11px] text-slate-500">{formatBengaliDate(pRecord.date)}</span>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-base font-mono font-black text-emerald-700 block">
-                        {toBengaliCurrency(pRecord.amount)}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 inline-block">
-                        অপেক্ষমান
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* TrxID, Phone & Gateway info */}
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500 text-[11px] font-medium">TrxID:</span>
-                      <div className="flex items-center gap-1.5 font-mono font-bold text-slate-800">
-                        <span className="bg-white px-2 py-0.5 rounded border border-slate-200 text-xs text-amber-900">
-                          {pRecord.trxId || (pRecord.notes?.includes('TrxID:') ? pRecord.notes.split('TrxID:')[1].trim().split(' ')[0] : 'N/A')}
-                        </span>
-                        {pRecord.trxId && (
-                          <button
-                            onClick={() => handleCopyNumber(pRecord.trxId || '', `trx-${pRecord.id}`)}
-                            className="p-1 text-slate-400 hover:text-slate-700 rounded transition"
-                            title="কপি করুন"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {pPhone && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500 text-[11px] font-medium">প্রেরক মোবাইল:</span>
-                        <button
-                          type="button"
-                          onClick={() => triggerNativeCall(pPhone)}
-                          className="font-mono text-emerald-700 font-semibold hover:underline cursor-pointer"
-                          title="সরাসরি কল দিন"
-                        >
-                          {pPhone}
-                        </button>
-                      </div>
-                    )}
-
-                    {pRecord.gateway && (
-                      <div className="flex items-center justify-between pt-0.5">
-                        <span className="text-slate-500 text-[11px] font-medium">পেমেন্ট মেথড:</span>
-                        <span className="font-bold text-[11px] text-slate-700">
-                          {pRecord.gateway === 'bkash' ? 'বিকাশ (bKash)' : pRecord.gateway === 'nagad' ? 'নগদ (Nagad)' : 'রকেট (Rocket)'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                  {isAdmin ? (
-                    <>
-                      {onDeleteFundRecord && (
-                        <button
-                          onClick={() => onDeleteFundRecord(pRecord.id)}
-                          className="px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition flex items-center gap-1 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>বাতিল</span>
-                        </button>
-                      )}
-                      {onToggleStatus && (
-                        <button
-                          onClick={() => handleApproveOrTogglePaid(pRecord, 'Paid')}
-                          className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer ml-auto"
-                        >
-                          <Check className="w-4 h-4" />
-                          <span>অনুমোদন ও পেইড করুন (Approve)</span>
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <div className="w-full text-center py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 rounded-xl border border-amber-200">
-                      অ্যাডমিনের যাচাই ও অনুমোদনের অপেক্ষায় রয়েছে
-                    </div>
-                  )}
-                </div>
-              </div>
-              );
-            })}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => handleOpenAddModal(false)}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-md transition cursor-pointer active:scale-95"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>চাঁদা এন্ট্রি</span>
+            </button>
+            <button
+              onClick={() => handleOpenAddModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold shadow-md transition cursor-pointer active:scale-95"
+            >
+              <ArrowDownLeft className="w-4 h-4" />
+              <span>খরচ ভাউচার</span>
+            </button>
           </div>
         </div>
-      )}
 
-      {/* 2. PAYMENT GATEWAY / MONTHLY SUBSCRIPTION (Redesigned with Clean Tabs, Conditional Toggle & Popup Modal) */}
-      <PaymentGatewaySection
-        paymentConfig={paymentConfig}
-        selectedGateway={selectedGateway}
-        onSelectGateway={setSelectedGateway}
-        copiedField={copiedField}
-        onCopyNumber={handleCopyNumber}
-        depositMemberName={depositMemberName}
-        onChangeMemberName={setDepositMemberName}
-        depositAmount={depositAmount}
-        onChangeAmount={setDepositAmount}
-        depositTrxId={depositTrxId}
-        onChangeTrxId={setDepositTrxId}
-        depositSenderPhone={depositSenderPhone}
-        onChangeSenderPhone={setDepositSenderPhone}
-        depositSuccessMsg={depositSuccessMsg}
-        depositErrorMsg={depositErrorMsg}
-        onSubmit={handleQuickDepositSubmit}
-        isPaymentModalOpen={isPaymentModalOpen}
-        onTogglePaymentModal={setIsPaymentModalOpen}
-        members={allMembers}
-      />
+        {/* Live Balance Summary Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-100">
+          <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-100">
+            <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+              <span>মোট আদায়কৃত চাঁদা</span>
+            </span>
+            <div className="text-xl sm:text-2xl font-black text-emerald-900 mt-1">
+              {formatBengaliCurrency(totalIncome)}
+            </div>
+            <span className="text-[11px] text-emerald-700 mt-1 block">
+              পরিশোধিত রেকর্ড: {toBengaliNumber(effectiveFundRecords.filter(f => f.status === 'Paid').length)}টি
+            </span>
+          </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+          <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-100">
+            <span className="text-xs font-bold text-rose-800 flex items-center gap-1.5">
+              <TrendingDown className="w-4 h-4 text-rose-600" />
+              <span>মোট ব্যয় বা খরচ</span>
+            </span>
+            <div className="text-xl sm:text-2xl font-black text-rose-900 mt-1">
+              {formatBengaliCurrency(totalExpense)}
+            </div>
+            <span className="text-[11px] text-rose-700 mt-1 block">
+              ভাউচার সংখ্যা: {toBengaliNumber(effectiveFundRecords.filter(f => f.status === 'Expense').length)}টি
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-100">
+            <span className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-amber-600" />
+              <span>মোট বকেয়া চাঁদা</span>
+            </span>
+            <div className="text-xl sm:text-2xl font-black text-amber-900 mt-1">
+              {formatBengaliCurrency(totalDue)}
+            </div>
+            <span className="text-[11px] text-amber-700 mt-1 block">
+              বকেয়া সদস্য: {toBengaliNumber(effectiveFundRecords.filter(f => f.status === 'Due').length)} জন
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-teal-900 to-emerald-950 text-white relative flex flex-col justify-between shadow-sm">
+            <div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-teal-200">বর্তমান নেট ব্যালেন্স</span>
+                {isAdmin && (
+                  <button
+                    onClick={() => setIsAdjustBalanceOpen(true)}
+                    className="text-[10px] text-amber-300 hover:underline cursor-pointer bg-white/10 px-2 py-0.5 rounded"
+                  >
+                    সমন্বয়
+                  </button>
+                )}
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-white mt-1">
+                {formatBengaliCurrency(netBalance)}
+              </div>
+            </div>
+            <span className="text-[10px] text-teal-200 mt-1">
+              {manualTotalBalance !== null ? 'ম্যানুয়াল ব্যালেন্স সক্রিয়' : 'স্বয়ংক্রিয় হিসাব সক্রিয়'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Search & Status Filter Tabs */}
+      <div className="space-y-3">
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            id="fund-search-input"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="সদস্যের নাম বা বাবত দিয়ে খুঁজুন..."
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
+            placeholder="সদস্যের নাম, মোবাইল নম্বর বা বিবরণ দিয়ে অনুসন্ধান..."
+            className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-xs"
           />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-slate-500 font-medium">ফিল্টার:</span>
-            {(['all', 'Paid', 'Expense', 'Pending', 'Due'] as const).map(st => {
-              const count = 
-                st === 'all' ? fundRecords.length :
-                st === 'Paid' ? stats.paidCount :
-                st === 'Expense' ? stats.expenseCount :
-                st === 'Pending' ? stats.pendingCount : stats.dueCount;
-              
-              const label = 
-                st === 'all' ? 'সব রেকর্ড' :
-                st === 'Paid' ? 'আদায়কৃত (Paid)' :
-                st === 'Expense' ? 'খরচের খতিয়ান (Expense)' :
-                st === 'Pending' ? 'অপেক্ষমান (Pending)' : 'বকেয়া (Due)';
-
-              return (
-                <button
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
-                  id={`fund-status-${st}`}
-                  className={`px-3 py-1 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                    statusFilter === st
-                      ? st === 'Expense'
-                        ? 'bg-rose-700 text-white shadow-2xs'
-                        : st === 'Pending'
-                        ? 'bg-amber-600 text-white shadow-2xs'
-                        : 'bg-slate-900 text-white shadow-2xs'
-                      : st === 'Expense'
-                      ? 'bg-rose-50 text-rose-800 hover:bg-rose-100'
-                      : st === 'Pending'
-                      ? 'bg-amber-50 text-amber-800 hover:bg-amber-100'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  <span>{label}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                    statusFilter === st ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-700'
-                  }`}>
-                    {toBengaliNumber(count)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <span className="text-xs text-slate-500 font-medium">
-              দেখানো হচ্ছে: <strong>{toBengaliNumber(filteredRecords.length)}</strong> টি রেকর্ড
-            </span>
-          </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              statusFilter === 'all' 
+                ? 'bg-emerald-700 text-white shadow-xs' 
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            সকল রেকর্ড ({toBengaliNumber(effectiveFundRecords.length)})
+          </button>
+          <button
+            onClick={() => setStatusFilter('Paid')}
+            className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              statusFilter === 'Paid' 
+                ? 'bg-emerald-700 text-white shadow-xs' 
+                : 'bg-white text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
+            }`}
+          >
+            পরিশোধিত ({toBengaliNumber(effectiveFundRecords.filter(f => f.status === 'Paid').length)})
+          </button>
+          <button
+            onClick={() => setStatusFilter('Due')}
+            className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              statusFilter === 'Due' 
+                ? 'bg-amber-600 text-white shadow-xs' 
+                : 'bg-white text-amber-800 hover:bg-amber-50 border border-amber-200'
+            }`}
+          >
+            বকেয়া ({toBengaliNumber(effectiveFundRecords.filter(f => f.status === 'Due').length)})
+          </button>
+          <button
+            onClick={() => setStatusFilter('Expense')}
+            className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              statusFilter === 'Expense' 
+                ? 'bg-rose-700 text-white shadow-xs' 
+                : 'bg-white text-rose-800 hover:bg-rose-50 border border-rose-200'
+            }`}
+          >
+            খরচ / ব্যয় ({toBengaliNumber(effectiveFundRecords.filter(f => f.status === 'Expense').length)})
+          </button>
         </div>
       </div>
 
-      {/* DEDICATED EXPENSE BREAKDOWN VIEW (When statusFilter === 'Expense') */}
-      {statusFilter === 'Expense' ? (
-        <div id="expense-breakdown-section" className="space-y-4">
-          <div className="bg-gradient-to-r from-rose-900 via-slate-900 to-rose-950 text-white p-5 rounded-2xl border border-rose-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <FileText className="w-5 h-5 text-rose-400" />
-                <h3 className="text-base font-bold text-white">সংগঠনের খরচের খতিয়ান ও স্বচ্ছতা বিবরণী</h3>
-              </div>
-              <p className="text-xs text-rose-200/80 max-w-xl">
-                সিলেট মানবসেবা সংগঠনের সকল সামাজিক কার্যক্রম, চিকিৎসা সাহায্য ও পরিচালনা ব্যয়ের উন্মুক্ত খতিয়ান।
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {isAdmin && (
-                <button
-                  onClick={handleOpenAddExpense}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>নতুন খরচ এন্ট্রি</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {filteredRecords.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400 text-xs shadow-xs">
-              এখনো কোনো খরচের বিবরণ পাওয়া যায়নি
-            </div>
-          ) : (
-            /* Responsive Expense Cards Grid */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredRecords.map((rec, idx) => (
-                <div
-                  key={rec.id || idx}
-                  id={`expense-card-${rec.id || idx}`}
-                  className="bg-white rounded-2xl border border-rose-200/90 shadow-xs hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between"
-                >
-                  {/* Header Strip */}
-                  <div className="h-1.5 bg-gradient-to-r from-rose-500 via-red-500 to-rose-600" />
-
-                  <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3.5">
-                    {/* Date & Category Header */}
-                    <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-rose-100">
-                      <div className="flex items-center gap-1.5 text-xs text-rose-800 font-semibold">
-                        <Calendar className="w-3.5 h-3.5 text-rose-600" />
-                        <span>{formatBengaliDate(rec.date)}</span>
-                      </div>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 text-[11px] font-bold border border-rose-200">
-                        {rec.category || 'অফিস পরিচালনা'}
-                      </span>
-                    </div>
-
-                    {/* Expense Reason & Disbursed Details */}
-                    <div className="space-y-1.5">
-                      <span className="text-[11px] font-semibold text-slate-400 block uppercase tracking-wider">
-                        খরচের কারণ / বিবরণ
-                      </span>
-                      <h4 className="font-bold text-slate-900 text-sm sm:text-base leading-snug">
-                        {rec.description || 'সংগঠনের ব্যয়'}
-                      </h4>
-
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <div className="flex items-center gap-1 text-xs text-slate-600 font-medium">
-                          <UserCheck className="w-3.5 h-3.5 text-slate-400" />
-                          <span>দায়িত্বে: <strong className="text-slate-800">{rec.disbursedTo || rec.memberName}</strong></span>
-                        </div>
-
-                        {rec.notes?.includes('ভাউচার:') && (
-                          <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-bold text-[10px] font-mono border border-slate-200">
-                            {rec.notes.split('ভাউচার:')[1].split('-')[0].trim()}
-                          </span>
-                        )}
-                      </div>
-
-                      {rec.notes && !rec.notes.includes('ভাউচার:') && (
-                        <p className="text-[11px] text-slate-600 bg-rose-50/50 p-2 rounded-lg border border-rose-100 mt-1">
-                          {rec.notes}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Amount & Admin Actions */}
-                    <div className="pt-3 border-t border-rose-100 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block font-medium">খরচের পরিমাণ</span>
-                        <span className="text-lg sm:text-xl font-black font-mono text-rose-600">
-                          - {toBengaliCurrency(rec.amount)}
-                        </span>
-                      </div>
-
-                      {isAdmin && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditExpense(rec)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition cursor-pointer"
-                            title="এডিট করুন"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          {onDeleteFundRecord && (
-                            <button
-                              type="button"
-                              onClick={() => onDeleteFundRecord(rec.id)}
-                              className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
-                              title="মুছুন"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      {smsSentNotice && (
+        <div className="p-3.5 rounded-2xl bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-2 shadow-xs">
+          <Check className="w-4 h-4 text-emerald-700 shrink-0" />
+          <span>{smsSentNotice}</span>
         </div>
-      ) : (
-        /* STANDARD FUND / SUBSCRIPTION RECORDS SECTION */
-        filteredRecords.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400 text-xs shadow-xs">
-            কোনো রেকর্ড পাওয়া যায়নি
-          </div>
-        ) : (
-          /* Responsive Fund Cards Grid (Matches Member Directory Design) */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredRecords.map((record, idx) => {
-              const linkedData = resolveLinkedFundData(record, allMembers);
-              const displayMemberName = linkedData.displayName;
-              const memberPhone = linkedData.displayPhone;
-              const cleanDesc = getCleanFundDescription(record);
-              const arrearsInfo = formatDynamicArrearsText(record);
-
-              return (
-                <div
-                  key={record.id || idx}
-                  id={`fund-card-${record.id || idx}`}
-                  className="bg-white rounded-2xl border border-slate-200/90 hover:border-emerald-400/80 transition-all duration-200 shadow-xs hover:shadow-md overflow-hidden flex flex-col justify-between"
-                >
-                  {/* Top Status Header Strip */}
-                  <div
-                    className={`h-1.5 ${
-                      record.status === 'Paid'
-                        ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600'
-                        : record.status === 'Due'
-                        ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600'
-                        : record.status === 'Pending'
-                        ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500'
-                        : 'bg-gradient-to-r from-rose-500 via-red-500 to-rose-600'
-                    }`}
-                  />
-
-                  <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3.5">
-                    {/* Top Row: Member Info + Direct Pre-saved Phone + Status Badge */}
-                    <div className="flex items-start justify-between gap-2.5 pb-2.5 border-b border-slate-100">
-                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                        <div
-                          className={`w-9 h-9 rounded-xl text-sm font-black flex items-center justify-center shrink-0 mt-0.5 ${
-                            record.status === 'Paid'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : record.status === 'Pending'
-                              ? 'bg-amber-100 text-amber-900'
-                              : record.status === 'Due'
-                              ? 'bg-amber-100 text-amber-900'
-                              : 'bg-rose-100 text-rose-800'
-                          }`}
-                        >
-                          {displayMemberName.charAt(0)}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-slate-900 text-sm sm:text-base truncate leading-snug">
-                            {displayMemberName}
-                          </h4>
-                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                            {memberPhone ? (
-                              <button
-                                type="button"
-                                onClick={() => triggerNativeCall(memberPhone)}
-                                className="inline-flex items-center gap-1 text-xs font-mono font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200/90 shadow-2xs transition cursor-pointer active:scale-98"
-                                title="সরাসরি কল দিন"
-                              >
-                                <Smartphone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                <span>{memberPhone}</span>
-                              </button>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
-                                <Smartphone className="w-3 h-3 text-slate-400 shrink-0" />
-                                <span>নম্বর সংরক্ষিত নেই</span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Status Badge */}
-                      <div className="shrink-0">
-                        {record.status === 'Paid' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 shadow-2xs">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>পরিশোধিত</span>
-                          </span>
-                        ) : record.status === 'Pending' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-xs font-bold border border-amber-300 shadow-2xs">
-                            <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                            <span>অপেক্ষমান</span>
-                          </span>
-                        ) : record.status === 'Due' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200 shadow-2xs">
-                            <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                            <span>বকেয়া</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 text-xs font-bold border border-rose-200 shadow-2xs">
-                            <span>ব্যয়</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Dynamic Arrears Highlight Box for Due Status */}
-                    {record.status === 'Due' && (
-                      <div className="bg-amber-50/90 border border-amber-200/90 rounded-xl p-3 space-y-1.5 shadow-2xs">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div className="flex items-center gap-1.5 text-xs sm:text-sm font-black text-amber-950">
-                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                            <span>{arrearsInfo.formattedText}</span>
-                          </div>
-                          <span className="text-xs sm:text-sm font-black font-mono text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-md border border-amber-300">
-                            মোট {toBengaliCurrency(record.amount)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] text-amber-800/90 pt-0.5 flex-wrap gap-1">
-                          <span className="font-semibold">
-                            {arrearsInfo.isMultiMonth
-                              ? `(সর্বমোট ${toBengaliNumber(arrearsInfo.monthCount)} মাসের চাঁদা বকেয়া)`
-                              : '(চলতি ১ মাসের চাঁদা বকেয়া)'}
-                          </span>
-                          {memberPhone && (
-                            <span className="font-mono text-[10px] text-amber-900 bg-amber-200/60 px-1.5 py-0.2 rounded font-bold">
-                              SMS প্রাপক: {memberPhone}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Description & Category - Clean without duplicate "মাসিক চাঁদা" */}
-                    <div className="space-y-1.5">
-                      <span className="text-[11px] font-semibold text-slate-400 block uppercase tracking-wider">
-                        বাবত / বিবরণ
-                      </span>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-xs sm:text-sm font-semibold text-slate-800">
-                          {cleanDesc.primaryText}
-                        </span>
-                        {cleanDesc.showCategoryBadge && (
-                          <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium border border-slate-200">
-                            {cleanDesc.categoryBadgeText}
-                          </span>
-                        )}
-                        {record.trxId && (
-                          <span className="text-[10px] font-mono bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded font-bold">
-                            TrxID: {record.trxId}
-                          </span>
-                        )}
-                      </div>
-                      {record.notes && (
-                        <p className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100 mt-1">
-                          {record.notes}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Financial & Date Details Row */}
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100/80">
-                      <div className="space-y-0.5">
-                        <span className="text-[10px] text-slate-400 block font-medium">তারিখ ও মাস</span>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span>{formatBengaliDate(record.date)}</span>
-                          {record.month && record.month !== record.date && (
-                            <span className="text-slate-400 text-[11px]">({record.month})</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 block font-medium">টাকার পরিমাণ</span>
-                        <div
-                          className={`text-lg sm:text-xl font-black font-mono tracking-tight ${
-                            record.status === 'Expense' ? 'text-rose-600' : 'text-slate-900'
-                          }`}
-                        >
-                          {record.status === 'Expense'
-                            ? `- ${toBengaliCurrency(record.amount)}`
-                            : toBengaliCurrency(record.amount)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions Footer - Fully Responsive, No Overflow */}
-                    <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {/* Admin-only SMS Dispatch Actions for Due Records */}
-                        {isAdmin && record.status === 'Due' && (
-                          <>
-                            {/* Instant SIM SMS button using pre-saved phone number */}
-                            <button
-                              type="button"
-                              id={`direct-sim-sms-btn-${record.id || idx}`}
-                              onClick={() => handleDirectSimSmsForRecord(record)}
-                              className="px-3 py-1.5 text-xs font-bold rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
-                              title={`${memberPhone ? `${memberPhone}-এ ` : ''}সরাসরি SIM SMS পাঠান`}
-                            >
-                              <Send className="w-3.5 h-3.5" />
-                              <span>সরাসরি SIM SMS</span>
-                            </button>
-
-                            {/* Customize / Preview SMS Modal */}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setDueSmsTarget({
-                                  memberName: displayMemberName,
-                                  phone: memberPhone,
-                                  amount: record.amount,
-                                  month: record.month || arrearsInfo.formattedText,
-                                  memberId: linkedData.memberId || record.memberId,
-                                })
-                              }
-                              className="px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1 cursor-pointer shrink-0"
-                              title="মেসেজ কাস্টমাইজ বা প্রিভিউ করুন"
-                            >
-                              <MessageSquare className="w-3.5 h-3.5 text-slate-500" />
-                              <span>কাস্টমাইজ</span>
-                            </button>
-                          </>
-                        )}
-
-                        {/* Admin-only Payment Confirmation SMS */}
-                        {isAdmin && record.status === 'Paid' && (
-                          <button
-                            type="button"
-                            onClick={() => handleDirectSimSmsForRecord(record)}
-                            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
-                            title={`${memberPhone ? `${memberPhone}-এ ` : ''}পরিশোধ নিশ্চিতকরণ SMS পাঠান`}
-                          >
-                            <Send className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>SMS পাঠান</span>
-                          </button>
-                        )}
-
-                        {isAdmin && onToggleStatus && record.status === 'Pending' && (
-                          <button
-                            type="button"
-                            onClick={() => handleApproveOrTogglePaid(record, 'Paid')}
-                            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer shrink-0"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>অনুমোদন</span>
-                          </button>
-                        )}
-
-                        {isAdmin && onToggleStatus && record.status !== 'Expense' && record.status !== 'Pending' && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleApproveOrTogglePaid(
-                                record,
-                                record.status === 'Paid' ? 'Due' : 'Paid'
-                              )
-                            }
-                            className="px-2.5 py-1.5 text-xs font-medium rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer shrink-0"
-                          >
-                            {record.status === 'Paid' ? 'Due করুন' : 'Paid করুন'}
-                          </button>
-                        )}
-
-                        {/* Regular User / Public View Status Badge (Strictly No SMS Buttons) */}
-                        {!isAdmin && (
-                          <div className="flex items-center gap-2 py-0.5">
-                            {record.status === 'Paid' && (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-xs font-bold">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>চাঁদা পরিশোধিত</span>
-                              </span>
-                            )}
-                            {record.status === 'Due' && (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/80 text-xs font-bold">
-                                <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                                <span>বকেয়া চাঁদা</span>
-                              </span>
-                            )}
-                            {record.status === 'Pending' && (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold">
-                                <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                                <span>যাচাই প্রক্রিয়াধীন</span>
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {isAdmin && (
-                        <div className="flex items-center gap-1 ml-auto shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit(record)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition cursor-pointer"
-                            title="এডিট"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          {onDeleteFundRecord && (
-                            <button
-                              type="button"
-                              onClick={() => onDeleteFundRecord(record.id)}
-                              className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
-                              title="মুছুন"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )
       )}
 
-      {/* ADMIN ONLY: Edit Total Organization Balance Modal */}
-      {isEditBalanceModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-slate-200 animate-scaleUp max-h-[92vh] flex flex-col my-auto overflow-hidden">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
-                  <Coins className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    সংগঠনের মোট তহবিল ব্যালেন্স এডিট
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    ম্যানুয়ালি মোট তহবিল ব্যালেন্স নির্ধারণ করুন
-                  </p>
-                </div>
-              </div>
+      {/* 3. Fund Records Table */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
+              <tr>
+                <th className="p-3.5 sm:p-4">সদস্যের নাম ও বিবরণ</th>
+                <th className="p-3.5 sm:p-4">মোবাইল নম্বর</th>
+                <th className="p-3.5 sm:p-4">মাস ও তারিখ</th>
+                <th className="p-3.5 sm:p-4">টাকার পরিমাণ</th>
+                <th className="p-3.5 sm:p-4 text-center">স্ট্যাটাস</th>
+                <th className="p-3.5 sm:p-4 text-right">পদক্ষেপ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredRecords.map((record) => {
+                const isExpense = record.status === 'Expense';
+                const isPaid = record.status === 'Paid';
+                const isDue = record.status === 'Due';
+
+                return (
+                  <tr key={record.id} className="hover:bg-slate-50/80 transition">
+                    <td className="p-3.5 sm:p-4">
+                      <div className="font-bold text-slate-900 text-sm">
+                        {record.memberName}
+                      </div>
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          isExpense 
+                            ? 'bg-rose-100 text-rose-800' 
+                            : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {record.category || 'মাসিক চাঁদা'}
+                        </span>
+                        <span>•</span>
+                        <span>{record.description}</span>
+                      </div>
+                    </td>
+
+                    <td className="p-3.5 sm:p-4">
+                      {record.phone ? (
+                        <div className="flex items-center gap-1.5 font-mono text-slate-700 font-bold">
+                          <span>{record.phone}</span>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(record.phone || '');
+                              setCopiedPhone(record.phone || '');
+                              setTimeout(() => setCopiedPhone(null), 2000);
+                            }}
+                            className="text-slate-400 hover:text-slate-600 p-0.5"
+                            title="নম্বর কপি করুন"
+                          >
+                            {copiedPhone === record.phone ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic">নম্বর নেই</span>
+                      )}
+                    </td>
+
+                    <td className="p-3.5 sm:p-4 text-slate-600">
+                      <div className="font-semibold text-slate-800">{record.month || 'চলতি মাস'}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">{record.date}</div>
+                    </td>
+
+                    <td className="p-3.5 sm:p-4">
+                      <span className={`font-black text-sm ${
+                        isExpense ? 'text-rose-600' : isPaid ? 'text-emerald-700' : 'text-amber-600'
+                      }`}>
+                        {formatBengaliCurrency(record.amount)}
+                      </span>
+                    </td>
+
+                    <td className="p-3.5 sm:p-4 text-center">
+                      <button
+                        onClick={() => {
+                          if (isExpense) return;
+                          onToggleStatus(record.id, isPaid ? 'Due' : 'Paid');
+                        }}
+                        disabled={isExpense}
+                        className={`px-3 py-1 rounded-full text-[11px] font-bold inline-flex items-center gap-1 transition ${
+                          isExpense
+                            ? 'bg-rose-100 text-rose-800 cursor-default'
+                            : isPaid
+                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 cursor-pointer shadow-2xs'
+                              : 'bg-amber-100 text-amber-800 hover:bg-amber-200 cursor-pointer shadow-2xs'
+                        }`}
+                        title={isExpense ? 'খরচ রেকর্ড' : 'ক্লিক করে স্ট্যাটাস পরিবর্তন করুন'}
+                      >
+                        {isPaid && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                        {isDue && <Clock className="w-3.5 h-3.5 text-amber-600" />}
+                        {isExpense && <ArrowDownLeft className="w-3.5 h-3.5 text-rose-600" />}
+                        <span>
+                          {isPaid ? 'পরিশোধিত' : isDue ? 'বকেয়া' : 'ব্যয়'}
+                        </span>
+                      </button>
+                    </td>
+
+                    <td className="p-3.5 sm:p-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {!isExpense && record.phone && (
+                          <button
+                            onClick={() => handleSendSms(record)}
+                            className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition cursor-pointer"
+                            title="সরাসরি SIM SMS পাঠান / রসিদ কপি করুন"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleOpenEditModal(record)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition cursor-pointer"
+                          title="সম্পাদনা করুন"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`আপনি কি "${record.memberName}"-এর ফান্ড এন্ট্রিটি মুছে ফেলতে চান?`)) {
+                                onDeleteFundRecord(record.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title="মুছে ফেলুন"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {filteredRecords.length === 0 && (
+          <div className="p-12 text-center text-slate-500">
+            <Wallet className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+            <p className="font-bold text-slate-700">কোনো ফান্ড রেকর্ড পাওয়া যায়নি</p>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Digital Payment Gateway Section */}
+      <PaymentGatewaySection 
+        paymentConfig={paymentConfig} 
+        members={members} 
+      />
+
+      {/* Add / Edit Fund Modal (Dropdown Member Selection: Auto-Populated) */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-emerald-700" />
+                <span>
+                  {editingRecord 
+                    ? 'ফান্ড রেকর্ড সম্পাদনা' 
+                    : formRecordType === 'expense' 
+                      ? 'নতুন খরচের ভাউচার এন্ট্রি' 
+                      : 'চাঁদা আদায় এন্ট্রি'}
+                </span>
+              </h3>
               <button
-                onClick={() => setIsEditBalanceModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {balanceSaveSuccess && (
-              <div className="mt-4 p-3 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-semibold flex items-center gap-2 border border-emerald-200 shrink-0">
-                <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                <span>সংগঠনের মোট তহবিলের পরিমাণ সফলভাবে সংরক্ষিত হয়েছে!</span>
+            {formError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{formError}</span>
               </div>
             )}
 
-            <form onSubmit={handleSaveManualBalance} className="space-y-4 mt-4 overflow-y-auto pr-1 flex-1">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  সংগঠনের মোট তহবিলের পরিমাণ (টাকা ৳) *
-                </label>
-                <input
-                  type="number"
-                  required
-                  autoFocus
-                  id="fund-manual-balance-input"
-                  value={manualBalanceInput}
-                  onChange={(e) => setManualBalanceInput(e.target.value)}
-                  placeholder="যেমন: 50000"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-lg font-mono font-bold focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-none"
-                />
-                <span className="text-[11px] text-slate-400 block mt-1">
-                  বর্তমান হিসাবকৃত স্থিতি: {toBengaliCurrency(stats.netBalance)}
-                </span>
-              </div>
-
-              <div className="pt-2 flex flex-col gap-2">
-                <button
-                  type="submit"
-                  id="fund-manual-balance-save-btn"
-                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>তহবিল ব্যালেন্স সংরক্ষণ করুন</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleResetToAutoBalance}
-                  id="fund-manual-balance-reset-btn"
-                  className="w-full py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-                  <span>অটো ক্যালকুলেশনে রিসেট করুন ({toBengaliCurrency(stats.netBalance)})</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add / Edit Entry Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-slate-200 animate-scaleUp max-h-[92vh] flex flex-col my-auto overflow-hidden">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-emerald-600" />
-                {editingRecord ? 'ফান্ড এন্ট্রি সম্পাদনা' : 'নতুন চাঁদা / ফান্ড এন্ট্রি'}
-              </h3>
-              <button
-                onClick={() => { setIsAddModalOpen(false); setEditingRecord(null); }}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-3.5 mt-3 overflow-y-auto pr-1 flex-1">
-              {formError && (
-                <div className="p-2.5 rounded-lg bg-red-50 text-red-700 text-xs font-medium border border-red-200">
-                  {formError}
+            <form onSubmit={handleSubmitFund} className="space-y-3.5 text-xs">
+              {/* Record Type Toggle if adding */}
+              {!editingRecord && (
+                <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormRecordType('income');
+                      setFormStatus('Paid');
+                      setFormCategory('মাসিক চাঁদা');
+                      if (members.length > 0) {
+                        setFormSelectedMemberId(members[0].id);
+                        setFormMemberName(members[0].name);
+                        setFormPhone(members[0].phone || '');
+                      }
+                    }}
+                    className={`py-2 rounded-xl font-bold transition ${
+                      formRecordType === 'income' 
+                        ? 'bg-emerald-700 text-white shadow-xs' 
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    চাঁদা আদায় (Income)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormRecordType('expense');
+                      setFormStatus('Expense');
+                      setFormCategory('খরচ');
+                      setFormSelectedMemberId('');
+                      setFormMemberName('');
+                      setFormPhone('');
+                    }}
+                    className={`py-2 rounded-xl font-bold transition ${
+                      formRecordType === 'expense' 
+                        ? 'bg-rose-700 text-white shadow-xs' 
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    খরচ / ব্যয় (Expense)
+                  </button>
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  সদস্য / দাতার নাম (MemberName) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  list="fund-modal-members-datalist"
-                  value={memberName}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setMemberName(name);
-                    const matched = findMemberInDirectory({ memberName: name }, allMembers);
-                    if (matched) {
-                      setSelectedMemberId(matched.id);
-                      if (matched.phone) setFormPhone(matched.phone);
-                    } else {
-                      setSelectedMemberId('');
-                    }
-                  }}
-                  onBlur={() => {
-                    if (memberName.trim()) {
-                      const matched = findMemberInDirectory({ memberName: memberName.trim() }, allMembers);
-                      if (matched) {
-                        setSelectedMemberId(matched.id);
-                        if (!formPhone || formPhone.trim() === '') {
-                          setFormPhone(matched.phone || '');
-                        }
-                      }
-                    }
-                  }}
-                  placeholder="যেমন: মো: কামরুল ইসলাম"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none"
-                />
-                <datalist id="fund-modal-members-datalist">
-                  {allMembers.map((m) => {
-                    const role = m.designation ? ` (${m.designation})` : (m.isExecutive ? ' (কার্যকরী কমিটি)' : '');
-                    const phoneStr = m.phone ? ` - ${m.phone}` : '';
-                    return (
-                      <option key={m.id} value={m.name}>
-                        {m.name}{role}{phoneStr}
-                      </option>
-                    );
-                  })}
-                </datalist>
-              </div>
+              {/* INCOME: Member Dropdown Selection (Strictly No manual typing) */}
+              {formRecordType === 'income' ? (
+                <>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      সদস্য নির্বাচন করুন (নাম ও নম্বর অটো-সিঙ্ক হবে) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={formSelectedMemberId}
+                      onChange={(e) => handleMemberSelect(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white font-medium text-slate-800"
+                    >
+                      <option value="">-- ড্রপডাউন থেকে সদস্য নির্বাচন করুন --</option>
+                      {members.map(m => (
+                        <option key={m.id} value={m.id}>
+                          #{toBengaliNumber(m.serial)} {m.name} ({m.designation}) - {m.phone}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">সদস্যের নাম (অটো-সিঙ্ক)</label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={formMemberName}
+                        placeholder="অটোমেটিক পূরণ হবে"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-bold cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">মোবাইল নম্বর (অটো-সিঙ্ক)</label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={formPhone}
+                        placeholder="অটোমেটিক পূরণ হবে"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-mono font-bold cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* EXPENSE: Disbursed to and Voucher input */
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      ব্যয়ের দায়িত্বশীল / গ্রহীতার নাম <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formDisbursedTo}
+                      onChange={(e) => setFormDisbursedTo(e.target.value)}
+                      placeholder="যেমন: মো: কামরুল ইসলাম"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">ভাউচার / স্লিপ নম্বর</label>
+                    <input
+                      type="text"
+                      value={formVoucherNo}
+                      onChange={(e) => setFormVoucherNo(e.target.value)}
+                      placeholder="যেমন: V-2026-001"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/20 font-mono"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    টাকার পরিমাণ (Amount ৳) *
+                  <label className="block font-bold text-slate-700 mb-1">
+                    টাকার পরিমাণ (৳) <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"
                     required
                     min="1"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="৫০০"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none font-mono font-bold"
+                    value={formAmount}
+                    onChange={(e) => setFormAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono font-bold"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    স্ট্যাটাস (Status) *
-                  </label>
-                  <select
-                    value={status}
-                    onChange={(e) => {
-                      const newStatus = e.target.value as PaymentStatus;
-                      setStatus(newStatus);
-                      if (newStatus === 'Due') {
-                        const parsed = extractArrearsMonthCount({
-                          month: formMonth,
-                          description: description,
-                          amount: amount
-                        });
-                        if (parsed.monthCount > 1) {
-                          setArrearsMonthCount(parsed.monthCount);
-                          setPastMonthsText(parsed.pastMonthsText);
-                        }
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none bg-white font-bold"
-                  >
-                    <option value="Paid">Paid (পরিশোধিত)</option>
-                    <option value="Pending">Pending (অপেক্ষমান যাচাই)</option>
-                    <option value="Due">Due (বকেয়া)</option>
-                    <option value="Expense">Expense (সংগঠনের খরচ)</option>
-                  </select>
+                  <label className="block font-bold text-slate-700 mb-1">স্ট্যাটাস</label>
+                  {formRecordType === 'expense' ? (
+                    <input
+                      type="text"
+                      readOnly
+                      value="Expense (ব্যয়)"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-rose-700 font-bold"
+                    />
+                  ) : (
+                    <select
+                      value={formStatus}
+                      onChange={(e) => setFormStatus(e.target.value as PaymentStatus)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white font-bold"
+                    >
+                      <option value="Paid">Paid (পরিশোধিত)</option>
+                      <option value="Due">Due (বকেয়া)</option>
+                    </select>
+                  )}
                 </div>
               </div>
 
-              {/* Month / Year and Phone Number Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    মাস / সাল (Month)
-                  </label>
+                  <label className="block font-bold text-slate-700 mb-1">মাস</label>
                   <input
                     type="text"
                     value={formMonth}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setFormMonth(val);
-                      if (status === 'Due') {
-                        const parsed = extractArrearsMonthCount({ month: val });
-                        if (parsed.monthCount > 1) {
-                          setArrearsMonthCount(parsed.monthCount);
-                          setPastMonthsText(parsed.pastMonthsText);
-                        }
-                      }
-                    }}
-                    placeholder="যেমন: মার্চ ২০২৬"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none"
+                    onChange={(e) => setFormMonth(e.target.value)}
+                    placeholder="মার্চ ২০২৬"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    মোবাইল নম্বর (SIM SMS)
-                  </label>
-                  <input
-                    type="tel"
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="01711-XXXXXX"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Due Status Dynamic Arrears Selection */}
-              {status === 'Due' && (
-                <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200/80 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-amber-600" />
-                      <span>বকেয়া মাসের সংখ্যা ও রিমাইন্ডার হিসাব</span>
-                    </label>
-                    <span className="text-[10px] font-bold text-amber-800 bg-white px-2 py-0.5 rounded-full border border-amber-300 shadow-2xs">
-                      {arrearsMonthCount === 1 ? '১ মাস (রানিং)' : `মোট ${toBengaliNumber(arrearsMonthCount)} মাস`}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        বকেয়া মাস নির্বাচন
-                      </label>
-                      <select
-                        value={arrearsMonthCount}
-                        onChange={(e) => {
-                          const count = Number(e.target.value);
-                          setArrearsMonthCount(count);
-                          if (count > 1) {
-                            setPastMonthsText(toBengaliNumber(count - 1));
-                          } else {
-                            setPastMonthsText('');
-                          }
-                        }}
-                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-bold focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-none"
-                      >
-                        <option value={1}>১ মাস (শুধুমাত্র রানিং মাস)</option>
-                        {ARREARS_MONTH_OPTIONS.filter(n => n > 1).map(n => (
-                          <option key={n} value={n}>
-                            {toBengaliNumber(n)} মাস (রানিং + গত {toBengaliNumber(n - 1)} মাস)
-                          </option>
-                        ))}
-                        {!ARREARS_MONTH_OPTIONS.includes(arrearsMonthCount) && arrearsMonthCount > 1 && (
-                          <option value={arrearsMonthCount}>
-                            {toBengaliNumber(arrearsMonthCount)} মাস (রানিং + গত {toBengaliNumber(arrearsMonthCount - 1)} মাস)
-                          </option>
-                        )}
-                      </select>
-                    </div>
-
-                    {arrearsMonthCount > 1 && (
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          অতীত মাসের সংখ্যা / নাম
-                        </label>
-                        <input
-                          type="text"
-                          value={pastMonthsText}
-                          onChange={(e) => setPastMonthsText(e.target.value)}
-                          placeholder={toBengaliNumber(arrearsMonthCount - 1)}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-none font-medium"
-                          title="টেমপ্লেটে 'গত [Months] মাস সহ' হিসেবে প্রদর্শিত হবে"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <p className="text-[11px] text-amber-900 leading-relaxed bg-amber-100/70 p-2 rounded-lg">
-                    {arrearsMonthCount === 1 ? (
-                      <span>ℹ️ ১ মাস বকেয়া থাকায় রানিং মাসের সিঙ্গেল টেমপ্লেট প্রযোজ্য হবে।</span>
-                    ) : (
-                      <span>ℹ️ ১ মাসের বেশি বকেয়া থাকায় রানিং মাস এবং গত <strong>{pastMonthsText || toBengaliNumber(arrearsMonthCount - 1)}</strong> মাস সহ বকেয়া টেমপ্লেট প্রযোজ্য হবে।</span>
-                    )}
-                  </p>
-                </div>
-              )}
-
-              {/* Live Direct SIM SMS Message Preview */}
-              {(status === 'Paid' || status === 'Due') && currentModalSmsPreview && (
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
-                    <span className="flex items-center gap-1.5 text-emerald-800">
-                      <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>মেসেজ প্রিভিউ (Direct SIM SMS):</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {currentModalSmsPreview.length} অক্ষর
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-700 leading-relaxed font-sans bg-white p-2.5 rounded-lg border border-slate-200 select-all shadow-2xs">
-                    {currentModalSmsPreview}
-                  </p>
-                </div>
-              )}
-
-              {/* In-Modal Feedback Notice */}
-              {modalSmsNotice && (
-                <div className="p-2.5 bg-emerald-50 text-emerald-800 text-xs font-bold rounded-xl border border-emerald-200 flex items-center justify-between animate-fadeIn">
-                  <span>✓ {modalSmsNotice}</span>
-                  <button type="button" onClick={() => setModalSmsNotice(null)} className="text-emerald-600 hover:text-emerald-800 font-bold ml-2">✕</button>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    তারিখ (Date)
-                  </label>
+                  <label className="block font-bold text-slate-700 mb-1">তারিখ</label>
                   <input
                     type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    ধরন (Category)
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none bg-white font-medium"
-                  >
-                    <option value="মাসিক চাঁদা">মাসিক চাঁদা</option>
-                    <option value="এককালীন অনুদান">এককালীন অনুদান</option>
-                    <option value="জরুরি সাহায্য">জরুরি সাহায্য</option>
-                    <option value="খরচ">খরচ / অফিস ব্যয়</option>
-                  </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  বিবরণ / বাবত
-                </label>
+                <label className="block font-bold text-slate-700 mb-1">বিবরণ / কারণ</label>
                 <input
                   type="text"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="যেমন: মার্চ মাসের মাসিক চাঁদা"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none"
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="মাসিক নিয়মিত চাঁদা / ত্রাণ বাবদ ব্যয়"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 shrink-0">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => { setIsAddModalOpen(false); setEditingRecord(null); }}
-                  className="px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition text-center cursor-pointer"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer"
                 >
                   বাতিল
                 </button>
                 <button
-                  type="button"
-                  onClick={handleSendDirectSmsFromModal}
-                  id="fund-send-sms-btn"
-                  className="px-3.5 py-2.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
-                  title="সরাসরি মোবাইলের SIM SMS অ্যাপে মেসেজ পাঠান"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>এসএমএস পাঠান</span>
-                </button>
-                <button
                   type="submit"
-                  id="fund-submit-btn"
-                  className="px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition text-center cursor-pointer"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow transition cursor-pointer active:scale-95 disabled:opacity-50"
                 >
-                  {editingRecord ? 'আপডেট সম্পন্ন করুন' : 'এন্ট্রি সংরক্ষণ করুন'}
+                  {isSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন'}
                 </button>
               </div>
             </form>
@@ -1953,80 +862,49 @@ export const FundScreen: React.FC<FundScreenProps> = ({
         </div>
       )}
 
-      {/* Expense Modal (Add & Edit) */}
-      <ExpenseModal
-        isOpen={isExpenseModalOpen}
-        onClose={() => {
-          setIsExpenseModalOpen(false);
-          setEditingExpense(null);
-        }}
-        onSubmit={handleSaveExpense}
-        onSave={handleSaveExpense}
-        initialData={
-          editingExpense
-            ? {
-                description: editingExpense.description || '',
-                amount: editingExpense.amount,
-                disbursedTo: editingExpense.disbursedTo || editingExpense.memberName,
-                date: editingExpense.date,
-                category: editingExpense.category || 'ত্রাণ ও খাদ্য সহায়তা',
-                voucherNo: editingExpense.notes?.includes('ভাউচার:')
-                  ? editingExpense.notes.split('ভাউচার:')[1].split('-')[0].trim()
-                  : '',
-                notes: editingExpense.notes?.includes('ভাউচার:')
-                  ? (editingExpense.notes.split(' - ').length > 1 ? editingExpense.notes.split(' - ').slice(1).join(' - ').trim() : '')
-                  : (editingExpense.notes || '')
-              }
-            : null
-        }
-      />
-
-      {/* Due Reminder Direct SIM SMS Modal with Custom Months Selection */}
-      <DueSmsModal
-        isOpen={!!dueSmsTarget}
-        onClose={() => setDueSmsTarget(null)}
-        target={dueSmsTarget}
-        paymentConfig={paymentConfig}
-      />
-
-      {/* Floating SIM SMS Feedback Toast */}
-      {paidSmsToast && (
-        <div className="fixed bottom-4 right-4 z-50 max-w-sm w-[calc(100vw-2rem)] bg-slate-900 text-white rounded-2xl shadow-2xl p-4 border border-slate-700 animate-slideUp">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                <Check className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold text-white">SIM SMS প্রস্তুত ও খোলা হয়েছে</h4>
-                <p className="text-[11px] text-slate-300">
-                  {paidSmsToast.memberName} ({paidSmsToast.phone || 'নম্বর ছাড়া'})
-                </p>
-              </div>
+      {/* Adjust Manual Balance Modal */}
+      {isAdjustBalanceOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-bold text-slate-900">ফান্ড ব্যালেন্স সমন্বয়</h3>
+              <button onClick={() => setIsAdjustBalanceOpen(false)} className="text-slate-400 p-1">
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <button
-              onClick={() => setPaidSmsToast(null)}
-              className="text-slate-400 hover:text-white p-1 rounded-lg transition"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="mt-2.5 p-2 bg-slate-800/80 rounded-xl text-[11px] font-mono text-slate-300 border border-slate-700/60 line-clamp-3">
-            {paidSmsToast.smsText}
-          </div>
-          <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-            <span>ক্লিপবোর্ডে কপি করা হয়েছে</span>
-            {paidSmsToast.phone && (
+            <p className="text-xs text-slate-500">
+              আপনি চাইলে স্বয়ংক্রিয় হিসাবের বদলে সুনির্দিষ্ট নগদ ক্যাশ টাকার পরিমাণ নির্ধারণ করে দিতে পারেন।
+            </p>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">নতুন ব্যালেন্স (টাকা)</label>
+              <input
+                type="number"
+                value={newManualBalance}
+                onChange={(e) => setNewManualBalance(e.target.value)}
+                placeholder="যেমন: ২৫০০০ (ফাঁকা রাখলে স্বয়ংক্রিয় হবে)"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-bold"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => triggerNativeSms(paidSmsToast.phone!, paidSmsToast.smsText)}
-                className="text-emerald-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                title="সরাসরি মেসেজ অ্যাপ আবার খুলুন"
+                onClick={() => {
+                  setNewManualBalance('');
+                  if (onUpdateManualTotalBalance) onUpdateManualTotalBalance(null);
+                  setIsAdjustBalanceOpen(false);
+                }}
+                className="px-3 py-1.5 rounded-xl text-xs text-slate-600 hover:bg-slate-100"
               >
-                <span>আবার খুলুন</span>
-                <ExternalLink className="w-3 h-3" />
+                রিসেট (স্বয়ংক্রিয়)
               </button>
-            )}
+              <button
+                type="button"
+                onClick={handleSaveAdjustBalance}
+                className="px-4 py-1.5 rounded-xl text-xs bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow"
+              >
+                সংরক্ষণ করুন
+              </button>
+            </div>
           </div>
         </div>
       )}
