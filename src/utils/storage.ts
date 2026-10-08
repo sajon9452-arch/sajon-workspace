@@ -70,20 +70,20 @@ export function saveOrgProfile(profile: OrganizationProfile) {
   }
 }
 
-// 2. Members
+// 2. Members (Starts completely empty with zero default or dummy records)
 export function loadMembers(): Member[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.MEMBERS);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return sortMembersOldestFirst(parsed);
       }
     }
   } catch (e) {
     console.error(e);
   }
-  return sortMembersOldestFirst(INITIAL_MEMBERS);
+  return [];
 }
 
 export function saveMembers(members: Member[]) {

@@ -62,3 +62,16 @@ export async function safeSyncToSupabase<T extends { id: string }>(tableName: st
   }
   return false;
 }
+
+/**
+ * Permanently deletes a record from Supabase table by ID
+ */
+export async function safeDeleteFromSupabase(tableName: string, id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from(tableName).delete().eq('id', id);
+    if (!error) return true;
+  } catch (err) {
+    // Fail silently
+  }
+  return false;
+}

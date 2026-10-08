@@ -40,7 +40,7 @@ import {
 } from './utils/storage';
 import { sortMembersOldestFirst } from './utils/helpers';
 import { autoSyncMembersToFunds } from './utils/memberFundLinker';
-import { fetchSupabaseData } from './utils/supabaseClient';
+import { fetchSupabaseData, safeSyncToSupabase, safeDeleteFromSupabase } from './utils/supabaseClient';
 
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -90,30 +90,33 @@ export default function App() {
     };
     window.addEventListener(PMS_SYNC_EVENT, handleSync);
 
-    // Safely check and load any cloud data from Supabase without modifying or deleting anything
+    // Safely check and load any cloud data from Supabase only if local database not already initialized
     const loadFromSupabase = async () => {
       try {
-        const cloudMembers = await fetchSupabaseData<Member>('members');
-        if (cloudMembers && cloudMembers.length > 0) {
-          const sorted = sortMembersOldestFirst(cloudMembers);
-          setMembers(sorted);
-          saveMembers(sorted);
+        const hasLocalMembers = localStorage.getItem('pms_members_list') !== null;
+        if (!hasLocalMembers) {
+          const cloudMembers = await fetchSupabaseData<Member>('members');
+          if (cloudMembers && cloudMembers.length > 0) {
+            const sorted = sortMembersOldestFirst(cloudMembers);
+            setMembers(sorted);
+            saveMembers(sorted);
+          }
         }
 
         const cloudFunds = await fetchSupabaseData<FundRecord>('funds');
-        if (cloudFunds && cloudFunds.length > 0) {
+        if (cloudFunds && cloudFunds.length > 0 && localStorage.getItem('pms_fund_records') === null) {
           setFunds(cloudFunds);
           saveFunds(cloudFunds);
         }
 
         const cloudDonors = await fetchSupabaseData<BloodDonor>('donors');
-        if (cloudDonors && cloudDonors.length > 0) {
+        if (cloudDonors && cloudDonors.length > 0 && localStorage.getItem('pms_blood_donors') === null) {
           setDonors(cloudDonors);
           saveDonors(cloudDonors);
         }
 
         const cloudNotices = await fetchSupabaseData<Notice>('notices');
-        if (cloudNotices && cloudNotices.length > 0) {
+        if (cloudNotices && cloudNotices.length > 0 && localStorage.getItem('pms_notices') === null) {
           setNotices(cloudNotices);
           saveNotices(cloudNotices);
         }
@@ -159,6 +162,9 @@ export default function App() {
       return synced;
     });
 
+    // Safe sync to Supabase
+    safeSyncToSupabase('members', member);
+
     return member;
   };
 
@@ -174,12 +180,26 @@ export default function App() {
       saveFunds(synced);
       return synced;
     });
+
+    // Safe sync to Supabase
+    safeSyncToSupabase('members', updatedMember);
   };
 
   const handleDeleteMember = async (id: string): Promise<void> => {
+    // 1. Permanently remove from members state and localStorage
     const updated = members.filter(m => m.id !== id);
     setMembers(updated);
     saveMembers(updated);
+
+    // 2. Remove associated fund records
+    setFunds(prevFunds => {
+      const filteredFunds = prevFunds.filter(f => f.memberId !== id);
+      saveFunds(filteredFunds);
+      return filteredFunds;
+    });
+
+    // 3. Permanently remove from Supabase cloud database
+    await safeDeleteFromSupabase('members', id);
   };
 
   // 2. Fund Handlers
