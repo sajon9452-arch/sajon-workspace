@@ -9,7 +9,11 @@ import {
   Check, 
   Copy, 
   MessageCircle, 
-  ShieldCheck
+  ShieldCheck,
+  UserPlus,
+  Lock,
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react';
 import { Member } from '../types';
 import { 
@@ -20,6 +24,7 @@ import {
   getMemberPhotoUrl,
   sanitizePhone
 } from '../utils/helpers';
+import { compressImageFile } from '../utils/imageCompressor';
 
 interface MemberListScreenProps {
   members: Member[];
@@ -27,11 +32,15 @@ interface MemberListScreenProps {
   onEditMember?: (member: Member) => Promise<void>;
   onDeleteMember?: (id: string) => Promise<void>;
   isAdmin?: boolean;
+  openAdminModal?: () => void;
   onBack?: () => void;
 }
 
 export const MemberListScreen: React.FC<MemberListScreenProps> = ({
-  members
+  members,
+  onAddMember,
+  isAdmin = false,
+  openAdminModal
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'executive' | 'general' | 'expatriate'>('all');
@@ -39,6 +48,97 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
   // Modals & copying
   const [zoomedPhoto, setZoomedPhoto] = useState<{ src: string; name: string; designation?: string } | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Add Member Modal State (Restored for Admin / Authorized Workflow)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [memName, setMemName] = useState('');
+  const [memDesignation, setMemDesignation] = useState('সাধারণ সদস্য');
+  const [memPhone, setMemPhone] = useState('');
+  const [memArea, setMemArea] = useState('পতেঙ্গা, চট্টগ্রাম');
+  const [memIsExecutive, setMemIsExecutive] = useState(false);
+  const [memIsExpatriate, setMemIsExpatriate] = useState(false);
+  const [memCountry, setMemCountry] = useState('');
+  const [memPhoto, setMemPhoto] = useState('');
+  const [formError, setFormError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setFormError('ছবির সাইজ সর্বোচ্চ ১০ মেগাবাইট হতে পারবে');
+      return;
+    }
+
+    try {
+      const compressedBase64 = await compressImageFile(file, { maxWidth: 600, maxHeight: 600, quality: 0.8 });
+      setMemPhoto(compressedBase64);
+      setFormError('');
+    } catch {
+      setFormError('ছবি প্রসেসিংয়ে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন');
+    }
+  };
+
+  const handleSaveNewMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!memName.trim()) {
+      setFormError('সদস্যের পুরো নাম প্রদান করুন');
+      return;
+    }
+    if (!memPhone.trim()) {
+      setFormError('সঠিক মোবাইল নম্বর প্রদান করুন');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError('');
+
+    try {
+      if (onAddMember) {
+        let maxSerial = 0;
+        members.forEach(m => {
+          if (typeof m.serial === 'number' && !isNaN(m.serial) && m.serial > maxSerial) {
+            maxSerial = m.serial;
+          }
+        });
+        const serial = Math.max(maxSerial, members.length) + 1;
+
+        const newMem: Omit<Member, 'id'> = {
+          name: memName.trim(),
+          designation: memDesignation.trim() || 'সাধারণ সদস্য',
+          phone: memPhone.trim(),
+          area: memArea.trim() || 'পতেঙ্গা, চট্টগ্রাম',
+          status: 'সক্রিয়',
+          joinDate: new Date().toISOString().split('T')[0],
+          serial,
+          isExecutive: memIsExecutive,
+          isExpatriate: memIsExpatriate,
+          countryStatus: memIsExpatriate ? (memCountry.trim() || 'প্রবাসী') : undefined,
+          photoUrl: memPhoto || undefined,
+          createdAt: new Date().toISOString()
+        };
+
+        await onAddMember(newMem);
+        setIsAddModalOpen(false);
+        setMemName('');
+        setMemDesignation('সাধারণ সদস্য');
+        setMemPhone('');
+        setMemArea('পতেঙ্গা, চট্টগ্রাম');
+        setMemIsExecutive(false);
+        setMemIsExpatriate(false);
+        setMemCountry('');
+        setMemPhoto('');
+        setToastMsg(`নতুন সদস্য "${newMem.name}" সফলভাবে যুক্ত হয়েছে এবং তহবিল ডিরেক্টরিতে সিঙ্ক হয়েছে`);
+        setTimeout(() => setToastMsg(null), 3500);
+      }
+    } catch {
+      setFormError('সংরক্ষণে সমস্যা হয়েছে। পুনরায় চেষ্টা করুন।');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Strict ascending seniority / serial order:
   // Earliest registered members stay on top, newly added members strictly append to bottom!
@@ -90,10 +190,49 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
           </div>
         </div>
 
-        <div className="px-3.5 py-1.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shrink-0">
-          মোট সদস্য: {toBengaliNumber(members.length)} জন
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <div className="px-3.5 py-1.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shrink-0">
+            মোট সদস্য: {toBengaliNumber(members.length)} জন
+          </div>
+
+          {isAdmin ? (
+            <button
+              onClick={() => {
+                setMemName('');
+                setMemDesignation('সাধারণ সদস্য');
+                setMemPhone('');
+                setMemArea('পতেঙ্গা, চট্টগ্রাম');
+                setMemIsExecutive(false);
+                setMemIsExpatriate(false);
+                setMemCountry('');
+                setMemPhoto('');
+                setFormError('');
+                setIsAddModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-md transition cursor-pointer active:scale-95"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>নতুন সদস্য যুক্ত করুন</span>
+            </button>
+          ) : openAdminModal ? (
+            <button
+              onClick={openAdminModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+              title="সদস্য নিবন্ধন শুধুমাত্র অনুমোদিত অ্যাডমিনের জন্য"
+            >
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span>সদস্য যোগ করুন (অ্যাডমিন)</span>
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {toastMsg && (
+        <div className="p-3.5 rounded-2xl bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-2 shadow-xs animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+          <span>{toastMsg}</span>
+        </div>
+      )}
 
       {/* Filter Tabs & Search Bar */}
       <div className="space-y-3">
@@ -319,6 +458,169 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
               <p className="text-xs text-slate-500 mt-1">অনুসন্ধানের শব্দ পরিবর্তন করে পুনরায় চেষ্টা করুন</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Add Member Modal (Admin / Authorized Workflow) */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-700" />
+                <span>নতুন সদস্য নিবন্ধন</span>
+              </h3>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {formError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveNewMember} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  সদস্যের পুরো নাম <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={memName}
+                  onChange={(e) => setMemName(e.target.value)}
+                  placeholder="যেমন: মো: ছাদিকুর রহমান"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">পদবি</label>
+                  <input
+                    type="text"
+                    value={memDesignation}
+                    onChange={(e) => setMemDesignation(e.target.value)}
+                    placeholder="সাধারণ সদস্য / সভাপতি"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">এলাকা / ঠিকানা</label>
+                  <input
+                    type="text"
+                    value={memArea}
+                    onChange={(e) => setMemArea(e.target.value)}
+                    placeholder="পতেঙ্গা, চট্টগ্রাম"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  মোবাইল নম্বর <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={memPhone}
+                  onChange={(e) => setMemPhone(e.target.value)}
+                  placeholder="01886122678"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono"
+                />
+              </div>
+
+              {/* Committee & Expatriate Toggles */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={memIsExecutive}
+                    onChange={(e) => setMemIsExecutive(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="font-bold text-slate-800">কার্যকরী পরিষদ সদস্য</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={memIsExpatriate}
+                    onChange={(e) => setMemIsExpatriate(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="font-bold text-slate-800">প্রবাসী সদস্য</span>
+                </label>
+
+                {memIsExpatriate && (
+                  <div className="pt-1">
+                    <input
+                      type="text"
+                      value={memCountry}
+                      onChange={(e) => setMemCountry(e.target.value)}
+                      placeholder="দেশের নাম (যেমন: ওমান, কাতার, দুবাই)"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Photo Upload */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  প্রোফাইল ছবি (গ্যালারি থেকে নির্বাচন)
+                </label>
+                <div className="flex items-center gap-3">
+                  {memPhoto ? (
+                    <div className="relative w-16 h-16 rounded-2xl overflow-hidden border-2 border-emerald-500 shrink-0 shadow-xs">
+                      <img src={memPhoto} alt="প্রিভিউ" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setMemPhoto('')}
+                        className="absolute top-0 right-0 p-0.5 bg-rose-600 text-white rounded-bl cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                      <Users className="w-6 h-6" />
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoUpload}
+                    className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow transition cursor-pointer active:scale-95 disabled:opacity-50"
+                >
+                  {isSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ ও সিঙ্ক করুন'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

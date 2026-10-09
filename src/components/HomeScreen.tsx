@@ -82,7 +82,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const totalExpense = funds
     .filter(f => f.status === 'Expense')
     .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-  const netBalance = manualTotalBalance !== null ? manualTotalBalance : (totalIncome - totalExpense);
+  // Current net balance is strictly controlled manually by admin, never calculated from entries
+  const netBalance = manualTotalBalance !== null ? manualTotalBalance : 0;
 
   const latestNotice = notices[0];
 

@@ -252,18 +252,24 @@ export default function App() {
   };
 
   const handleToggleFundStatus = async (id: string, newStatus: PaymentStatus): Promise<void> => {
+    let changedFund: FundRecord | null = null;
     const updated = funds.map(f => {
       if (f.id === id) {
-        return {
+        const u = {
           ...f,
           status: newStatus,
           approvedAt: newStatus === 'Paid' ? new Date().toISOString() : f.approvedAt
         };
+        changedFund = u;
+        return u;
       }
       return f;
     });
     setFunds(updated);
     saveFunds(updated);
+    if (changedFund) {
+      safeSyncToSupabase('funds', changedFund);
+    }
   };
 
   const handleUpdateManualTotalBalance = (amount: number | null) => {
@@ -380,9 +386,8 @@ export default function App() {
           <MemberListScreen
             members={members}
             onAddMember={handleAddMember}
-            onEditMember={handleEditMember}
-            onDeleteMember={handleDeleteMember}
             isAdmin={isAdmin}
+            openAdminModal={() => setIsAdminModalOpen(true)}
             onBack={() => setActiveScreen('home')}
           />
         )}
@@ -402,12 +407,7 @@ export default function App() {
           <FundScreen
             fundRecords={funds}
             members={members}
-            onAddFundRecord={handleAddFund}
-            onEditFundRecord={handleEditFund}
-            onDeleteFundRecord={handleDeleteFund}
-            onToggleStatus={handleToggleFundStatus}
             manualTotalBalance={manualTotalBalance}
-            onUpdateManualTotalBalance={handleUpdateManualTotalBalance}
             paymentConfig={paymentConfig}
             isAdmin={isAdmin}
             onBack={() => setActiveScreen('home')}
@@ -453,6 +453,9 @@ export default function App() {
             onEditDonor={handleEditDonor}
             onDeleteDonor={handleDeleteDonor}
             funds={funds}
+            onToggleFundStatus={handleToggleFundStatus}
+            manualTotalBalance={manualTotalBalance}
+            onUpdateManualTotalBalance={handleUpdateManualTotalBalance}
             paymentConfig={paymentConfig}
             onUpdatePaymentConfig={handleUpdatePaymentConfig}
             onBack={() => setActiveScreen('home')}
