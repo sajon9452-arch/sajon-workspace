@@ -36,7 +36,9 @@ import {
   savePaymentSettings, 
   loadManualTotalBalance, 
   saveManualTotalBalance,
-  PMS_SYNC_EVENT 
+  PMS_SYNC_EVENT,
+  markIdAsPermanentlyDeleted,
+  isIdPermanentlyDeleted
 } from './utils/storage';
 import { sortMembersOldestFirst } from './utils/helpers';
 import { autoSyncMembersToFunds } from './utils/memberFundLinker';
@@ -105,35 +107,37 @@ export default function App() {
     };
     window.addEventListener(PMS_SYNC_EVENT, handleSync);
 
-    // Safely check and load any cloud data from Supabase only if local database not already initialized
+    // Safely check and load any cloud data from Supabase, strictly filtering out any permanently deleted items
     const loadFromSupabase = async () => {
       try {
-        const hasLocalMembers = localStorage.getItem('pms_members_list') !== null;
-        if (!hasLocalMembers) {
-          const cloudMembers = await fetchSupabaseData<Member>('members');
-          if (cloudMembers && cloudMembers.length > 0) {
-            const sorted = sortMembersOldestFirst(cloudMembers);
-            setMembers(sorted);
-            saveMembers(sorted);
-          }
+        const cloudMembers = await fetchSupabaseData<Member>('members');
+        if (cloudMembers && Array.isArray(cloudMembers)) {
+          const liveMembers = sortMembersOldestFirst(
+            cloudMembers.filter(m => m && m.id && !isIdPermanentlyDeleted(m.id))
+          );
+          setMembers(liveMembers);
+          saveMembers(liveMembers);
         }
 
         const cloudFunds = await fetchSupabaseData<FundRecord>('funds');
-        if (cloudFunds && cloudFunds.length > 0 && localStorage.getItem('pms_fund_records') === null) {
-          setFunds(cloudFunds);
-          saveFunds(cloudFunds);
+        if (cloudFunds && Array.isArray(cloudFunds)) {
+          const liveFunds = cloudFunds.filter(f => f && f.id && !isIdPermanentlyDeleted(f.id));
+          setFunds(liveFunds);
+          saveFunds(liveFunds);
         }
 
         const cloudDonors = await fetchSupabaseData<BloodDonor>('donors');
-        if (cloudDonors && cloudDonors.length > 0 && localStorage.getItem('pms_blood_donors') === null) {
-          setDonors(cloudDonors);
-          saveDonors(cloudDonors);
+        if (cloudDonors && Array.isArray(cloudDonors)) {
+          const liveDonors = cloudDonors.filter(d => d && d.id && !isIdPermanentlyDeleted(d.id));
+          setDonors(liveDonors);
+          saveDonors(liveDonors);
         }
 
         const cloudNotices = await fetchSupabaseData<Notice>('notices');
-        if (cloudNotices && cloudNotices.length > 0 && localStorage.getItem('pms_notices') === null) {
-          setNotices(cloudNotices);
-          saveNotices(cloudNotices);
+        if (cloudNotices && Array.isArray(cloudNotices)) {
+          const liveNotices = cloudNotices.filter(n => n && n.id && !isIdPermanentlyDeleted(n.id));
+          setNotices(liveNotices);
+          saveNotices(liveNotices);
         }
       } catch (err) {
         console.warn('Supabase initial fetch skipped:', err);
@@ -201,19 +205,22 @@ export default function App() {
   };
 
   const handleDeleteMember = async (id: string): Promise<void> => {
-    // 1. Permanently remove from members state and localStorage
+    // 1. Mark permanently deleted in storage registry (cannot be revived)
+    markIdAsPermanentlyDeleted(id);
+
+    // 2. Permanently remove from members state and localStorage
     const updated = members.filter(m => m.id !== id);
     setMembers(updated);
     saveMembers(updated);
 
-    // 2. Remove associated fund records
+    // 3. Remove associated fund records
     setFunds(prevFunds => {
       const filteredFunds = prevFunds.filter(f => f.memberId !== id);
       saveFunds(filteredFunds);
       return filteredFunds;
     });
 
-    // 3. Permanently remove from Supabase cloud database
+    // 4. Permanently remove from Supabase cloud database
     await safeDeleteFromSupabase('members', id);
   };
 
@@ -237,9 +244,11 @@ export default function App() {
   };
 
   const handleDeleteFund = async (id: string): Promise<void> => {
+    markIdAsPermanentlyDeleted(id);
     const updated = funds.filter(f => f.id !== id);
     setFunds(updated);
     saveFunds(updated);
+    await safeDeleteFromSupabase('funds', id);
   };
 
   const handleToggleFundStatus = async (id: string, newStatus: PaymentStatus): Promise<void> => {
@@ -282,9 +291,11 @@ export default function App() {
   };
 
   const handleDeleteDonor = async (id: string): Promise<void> => {
+    markIdAsPermanentlyDeleted(id);
     const updated = donors.filter(d => d.id !== id);
     setDonors(updated);
     saveDonors(updated);
+    await safeDeleteFromSupabase('donors', id);
   };
 
   // 4. Notice Handlers
@@ -301,9 +312,11 @@ export default function App() {
   };
 
   const handleDeleteNotice = async (id: string): Promise<void> => {
+    markIdAsPermanentlyDeleted(id);
     const updated = notices.filter(n => n.id !== id);
     setNotices(updated);
     saveNotices(updated);
+    await safeDeleteFromSupabase('notices', id);
   };
 
   // 5. Support Report Handlers

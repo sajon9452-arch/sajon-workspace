@@ -19,7 +19,7 @@ import {
   INITIAL_HOME_SLIDES, 
   INITIAL_HUMANITARIAN_ACTIVITIES, 
   INITIAL_ORGANIZATION_RULES, 
-  INITIAL_SUPPORT_REPORTS,
+  INITIAL_SUPPORT_REPORTS, 
   INITIAL_PAYMENT_CONFIG 
 } from '../data/initialData';
 import { sortMembersOldestFirst } from './helpers';
@@ -36,7 +36,8 @@ const STORAGE_KEYS = {
   SUPPORT_REPORTS: 'pms_support_reports',
   PAYMENT_SETTINGS: 'pms_payment_settings',
   MANUAL_TOTAL_BALANCE: 'pms_manual_total_balance',
-  ADMIN_PIN: 'pms_admin_pin'
+  ADMIN_PIN: 'pms_admin_pin',
+  PERMANENTLY_DELETED: 'pms_permanently_deleted_records'
 };
 
 export const PMS_SYNC_EVENT = 'pms_local_sync';
@@ -48,6 +49,38 @@ export function notifyStorageChange(key: string, data?: any) {
   } catch (e) {
     // ignore
   }
+}
+
+// Permanent Deletion Registry: Guarantees deleted items can NEVER be revived under any circumstance
+export function getPermanentlyDeletedIds(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.PERMANENTLY_DELETED);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return [];
+}
+
+export function markIdAsPermanentlyDeleted(id: string) {
+  if (!id) return;
+  try {
+    const current = getPermanentlyDeletedIds();
+    if (!current.includes(id)) {
+      current.push(id);
+      localStorage.setItem(STORAGE_KEYS.PERMANENTLY_DELETED, JSON.stringify(current));
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+export function isIdPermanentlyDeleted(id: string): boolean {
+  if (!id) return false;
+  return getPermanentlyDeletedIds().includes(id);
 }
 
 // 1. Organization Profile
@@ -70,14 +103,14 @@ export function saveOrgProfile(profile: OrganizationProfile) {
   }
 }
 
-// 2. Members (Starts completely empty with zero default or dummy records)
+// 2. Members (Strictly dynamic: Never restores dummy records)
 export function loadMembers(): Member[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.MEMBERS);
     if (raw !== null) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return sortMembersOldestFirst(parsed);
+        return sortMembersOldestFirst(parsed.filter(m => !isIdPermanentlyDeleted(m.id)));
       }
     }
   } catch (e) {
@@ -88,7 +121,7 @@ export function loadMembers(): Member[] {
 
 export function saveMembers(members: Member[]) {
   try {
-    const sorted = sortMembersOldestFirst(members);
+    const sorted = sortMembersOldestFirst(members.filter(m => !isIdPermanentlyDeleted(m.id)));
     localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(sorted));
     notifyStorageChange(STORAGE_KEYS.MEMBERS, sorted);
   } catch (e) {
@@ -96,162 +129,183 @@ export function saveMembers(members: Member[]) {
   }
 }
 
-// 3. Blood Donors
+// 3. Blood Donors (Strictly dynamic: Never restores dummy records)
 export function loadDonors(): BloodDonor[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.DONORS);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(d => !isIdPermanentlyDeleted(d.id));
+      }
     }
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_DONORS;
+  return [];
 }
 
 export function saveDonors(donors: BloodDonor[]) {
   try {
-    localStorage.setItem(STORAGE_KEYS.DONORS, JSON.stringify(donors));
-    notifyStorageChange(STORAGE_KEYS.DONORS, donors);
+    const filtered = donors.filter(d => !isIdPermanentlyDeleted(d.id));
+    localStorage.setItem(STORAGE_KEYS.DONORS, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.DONORS, filtered);
   } catch (e) {
     console.error(e);
   }
 }
 
-// 4. Funds
+// 4. Funds (Strictly dynamic: Never restores dummy records)
 export function loadFunds(): FundRecord[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.FUNDS);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(f => !isIdPermanentlyDeleted(f.id));
+      }
     }
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_FUNDS;
+  return [];
 }
 
 export function saveFunds(funds: FundRecord[]) {
   try {
-    localStorage.setItem(STORAGE_KEYS.FUNDS, JSON.stringify(funds));
-    notifyStorageChange(STORAGE_KEYS.FUNDS, funds);
+    const filtered = funds.filter(f => !isIdPermanentlyDeleted(f.id));
+    localStorage.setItem(STORAGE_KEYS.FUNDS, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.FUNDS, filtered);
   } catch (e) {
     console.error(e);
   }
 }
 
-// 5. Notices
+// 5. Notices (Strictly dynamic: Never restores dummy records)
 export function loadNotices(): Notice[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.NOTICES);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(n => !isIdPermanentlyDeleted(n.id));
+      }
     }
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_NOTICES;
+  return [];
 }
 
 export function saveNotices(notices: Notice[]) {
   try {
-    localStorage.setItem(STORAGE_KEYS.NOTICES, JSON.stringify(notices));
-    notifyStorageChange(STORAGE_KEYS.NOTICES, notices);
+    const filtered = notices.filter(n => !isIdPermanentlyDeleted(n.id));
+    localStorage.setItem(STORAGE_KEYS.NOTICES, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.NOTICES, filtered);
   } catch (e) {
     console.error(e);
   }
 }
 
-// 6. Home Slides
+// 6. Home Slides (Strictly dynamic: Never restores dummy records)
 export function loadHomeSlides(): HomeSlide[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.HOME_SLIDES);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(s => !isIdPermanentlyDeleted(s.id));
+      }
     }
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_HOME_SLIDES;
+  return [];
 }
 
 export function saveHomeSlides(slides: HomeSlide[]) {
   try {
-    localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, JSON.stringify(slides));
-    notifyStorageChange(STORAGE_KEYS.HOME_SLIDES, slides);
+    const filtered = slides.filter(s => !isIdPermanentlyDeleted(s.id));
+    localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.HOME_SLIDES, filtered);
   } catch (e) {
     console.error(e);
   }
 }
 
-// 7. Humanitarian Activities
+// 7. Humanitarian Activities (Strictly dynamic: Never restores dummy records)
 export function loadHumanitarianActivities(): HumanitarianActivity[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(a => !isIdPermanentlyDeleted(a.id));
+      }
     }
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_HUMANITARIAN_ACTIVITIES;
+  return [];
 }
 
 export function saveHumanitarianActivities(activities: HumanitarianActivity[]) {
   try {
-    localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, JSON.stringify(activities));
-    notifyStorageChange(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, activities);
+    const filtered = activities.filter(a => !isIdPermanentlyDeleted(a.id));
+    localStorage.setItem(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.HUMANITARIAN_ACTIVITIES, filtered);
   } catch (e) {
     console.error(e);
   }
 }
 
-// 8. Organization Rules
+// 8. Organization Rules (Strictly dynamic: Never restores dummy records)
 export function loadOrganizationRules(): OrganizationRule[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.ORGANIZATION_RULES);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(r => !isIdPermanentlyDeleted(r.id));
+      }
     }
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_ORGANIZATION_RULES;
+  return [];
 }
 
 export function saveOrganizationRules(rules: OrganizationRule[]) {
   try {
-    localStorage.setItem(STORAGE_KEYS.ORGANIZATION_RULES, JSON.stringify(rules));
-    notifyStorageChange(STORAGE_KEYS.ORGANIZATION_RULES, rules);
+    const filtered = rules.filter(r => !isIdPermanentlyDeleted(r.id));
+    localStorage.setItem(STORAGE_KEYS.ORGANIZATION_RULES, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.ORGANIZATION_RULES, filtered);
   } catch (e) {
     console.error(e);
   }
 }
 
-// 9. Support Reports
+// 9. Support Reports (Strictly dynamic: Never restores dummy records)
 export function loadSupportReports(): SupportReportItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.SUPPORT_REPORTS);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(s => !isIdPermanentlyDeleted(s.id));
+      }
     }
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_SUPPORT_REPORTS;
+  return [];
 }
 
 export function saveSupportReports(reports: SupportReportItem[]) {
   try {
-    localStorage.setItem(STORAGE_KEYS.SUPPORT_REPORTS, JSON.stringify(reports));
-    notifyStorageChange(STORAGE_KEYS.SUPPORT_REPORTS, reports);
+    const filtered = reports.filter(s => !isIdPermanentlyDeleted(s.id));
+    localStorage.setItem(STORAGE_KEYS.SUPPORT_REPORTS, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.SUPPORT_REPORTS, filtered);
   } catch (e) {
     console.error(e);
   }
