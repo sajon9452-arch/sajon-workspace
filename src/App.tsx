@@ -11,7 +11,8 @@ import {
   HumanitarianActivity, 
   OrganizationRule,
   SupportReportItem,
-  PaymentStatus 
+  PaymentStatus,
+  UserAccount 
 } from './types';
 import { 
   loadOrgProfile, 
@@ -40,9 +41,22 @@ import {
   markIdAsPermanentlyDeleted,
   isIdPermanentlyDeleted
 } from './utils/storage';
+import { 
+  loadLoggedInUser, 
+  saveLoggedInUser, 
+  loadIsAdminSession, 
+  saveIsAdminSession,
+  loadUserAccounts 
+} from './utils/authSecurity';
 import { sortMembersOldestFirst } from './utils/helpers';
 import { autoSyncMembersToFunds } from './utils/memberFundLinker';
-import { fetchSupabaseData, safeSyncToSupabase, safeDeleteFromSupabase } from './utils/supabaseClient';
+import { 
+  fetchSupabaseData, 
+  safeSyncToSupabase, 
+  safeDeleteFromSupabase,
+  syncNetBalanceToSupabase,
+  fetchNetBalanceFromSupabase
+} from './utils/supabaseClient';
 
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -54,12 +68,31 @@ import { NoticeScreen } from './components/NoticeScreen';
 import { CalendarScreen } from './components/CalendarScreen';
 import { SupportScreen } from './components/SupportScreen';
 import { AdminPanelScreen } from './components/AdminPanelScreen';
-import { AdminModal } from './components/AdminModal';
+import { AuthModal } from './components/AuthModal';
+import { AuthGateScreen } from './components/AuthGateScreen';
 import { EmergencyHelplineModal } from './components/EmergencyHelplineModal';
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>('home');
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => loadIsAdminSession());
+  const [loggedInUser, setLoggedInUser] = useState<UserAccount | null>(() => {
+    const user = loadLoggedInUser();
+    if (user) {
+      // Validate that user is still active and approved
+      const accounts = loadUserAccounts();
+      const fresh = accounts.find(a => a.id === user.id);
+      if (fresh && fresh.status === 'approved') {
+        return fresh;
+      }
+      saveLoggedInUser(null);
+      return null;
+    }
+    return null;
+  });
+
+  // Strict Authentication status: Either master admin session OR approved regular member
+  const isApprovedMember = loggedInUser !== null && loggedInUser.status === 'approved';
+  const isAuthenticated = isAdmin || isApprovedMember;
 
   // Data States
   const [profile, setProfile] = useState<OrganizationProfile>(() => loadOrgProfile());
@@ -75,15 +108,61 @@ export default function App() {
   const [manualTotalBalance, setManualTotalBalance] = useState<number | null>(() => loadManualTotalBalance());
 
   // Modals
-  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
 
-  // Instant logout handler with immediate redirect
-  const handleAdminLogout = () => {
-    setIsAdmin(false);
+  const handleOpenAuthModal = (mode: 'login' | 'register' = 'login') => {
+    setAuthModalMode(mode);
+    setIsAuthModalOpen(true);
+  };
+
+  const handleAdminLoginSuccess = () => {
+    setIsAdmin(true);
+    saveIsAdminSession(true);
+    setActiveScreen('admin');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleMemberLoginSuccess = (user: UserAccount) => {
+    setLoggedInUser(user);
+    saveLoggedInUser(user);
     setActiveScreen('home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Instant admin logout handler with immediate redirect
+  const handleAdminLogout = () => {
+    setIsAdmin(false);
+    saveIsAdminSession(false);
+    setActiveScreen('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleMemberLogout = () => {
+    setLoggedInUser(null);
+    saveLoggedInUser(null);
+    setActiveScreen('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Sync listener: If currently logged in user gets blocked/rejected by admin, kick out immediately
+  useEffect(() => {
+    const handleAccountSync = () => {
+      if (loggedInUser) {
+        const accounts = loadUserAccounts();
+        const fresh = accounts.find(a => a.id === loggedInUser.id);
+        if (!fresh || fresh.status !== 'approved') {
+          setLoggedInUser(null);
+          saveLoggedInUser(null);
+        }
+      }
+    };
+    window.addEventListener(PMS_SYNC_EVENT, handleAccountSync);
+    return () => {
+      window.removeEventListener(PMS_SYNC_EVENT, handleAccountSync);
+    };
+  }, [loggedInUser]);
 
   // Automatic redirect safety: If admin session is terminated while on admin screen, immediately return to home
   useEffect(() => {
@@ -138,6 +217,12 @@ export default function App() {
           const liveNotices = cloudNotices.filter(n => n && n.id && !isIdPermanentlyDeleted(n.id));
           setNotices(liveNotices);
           saveNotices(liveNotices);
+        }
+
+        const cloudNetBalance = await fetchNetBalanceFromSupabase();
+        if (cloudNetBalance !== null && !isNaN(cloudNetBalance)) {
+          setManualTotalBalance(cloudNetBalance);
+          saveManualTotalBalance(cloudNetBalance);
         }
       } catch (err) {
         console.warn('Supabase initial fetch skipped:', err);
@@ -241,6 +326,7 @@ export default function App() {
     const updated = funds.map(f => f.id === updatedFund.id ? updatedFund : f);
     setFunds(updated);
     saveFunds(updated);
+    await safeSyncToSupabase('funds', updatedFund);
   };
 
   const handleDeleteFund = async (id: string): Promise<void> => {
@@ -275,6 +361,9 @@ export default function App() {
   const handleUpdateManualTotalBalance = (amount: number | null) => {
     setManualTotalBalance(amount);
     saveManualTotalBalance(amount);
+    if (amount !== null) {
+      syncNetBalanceToSupabase(amount);
+    }
   };
 
   // 3. Donor Handlers
@@ -349,6 +438,25 @@ export default function App() {
     savePaymentSettings(newConfig);
   };
 
+  // Strict Login/Registration Gate: When not authenticated, hide all main app content completely
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col antialiased">
+        <AuthGateScreen
+          profile={profile}
+          onAdminLoginSuccess={handleAdminLoginSuccess}
+          onMemberLoginSuccess={handleMemberLoginSuccess}
+          openEmergencyModal={() => setIsEmergencyModalOpen(true)}
+        />
+        <EmergencyHelplineModal
+          isOpen={isEmergencyModalOpen}
+          onClose={() => setIsEmergencyModalOpen(false)}
+          profile={profile}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col antialiased">
       <Header
@@ -357,8 +465,10 @@ export default function App() {
         setActiveScreen={setActiveScreen}
         isAdmin={isAdmin}
         setIsAdmin={setIsAdmin}
+        loggedInUser={loggedInUser}
         onLogout={handleAdminLogout}
-        openAdminModal={() => setIsAdminModalOpen(true)}
+        onMemberLogout={handleMemberLogout}
+        openAuthModal={handleOpenAuthModal}
         openEmergencyModal={() => setIsEmergencyModalOpen(true)}
       />
 
@@ -387,7 +497,7 @@ export default function App() {
             members={members}
             onAddMember={handleAddMember}
             isAdmin={isAdmin}
-            openAdminModal={() => setIsAdminModalOpen(true)}
+            openAdminModal={() => handleOpenAuthModal('login')}
             onBack={() => setActiveScreen('home')}
           />
         )}
@@ -453,6 +563,7 @@ export default function App() {
             onEditDonor={handleEditDonor}
             onDeleteDonor={handleDeleteDonor}
             funds={funds}
+            onEditFundRecord={handleEditFund}
             onToggleFundStatus={handleToggleFundStatus}
             manualTotalBalance={manualTotalBalance}
             onUpdateManualTotalBalance={handleUpdateManualTotalBalance}
@@ -469,17 +580,17 @@ export default function App() {
         activeScreen={activeScreen}
         setActiveScreen={setActiveScreen}
         isAdmin={isAdmin}
-        openAdminModal={() => setIsAdminModalOpen(true)}
+        loggedInUser={loggedInUser}
+        openAuthModal={handleOpenAuthModal}
       />
 
-      {/* Admin Login Modal */}
-      <AdminModal
-        isOpen={isAdminModalOpen}
-        onClose={() => setIsAdminModalOpen(false)}
-        onSuccess={() => {
-          setIsAdmin(true);
-          setActiveScreen('admin');
-        }}
+      {/* Complete Secure Login, Registration & Device Tracking System */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        initialMode={authModalMode}
+        onAdminLoginSuccess={handleAdminLoginSuccess}
+        onMemberLoginSuccess={handleMemberLoginSuccess}
       />
 
       {/* Emergency Helpline Modal */}

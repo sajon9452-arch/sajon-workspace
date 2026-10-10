@@ -154,3 +154,41 @@ export interface CalendarMonthlyBanner {
   imageUrl?: string;
   caption?: string;
 }
+
+export type UserAccountStatus = 'pending' | 'approved' | 'rejected' | 'blocked';
+
+export interface UserAccount {
+  id: string;
+  memberId?: string;
+  name: string;
+  phone: string;
+  area: string;
+  designation?: string;
+  email?: string;
+  bloodGroup?: string;
+  username: string; // assigned by admin or initially requested
+  password?: string; // secure password set by user
+  status: UserAccountStatus;
+  registeredAt: string;
+  registeredIp: string;
+  registeredDevice: string;
+  lastLoginAt?: string;
+  lastLoginIp?: string;
+  lastLoginDevice?: string;
+  isSuspicious?: boolean;
+  suspiciousReason?: string;
+}
+
+export interface SecurityAlert {
+  id: string;
+  userId?: string;
+  username: string;
+  memberName: string;
+  phone: string;
+  type: 'unrecognized_ip' | 'unrecognized_device' | 'concurrent_attempt' | 'blocked_attempt' | 'suspicious_activity';
+  message: string;
+  ip: string;
+  device: string;
+  timestamp: string;
+  resolved: boolean;
+}

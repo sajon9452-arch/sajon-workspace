@@ -13,9 +13,12 @@ import {
   HelpCircle,
   ShieldCheck,
   Phone,
-  LogOut
+  LogOut,
+  UserPlus,
+  KeyRound,
+  User
 } from 'lucide-react';
-import { ActiveScreen, OrganizationProfile } from '../types';
+import { ActiveScreen, OrganizationProfile, UserAccount } from '../types';
 
 interface HeaderProps {
   profile: OrganizationProfile;
@@ -23,8 +26,10 @@ interface HeaderProps {
   setActiveScreen: (screen: ActiveScreen) => void;
   isAdmin: boolean;
   setIsAdmin: (val: boolean) => void;
+  loggedInUser?: UserAccount | null;
   onLogout?: () => void;
-  openAdminModal: () => void;
+  onMemberLogout?: () => void;
+  openAuthModal: (mode?: 'login' | 'register') => void;
   openEmergencyModal: () => void;
 }
 
@@ -34,8 +39,10 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveScreen,
   isAdmin,
   setIsAdmin,
+  loggedInUser,
   onLogout,
-  openAdminModal,
+  onMemberLogout,
+  openAuthModal,
   openEmergencyModal,
 }) => {
   const handleLogout = () => {
@@ -136,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <Settings className="w-3.5 h-3.5" />
-                <span>অ্যাডমিন</span>
+                <span>অ্যাডমিন প্যানেল</span>
               </button>
               <button
                 onClick={handleLogout}
@@ -147,14 +154,38 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="hidden sm:inline">লগআউট</span>
               </button>
             </div>
+          ) : loggedInUser ? (
+            <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/40 p-1 rounded-2xl shadow-sm">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-emerald-100 font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="max-w-[110px] sm:max-w-[150px] truncate">{loggedInUser.name}</span>
+              </div>
+              <button
+                onClick={onMemberLogout}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs text-rose-300 hover:text-white hover:bg-rose-900/60 font-semibold cursor-pointer transition"
+                title="লগআউট"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">লগআউট</span>
+              </button>
+            </div>
           ) : (
-            <button
-              onClick={openAdminModal}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-950/70 hover:bg-emerald-950 text-emerald-100 text-xs font-bold border border-emerald-600/50 transition cursor-pointer shadow-sm active:scale-95"
-            >
-              <Lock className="w-3.5 h-3.5 text-amber-400" />
-              <span>অ্যাডমিন লগইন</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => openAuthModal('register')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition cursor-pointer shadow-xs active:scale-95"
+              >
+                <UserPlus className="w-3.5 h-3.5 text-emerald-300" />
+                <span>নিবন্ধন</span>
+              </button>
+              <button
+                onClick={() => openAuthModal('login')}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-emerald-950 text-xs font-black shadow-xs transition cursor-pointer active:scale-95"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-emerald-950" />
+                <span>লগইন</span>
+              </button>
+            </div>
           )}
         </div>
       </div>

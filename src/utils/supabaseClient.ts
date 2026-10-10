@@ -64,6 +64,68 @@ export async function safeSyncToSupabase<T extends { id: string }>(tableName: st
 }
 
 /**
+ * Safely syncs manual net balance to Supabase
+ */
+export async function syncNetBalanceToSupabase(balance: number): Promise<boolean> {
+  try {
+    const payload = {
+      id: 'pms_manual_net_balance',
+      key: 'net_balance',
+      value: balance.toString(),
+      amount: balance,
+      updated_at: new Date().toISOString()
+    };
+    // Attempt upsert to settings
+    const { error: err1 } = await supabase.from('settings').upsert(payload);
+    if (!err1) return true;
+
+    // Fallback: Attempt to store in funds metadata record
+    const { error: err2 } = await supabase.from('funds').upsert({
+      id: 'system_manual_net_balance',
+      memberName: 'সিস্টেম মোট ব্যালেন্স',
+      amount: balance,
+      status: 'Paid',
+      category: 'নেট ব্যালেন্স',
+      description: 'অফিসিয়াল নেট ব্যালেন্স',
+      date: new Date().toISOString().split('T')[0]
+    });
+    if (!err2) return true;
+  } catch (err) {
+    // Fail silently in offline mode
+  }
+  return false;
+}
+
+/**
+ * Safely fetches manual net balance from Supabase
+ */
+export async function fetchNetBalanceFromSupabase(): Promise<number | null> {
+  try {
+    const { data: sData, error: err1 } = await supabase
+      .from('settings')
+      .select('*')
+      .eq('id', 'pms_manual_net_balance')
+      .single();
+    if (!err1 && sData) {
+      const parsed = parseFloat(sData.amount ?? sData.value);
+      if (!isNaN(parsed)) return parsed;
+    }
+
+    const { data: fData, error: err2 } = await supabase
+      .from('funds')
+      .select('*')
+      .eq('id', 'system_manual_net_balance')
+      .single();
+    if (!err2 && fData && typeof fData.amount === 'number') {
+      return fData.amount;
+    }
+  } catch (err) {
+    // Fail silently
+  }
+  return null;
+}
+
+/**
  * Permanently deletes a record from Supabase table by ID
  */
 export async function safeDeleteFromSupabase(tableName: string, id: string): Promise<boolean> {
