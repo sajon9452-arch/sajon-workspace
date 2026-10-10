@@ -288,7 +288,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     setLoginIdentifier(e.target.value);
                     setLoginError('');
                   }}
-                  placeholder="ইউজারনেম / মোবাইল (যেমন: sylhetvip)"
+                  placeholder="ইউজারনেম অথবা মোবাইল নম্বর লিখুন"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
                 />
               </div>

@@ -33,7 +33,9 @@ import {
   UserX,
   Ban,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
@@ -403,6 +405,22 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [regNumber, setRegNumber] = useState(profile.regNumber);
   const [phone, setPhone] = useState(profile.phone);
   const [email, setEmail] = useState(profile.email);
+  const [logoUrl, setLogoUrl] = useState(profile.logoUrl || '');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  // Sync profile when prop changes
+  useEffect(() => {
+    setName(profile.name);
+    setTagline(profile.tagline);
+    setEstablishedDate(profile.establishedDate);
+    setEstablishedYear(profile.establishedYear);
+    setAddress(profile.address);
+    setHotline(profile.hotline);
+    setRegNumber(profile.regNumber);
+    setPhone(profile.phone);
+    setEmail(profile.email);
+    setLogoUrl(profile.logoUrl || '');
+  }, [profile]);
 
   // Payment Form
   const [bkashNumber, setBkashNumber] = useState(paymentConfig.bkashNumber);
@@ -565,6 +583,30 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     }
   };
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setErrorMsg('লোগো ফাইলের সাইজ সর্বোচ্চ ১০ মেগাবাইট হতে পারবে');
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const compressedBase64 = await compressImageFile(file, { maxWidth: 512, maxHeight: 512, quality: 0.85 });
+      setLogoUrl(compressedBase64);
+      setNoticeMsg('লোগো সফলভাবে লোড হয়েছে। "প্রোফাইল পরিবর্তন সংরক্ষণ" বাটনে চাপুন।');
+      setTimeout(() => setNoticeMsg(''), 4000);
+    } catch {
+      setErrorMsg('লোগো প্রক্রিয়াকরণে সমস্যা হয়েছে');
+      setTimeout(() => setErrorMsg(''), 4000);
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateProfile({
@@ -577,9 +619,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       hotline,
       regNumber,
       phone,
-      email
+      email,
+      logoUrl: logoUrl.trim() || undefined
     });
-    setNoticeMsg('সংগঠনের প্রোফাইল সফলভাবে আপডেট করা হয়েছে');
+    setNoticeMsg('সংগঠনের প্রোফাইল ও লোগো সফলভাবে আপডেট করা হয়েছে');
     setTimeout(() => setNoticeMsg(''), 3000);
   };
 
@@ -1967,6 +2010,75 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
           </h3>
 
           <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
+            {/* Dynamic Organization Logo Management */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-emerald-700" />
+                    <span>সংগঠনের অফিসিয়াল লোগো পরিচালনা</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    এখানে নির্ধারিত লোগোটি স্বয়ংক্রিয়ভাবে অথেনটিকেশন গেটের শীর্ষে এবং পুরো সিস্টেমে প্রদর্শিত হবে
+                  </p>
+                </div>
+                {logoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setLogoUrl('')}
+                    className="text-[11px] text-rose-600 hover:text-rose-700 font-bold hover:underline cursor-pointer"
+                  >
+                    লোগো অপসারণ
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
+                {/* Logo Preview */}
+                <div className="w-20 h-20 rounded-2xl bg-white border-2 border-dashed border-emerald-300 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                  {logoUrl ? (
+                    <img 
+                      src={logoUrl} 
+                      alt="Organization Logo" 
+                      className="w-full h-full object-contain p-1"
+                    />
+                  ) : (
+                    <div className="text-center p-2 text-slate-400">
+                      <ImageIcon className="w-7 h-7 mx-auto text-slate-300 mb-1" />
+                      <span className="text-[9px] block font-semibold leading-tight">লোগো নেই</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 w-full space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition cursor-pointer">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploadingLogo ? 'প্রক্রিয়াধীন...' : 'ডিভাইস থেকে লোগো আপলোড'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        disabled={isUploadingLogo}
+                        className="hidden"
+                      />
+                    </label>
+                    <span className="text-[10px] text-slate-400">সর্বোচ্চ ১০ এমবি (PNG / JPG / WEBP)</span>
+                  </div>
+
+                  <div>
+                    <input
+                      type="text"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="অথবা সরাসরি লোগো ওয়েব লিঙ্ক (URL) পেস্ট করুন..."
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">সংগঠনের নাম</label>
