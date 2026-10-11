@@ -10,6 +10,7 @@ import {
   OrganizationRule,
   PaymentGatewayConfig
 } from '../types';
+import { DEFAULT_TRANSPARENT_LOGO } from '../utils/defaultLogo';
 
 export const INITIAL_ORG_PROFILE: OrganizationProfile = {
   name: 'সিলেট মানব সেবা সংগঠন',
@@ -23,7 +24,8 @@ export const INITIAL_ORG_PROFILE: OrganizationProfile = {
   phone: '01886122678',
   email: 'sylhetmanabseva@gmail.com',
   facebookUrl: 'https://facebook.com/sylhetmanabsevasangathan',
-  youtubeUrl: 'https://youtube.com/@sylhetmanabseva'
+  youtubeUrl: 'https://youtube.com/@sylhetmanabseva',
+  logoUrl: DEFAULT_TRANSPARENT_LOGO
 };
 
 export const INITIAL_PAYMENT_CONFIG: PaymentGatewayConfig = {

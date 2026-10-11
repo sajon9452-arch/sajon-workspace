@@ -278,44 +278,48 @@ export function authenticateMember(
     };
   }
 
-  // Strict Single-Device per Account Security Policy Enforcement
-  const deviceMismatch = user.registeredDevice && !normalizeDeviceCompare(user.registeredDevice, tracking.deviceString);
-  const ipMismatch = user.registeredIp && user.registeredIp !== tracking.ip;
+  // Requirement 5: Strict Single-Device & IP Binding Policy
+  // Upon first successful login (or after admin device reset), user's mobile device and IP are permanently bound/fixed
+  const isFirstLoginOrReset = !user.registeredDevice;
 
-  if (deviceMismatch) {
-    // Immediate High-Priority Security Alert in Admin Panel
-    createSecurityAlert({
-      userId: user.id,
-      username: user.username,
-      memberName: user.name,
-      phone: user.phone,
-      type: 'concurrent_attempt',
-      message: `নিরাপত্তা লঙ্ঘন: সদস্য '${user.name}' (@${user.username}) ভিন্ন ডিভাইসে লগইন করার চেষ্টা করেছেন! নিবন্ধিত ডিভাইস: ${user.registeredDevice}, বর্তমান ডিভাইস: ${tracking.deviceString}`,
-      ip: tracking.ip,
-      device: tracking.deviceString
-    });
+  if (!isFirstLoginOrReset) {
+    const deviceMismatch = !normalizeDeviceCompare(user.registeredDevice, tracking.deviceString);
+    if (deviceMismatch) {
+      // Immediate High-Priority Security Alert in Admin Panel
+      createSecurityAlert({
+        userId: user.id,
+        username: user.username,
+        memberName: user.name,
+        phone: user.phone,
+        type: 'concurrent_attempt',
+        message: `নিরাপত্তা লঙ্ঘন: সদস্য '${user.name}' (@${user.username}) ভিন্ন অপরিচিত ডিভাইস থেকে লগইন করার চেষ্টা করেছেন! অনুমোদিত ডিভাইস: ${user.registeredDevice}, বর্তমান ডিভাইস: ${tracking.deviceString}`,
+        ip: tracking.ip,
+        device: tracking.deviceString
+      });
 
-    // Mark account as suspicious in records
-    const updatedUser: UserAccount = {
-      ...user,
-      isSuspicious: true,
-      suspiciousReason: `অননুমোদিত ভিন্ন ডিভাইস থেকে লগইন প্রচেষ্টা: ${tracking.deviceString}`
-    };
-    saveUserAccounts(accounts.map(a => a.id === user.id ? updatedUser : a));
+      // Mark account as suspicious in records
+      const updatedUser: UserAccount = {
+        ...user,
+        isSuspicious: true,
+        suspiciousReason: `অননুমোদিত ভিন্ন ডিভাইস থেকে লগইন প্রচেষ্টা: ${tracking.deviceString}`
+      };
+      saveUserAccounts(accounts.map(a => a.id === user.id ? updatedUser : a));
 
-    return {
-      success: false,
-      error: 'একক ডিভাইস নীতি (Single-Device Policy) লঙ্ঘন: এই অ্যাকাউন্টটি শুধুমাত্র নিবন্ধিত অনুমোদিত ডিভাইসে ব্যবহারযোগ্য। ভিন্ন ডিভাইস থেকে লগইন নিষিদ্ধ করা হয়েছে। অনুগ্রহ করে আপনার অনুমোদিত ডিভাইস ব্যবহার করুন অথবা অ্যাডমিন প্যানেলে যোগাযোগ করুন।'
-    };
+      return {
+        success: false,
+        error: 'একক ডিভাইস ও আইপি নীতি (Single-Device Policy) লঙ্ঘন: এই অ্যাকাউন্টটি ইতিমধ্যে অন্য একটি ডিভাইসের সাথে স্থায়ীভাবে আবদ্ধ। ভিন্ন বা অননুমোদিত ডিভাইস থেকে লগইন নিষিদ্ধ। অনুগ্রহ করে আপনার পূর্বের নিবন্ধিত ডিভাইস ব্যবহার করুন অথবা অ্যাডমিনের মাধ্যমে ডিভাইস রিসেট করুন।'
+      };
+    }
   }
 
-  // Device matches, check for IP network shift
+  // Device is matched or this is first binding. Check IP network shift if already bound
   let isSuspicious = false;
   let suspiciousReason = '';
+  const ipMismatch = !isFirstLoginOrReset && user.registeredIp && user.registeredIp !== tracking.ip;
 
   if (ipMismatch) {
     isSuspicious = true;
-    suspiciousReason = `ভিন্ন নেটওয়ার্ক/আইপি থেকে লগইন: বর্তমান আইপি (${tracking.ip}), নিবন্ধিত আইপি (${user.registeredIp})`;
+    suspiciousReason = `ভিন্ন নেটওয়ার্ক/আইপি থেকে লগইন: বর্তমান আইপি (${tracking.ip}), অনুমোদিত আইপি (${user.registeredIp})`;
 
     createSecurityAlert({
       userId: user.id,
@@ -323,20 +327,26 @@ export function authenticateMember(
       memberName: user.name,
       phone: user.phone,
       type: 'unrecognized_ip',
-      message: `সতর্কতা: সদস্য '${user.name}' (@${user.username}) একই ডিভাইসে কিন্তু ভিন্ন নেটওয়ার্ক/আইপি থেকে লগইন করেছেন (${tracking.ip})`,
+      message: `সতর্কতা: সদস্য '${user.name}' (@${user.username}) অনুমোদিত ডিভাইসে কিন্তু ভিন্ন আইপি থেকে লগইন করেছেন (${tracking.ip})`,
       ip: tracking.ip,
       device: tracking.deviceString
     });
   }
 
-  // Update user with last login tracking
+  // Permanently bind device on first login or keep existing binding
+  const boundDevice = isFirstLoginOrReset ? tracking.deviceString : user.registeredDevice;
+  const boundIp = isFirstLoginOrReset ? tracking.ip : (user.registeredIp || tracking.ip);
+
+  // Update user with last login and binding tracking
   const updatedUser: UserAccount = {
     ...user,
+    registeredDevice: boundDevice,
+    registeredIp: boundIp,
     lastLoginAt: new Date().toISOString(),
     lastLoginIp: tracking.ip,
     lastLoginDevice: tracking.deviceString,
-    isSuspicious: isSuspicious ? true : user.isSuspicious,
-    suspiciousReason: isSuspicious ? suspiciousReason : user.suspiciousReason
+    isSuspicious: isSuspicious ? true : (isFirstLoginOrReset ? false : user.isSuspicious),
+    suspiciousReason: isSuspicious ? suspiciousReason : (isFirstLoginOrReset ? undefined : user.suspiciousReason)
   };
 
   const updatedAccounts = accounts.map(a => a.id === user.id ? updatedUser : a);
@@ -349,20 +359,53 @@ export function authenticateMember(
   };
 }
 
-// Admin Action: Reset / Rebind Member Device for Single-Device Policy
-export function resetMemberDeviceBinding(userId: string, newDevice?: string, newIp?: string): boolean {
+// Requirement 6: Admin Action - Device Reset (Removes previous IP/Device binding for new phone login)
+export function resetMemberDeviceBinding(userId: string): boolean {
   const accounts = loadUserAccounts();
   const user = accounts.find(a => a.id === userId);
   if (!user) return false;
 
   const updated: UserAccount = {
     ...user,
-    registeredDevice: newDevice || '',
-    registeredIp: newIp || user.registeredIp,
+    registeredDevice: '', // cleared so next successful login permanently binds new phone
+    registeredIp: '',
     isSuspicious: false,
     suspiciousReason: undefined
   };
 
   saveUserAccounts(accounts.map(a => a.id === userId ? updated : a));
   return true;
+}
+
+// Requirement 6: Admin Action - Credential Recovery (Reset Username and/or Password)
+export function updateMemberCredentials(
+  userId: string,
+  newUsername: string,
+  newPassword?: string
+): { success: boolean; error?: string } {
+  const accounts = loadUserAccounts();
+  const user = accounts.find(a => a.id === userId);
+  if (!user) {
+    return { success: false, error: 'ব্যবহারকারী অ্যাকাউন্ট খুঁজে পাওয়া যায়নি।' };
+  }
+
+  const cleanUsername = newUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+  if (!cleanUsername || cleanUsername.length < 3) {
+    return { success: false, error: 'ইউজারনেম ন্যূনতম ৩ অক্ষরের হতে হবে (শুধুমাত্র ছোট হাতের ইংরেজি অক্ষর, সংখ্যা ও আন্ডারস্কোর)।' };
+  }
+
+  // Check if username is already taken by another account
+  const duplicate = accounts.find(a => a.id !== userId && a.username.toLowerCase() === cleanUsername);
+  if (duplicate) {
+    return { success: false, error: `ইউজারনেম "@${cleanUsername}" অন্য একজন সদস্যের নামে ইতিমধ্যে বরাদ্দ রয়েছে। অনুগ্রহ করে ভিন্ন ইউজারনেম নির্বাচন করুন।` };
+  }
+
+  const updated: UserAccount = {
+    ...user,
+    username: cleanUsername,
+    password: newPassword && newPassword.trim() ? newPassword.trim() : user.password
+  };
+
+  saveUserAccounts(accounts.map(a => a.id === userId ? updated : a));
+  return { success: true };
 }

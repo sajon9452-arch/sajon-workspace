@@ -9,24 +9,18 @@ import {
   Eye, 
   EyeOff, 
   Lock, 
-  HeartHandshake, 
   User, 
   Phone, 
   MapPin, 
   Shield, 
   Droplet, 
-  Camera, 
-  RefreshCw, 
   Check, 
-  ScanFace, 
-  Sparkles,
-  MoveHorizontal,
   Briefcase,
-  Settings,
-  Smartphone,
-  HelpCircle,
-  X,
-  Code
+  Upload,
+  Image as ImageIcon,
+  Trash2,
+  RefreshCw,
+  FileCheck
 } from 'lucide-react';
 import { UserAccount, BloodGroup, OrganizationProfile } from '../types';
 import { 
@@ -35,6 +29,8 @@ import {
   authenticateMember 
 } from '../utils/authSecurity';
 import { getFullTrackingSnapshot, DeviceDetails } from '../utils/deviceTracker';
+import { compressImageFile } from '../utils/imageCompressor';
+import { DEFAULT_TRANSPARENT_LOGO } from '../utils/defaultLogo';
 
 interface AuthGateScreenProps {
   profile: OrganizationProfile;
@@ -61,7 +57,7 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
   // Survey-style Sequential Registration Form State (4 Steps)
   // Step 1: Basic Info (Name, Phone, Blood Group)
   // Step 2: Location & Editable Designation
-  // Step 3: Live Face Scan & Liveness Detection (Auto capture)
+  // Step 3: Mandatory Manual Image Upload (Replaces live face scan)
   // Step 4: Secure Password & Final Submission
   const [regStep, setRegStep] = useState<number>(1);
   const [regName, setRegName] = useState('');
@@ -71,16 +67,12 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
   // Editable designation field pre-filled with 'সাধারণ সদস্য'
   const [regDesignation, setRegDesignation] = useState('সাধারণ সদস্য');
   
-  // Live Face Scan & Liveness Detection States
-  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
-  const [isLivenessVerified, setIsLivenessVerified] = useState<boolean>(false);
-  const [cameraActive, setCameraActive] = useState<boolean>(false);
-  const [cameraError, setCameraError] = useState<string>('');
-  const [livenessStage, setLivenessStage] = useState<'align' | 'turn' | 'blink' | 'capturing' | 'done'>('align');
-  const [livenessProgress, setLivenessProgress] = useState<number>(0);
-  const [flashEffect, setFlashEffect] = useState<boolean>(false);
-  const [isRequestingPermission, setIsRequestingPermission] = useState<boolean>(false);
-  const [showWebViewHelpModal, setShowWebViewHelpModal] = useState<boolean>(false);
+  // Mandatory Manual Image Upload States
+  const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null);
+  const [uploadedPhotoFileName, setUploadedPhotoFileName] = useState<string>('');
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState<boolean>(false);
+  const [photoError, setPhotoError] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Password & Submission States
   const [regPassword, setRegPassword] = useState('');
@@ -90,224 +82,10 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
   const [regSuccess, setRegSuccess] = useState<string | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
 
-  // Camera & Canvas Refs
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const livenessTimerRef = useRef<NodeJS.Timeout | null>(null);
-
   useEffect(() => {
     // Collect device and IP snapshot silently in background for security tracking
     getFullTrackingSnapshot().then(snap => setTracking(snap));
   }, []);
-
-  // Stop camera when moving away from Step 3 or unmounting
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setCameraActive(false);
-    if (livenessTimerRef.current) {
-      clearInterval(livenessTimerRef.current);
-      livenessTimerRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      stopCamera();
-    };
-  }, []);
-
-  // Prompt Android WebView Wrapper Native Bridge if present (e.g. AppCreator24 / Cordova / Capacitor / Custom Bridge)
-  const triggerAndroidWrapperPermissionRequest = () => {
-    try {
-      const win = window as any;
-      if (win.Android && typeof win.Android.requestCameraPermission === 'function') {
-        win.Android.requestCameraPermission();
-      } else if (win.AndroidBridge && typeof win.AndroidBridge.requestCameraPermission === 'function') {
-        win.AndroidBridge.requestCameraPermission();
-      } else if (win.AppCreator24 && typeof win.AppCreator24.requestCameraPermission === 'function') {
-        win.AppCreator24.requestCameraPermission();
-      }
-    } catch (e) {
-      console.warn('Android bridge execution notice:', e);
-    }
-  };
-
-  // Cross-environment MediaStream Getter supporting WebView requirements
-  // Properly handles navigator.mediaDevices.getUserMedia({ video: true }) and legacy WebView getUserMedia
-  const getCameraStream = async (): Promise<MediaStream> => {
-    const requestNativeMedia = async (constraints: MediaStreamConstraints): Promise<MediaStream> => {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        return await navigator.mediaDevices.getUserMedia(constraints);
-      }
-      const nav = navigator as any;
-      const legacyGUM = nav?.webkitGetUserMedia || nav?.mozGetUserMedia || nav?.msGetUserMedia || nav?.getUserMedia;
-      if (legacyGUM) {
-        return new Promise<MediaStream>((resolve, reject) => {
-          legacyGUM.call(navigator, constraints, resolve, reject);
-        });
-      }
-      throw new Error('NOT_SUPPORTED');
-    };
-
-    // Priority 1: Front camera facingMode for selfie / face scanning
-    try {
-      return await requestNativeMedia({
-        video: {
-          facingMode: 'user'
-        },
-        audio: false
-      });
-    } catch (err1) {
-      console.warn('Front facingMode getUserMedia failed in WebView, falling back to basic { video: true }:', err1);
-    }
-
-    // Priority 2: Fundamental standard requirement for Android WebView containers:
-    // navigator.mediaDevices.getUserMedia({ video: true })
-    try {
-      return await requestNativeMedia({
-        video: true,
-        audio: false
-      });
-    } catch (err2) {
-      console.warn('Fundamental { video: true } getUserMedia attempt failed:', err2);
-      throw err2;
-    }
-  };
-
-  // Start Camera for Face Scan
-  const startCamera = async () => {
-    stopCamera();
-    setCameraError('');
-    setLivenessStage('align');
-    setLivenessProgress(10);
-
-    try {
-      const stream = await getCameraStream();
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        const video = videoRef.current;
-        video.muted = true;
-        video.playsInline = true;
-        video.setAttribute('playsinline', 'true');
-        video.setAttribute('webkit-playsinline', 'true');
-        video.setAttribute('autoplay', 'true');
-        video.srcObject = stream;
-        
-        video.onloadedmetadata = () => {
-          video.play().catch(e => console.warn('Video play onloadedmetadata:', e));
-        };
-        try {
-          await video.play();
-        } catch (playErr) {
-          console.warn('Direct video play warning in WebView:', playErr);
-        }
-      }
-      setCameraActive(true);
-      startLivenessChallenge();
-    } catch (err: any) {
-      console.error('Camera access error:', err);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('ক্যামেরা ব্যবহারের অনুমতি (Camera Permission) প্রয়োজন। মোবাইল বা অ্যাপ সেটিংসে ক্যামেরা এলাও করুন এবং নিচে দেয়া বাটনে চাপুন।');
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        setCameraError('কোনো ক্যামেরা ডিভাইস পাওয়া যায়নি। অনুগ্রহ করে ডিভাইসের ক্যামেরা সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।');
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        setCameraError('ক্যামেরাটি অন্য কোনো অ্যাপ্লিকেশনে ব্যবহৃত হচ্ছে। অন্যান্য অ্যাপ বন্ধ করে পুনরায় চেষ্টা করুন।');
-      } else {
-        setCameraError('ক্যামেরা চালু করতে সমস্যা হয়েছে। অনুগ্রহ করে ক্যামেরার অনুমতি দিয়ে পুনরায় চেষ্টা বাটনে চাপ দিন।');
-      }
-    }
-  };
-
-  // Explicit JavaScript event handler for the "Grant Camera Permission & Retry" button
-  // Programmatically invokes navigator.mediaDevices.getUserMedia({ video: true }) and prompts WebView wrapper
-  const handleGrantCameraPermissionAndRetry = async (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    setIsRequestingPermission(true);
-    setCameraError('');
-
-    // 1. Prompt Android wrapper bridge if available in WebView container
-    triggerAndroidWrapperPermissionRequest();
-
-    // 2. Programmatically trigger getUserMedia({ video: true }) directly within synchronous user gesture execution
-    try {
-      await startCamera();
-    } catch (err: any) {
-      console.error('Explicit permission retry error:', err);
-    } finally {
-      setIsRequestingPermission(false);
-    }
-  };
-
-  // Run the Liveness Verification Sequence
-  const startLivenessChallenge = () => {
-    if (livenessTimerRef.current) clearInterval(livenessTimerRef.current);
-
-    let progress = 10;
-    setLivenessProgress(progress);
-    setLivenessStage('align');
-
-    // Stage 1: Align Face (1.8s) -> Stage 2: Turn Left/Right (2.2s) -> Stage 3: Blink (1.8s) -> Auto Capture!
-    const interval = setInterval(() => {
-      progress += 4;
-      if (progress < 40) {
-        setLivenessStage('align');
-      } else if (progress >= 40 && progress < 75) {
-        setLivenessStage('turn');
-      } else if (progress >= 75 && progress < 100) {
-        setLivenessStage('blink');
-      } else if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        livenessTimerRef.current = null;
-        triggerAutoCapture();
-      }
-      setLivenessProgress(Math.min(progress, 100));
-    }, 180);
-
-    livenessTimerRef.current = interval;
-  };
-
-  // Trigger Automatic Live Photo Capture upon liveness completion
-  const triggerAutoCapture = () => {
-    setLivenessStage('capturing');
-    setFlashEffect(true);
-    setTimeout(() => setFlashEffect(false), 300);
-
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const width = video.videoWidth || 480;
-      const height = video.videoHeight || 480;
-
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        // Flip horizontally to give natural mirror image
-        ctx.translate(width, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, width, height);
-
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-        setCapturedPhoto(dataUrl);
-        setIsLivenessVerified(true);
-        setLivenessStage('done');
-        stopCamera();
-      }
-    }
-  };
 
   // Handle Clean Login (Hidden Master Admin check + Member authentication)
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -339,7 +117,7 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
         return;
       }
 
-      // 2. Regular Member Authentication Flow
+      // 2. Regular Member Authentication Flow (Checks assigned Username or Phone)
       const currentTracking = tracking || await getFullTrackingSnapshot();
       const result = authenticateMember(identifier, password, currentTracking);
 
@@ -381,25 +159,73 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
         return;
       }
       setRegStep(3);
-      // If photo not captured yet, automatically trigger camera
-      if (!capturedPhoto) {
-        setTimeout(() => startCamera(), 200);
-      }
     } else if (regStep === 3) {
-      if (!capturedPhoto || !isLivenessVerified) {
-        setRegError('লাইভ ফেস স্ক্যান ও লাইভনেস যাচাই সম্পন্ন করুন');
+      if (!uploadedPhoto) {
+        setRegError('দয়া করে আপনার একটি স্পষ্ট প্রোফাইল ছবি আপলোড করুন');
         return;
       }
-      stopCamera();
       setRegStep(4);
     }
   };
 
   const handlePrevStep = () => {
     setRegError('');
-    stopCamera();
     if (regStep > 1) {
       setRegStep(regStep - 1);
+    }
+  };
+
+  // Handle Manual Image File Selection & Compression
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setPhotoError('');
+    setRegError('');
+
+    // 1. File Type Validation
+    if (!file.type.startsWith('image/')) {
+      setPhotoError('শুধুমাত্র ছবি ফাইল (JPG, PNG, WEBP) আপলোড করা যাবে');
+      return;
+    }
+
+    // 2. File Size Limit (Max 5MB)
+    const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+    if (file.size > MAX_SIZE_BYTES) {
+      setPhotoError('ছবির ফাইলের আকার সর্বোচ্চ ৫ মেগাবাইট (5MB) হতে হবে। অনুগ্রহ করে ছোট সাইজের ছবি নির্বাচন করুন।');
+      return;
+    }
+
+    setIsCompressingPhoto(true);
+
+    try {
+      // Compress and convert to clean Base64 JPEG data URL for fast upload & storage
+      const compressedDataUrl = await compressImageFile(file, {
+        maxWidth: 900,
+        maxHeight: 900,
+        quality: 0.85
+      });
+
+      setUploadedPhoto(compressedDataUrl);
+      setUploadedPhotoFileName(file.name);
+      setPhotoError('');
+    } catch {
+      setPhotoError('ছবিটি লোড বা প্রসেস করতে ব্যর্থ হয়েছে। অন্য একটি ছবি নির্বাচন করুন।');
+    } finally {
+      setIsCompressingPhoto(false);
+      // Reset input value so same file can be reselected if needed
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setUploadedPhoto(null);
+    setUploadedPhotoFileName('');
+    setPhotoError('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -421,8 +247,8 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
       return;
     }
 
-    if (!capturedPhoto) {
-      setRegError('লাইভ ছবি ছাড়া নিবন্ধন জমা দেওয়া যাবে না');
+    if (!uploadedPhoto) {
+      setRegError('প্রোফাইল ছবি ছাড়া নিবন্ধন আবেদন জমা দেওয়া যাবে না');
       setRegStep(3);
       return;
     }
@@ -439,8 +265,8 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
           designation: regDesignation.trim() || 'সাধারণ সদস্য',
           bloodGroup: regBloodGroup || undefined,
           password: regPassword,
-          photoUrl: capturedPhoto,
-          livenessVerified: isLivenessVerified
+          photoUrl: uploadedPhoto,
+          livenessVerified: true
         },
         currentTracking
       );
@@ -453,8 +279,8 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
         setRegPhone('');
         setRegPassword('');
         setRegConfirmPassword('');
-        setCapturedPhoto(null);
-        setIsLivenessVerified(false);
+        setUploadedPhoto(null);
+        setUploadedPhotoFileName('');
         setRegStep(1);
       } else {
         setRegError(result.message || 'নিবন্ধন জমা দেওয়া সম্ভব হয়নি।');
@@ -466,13 +292,12 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
   };
 
   const resetToLogin = () => {
-    stopCamera();
     setActiveTab('login');
     setRegSuccess(null);
     setRegError('');
     setRegStep(1);
-    setCapturedPhoto(null);
-    setIsLivenessVerified(false);
+    setUploadedPhoto(null);
+    setUploadedPhotoFileName('');
   };
 
   // Preset designation suggestions
@@ -484,29 +309,21 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
     'উপদেষ্টা'
   ];
 
+  const displayLogoUrl = profile.logoUrl || DEFAULT_TRANSPARENT_LOGO;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-white flex flex-col justify-center items-center p-4 sm:p-6 antialiased selection:bg-emerald-500 selection:text-white">
-      
-      {/* Hidden Canvas for Live Photo Capture */}
-      <canvas ref={canvasRef} className="hidden" />
 
-      {/* Top Branding Header (ONLY Logo, Name, Established Date, and Slogan) */}
+      {/* Top Branding Header (Requirement 2: ONLY Organization Logo, Name, Established Date, and Slogan) */}
+      {/* Prominently displayed in larger size, clean and transparent with NO background fill, NO borders, and NO boxes around it */}
       <header className="max-w-md w-full mx-auto text-center space-y-2 mb-6 sm:mb-8">
-        {/* Dynamic Organization Logo */}
-        <div className="flex justify-center mb-2">
-          {profile.logoUrl ? (
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white p-2 shadow-xl border border-white/20 flex items-center justify-center overflow-hidden">
-              <img 
-                src={profile.logoUrl} 
-                alt={profile.name} 
-                className="w-full h-full object-contain"
-              />
-            </div>
-          ) : (
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-xl border border-emerald-400/30">
-              <HeartHandshake className="w-9 h-9 sm:w-11 sm:h-11" />
-            </div>
-          )}
+        {/* Prominent Transparent Circular Logo */}
+        <div className="flex justify-center mb-3">
+          <img 
+            src={displayLogoUrl} 
+            alt={profile.name || 'সিলেট মানব সেবা সংগঠন'} 
+            className="w-28 h-28 sm:w-36 sm:h-36 object-contain drop-shadow-2xl select-none transition-transform duration-300 hover:scale-105"
+          />
         </div>
 
         {/* Organization Name */}
@@ -534,7 +351,6 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
             <button
               type="button"
               onClick={() => {
-                stopCamera();
                 setActiveTab('login');
                 setLoginError('');
               }}
@@ -679,9 +495,9 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
                       <Shield className="w-3.5 h-3.5 text-emerald-600" />
                       অনুমোদন কিউ ও প্রক্রিয়া:
                     </div>
-                    <p>• আপনার আবেদনটি লাইভ ফেস ছবি ও ডিভাইস ট্র্যাকিং সহ অ্যাডমিন কিউতে জমা হয়েছে।</p>
-                    <p>• অ্যাডমিন প্যানেল থেকে অনুমোদনের পর আপনাকে একটি ইউনিক ইউজারনেম বরাদ্দ করা হবে।</p>
-                    <p>• বরাদ্দকৃত ইউজারনেম ও আপনার গোপন পাসওয়ার্ড দিয়ে পরবর্তীতে লগইন করতে পারবেন।</p>
+                    <p>• আপনার আবেদনটি আপলোডকৃত প্রোফাইল ছবি ও ডিভাইস ট্র্যাকিং সহ অ্যাডমিন কিউতে জমা হয়েছে।</p>
+                    <p>• অ্যাডমিন প্যানেল থেকে তথ্য যাচাই ও অনুমোদনের পর আপনাকে একটি ইউনিক ইউজারনেম বরাদ্দ দেওয়া হবে।</p>
+                    <p>• বরাদ্দকৃত সেই ইউজারনেম ও আপনার দেওয়া পাসওয়ার্ড দিয়ে এই অ্যাপে লগইন করতে পারবেন।</p>
                   </div>
                   <button
                     type="button"
@@ -699,7 +515,7 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
                       <span>ধাপ {regStep} / ৪ : {
                         regStep === 1 ? 'মৌলিক তথ্য' :
                         regStep === 2 ? 'ঠিকানা ও পদবী' :
-                        regStep === 3 ? 'লাইভ ফেস স্ক্যান' : 'পাসওয়ার্ড নির্ধারণ'
+                        regStep === 3 ? 'প্রোফাইল ছবি আপলোড' : 'পাসওয়ার্ড নির্ধারণ'
                       }</span>
                       <span className="text-emerald-700 font-extrabold">{Math.round((regStep / 4) * 100)}% সম্পন্ন</span>
                     </div>
@@ -814,11 +630,11 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
                         />
                       </div>
 
-                      {/* Requirement 2: Editable Designation Field (Replaced rigid dropdown with editable text input box pre-filled with 'সাধারণ সদস্য') */}
+                      {/* Requirement 3: Editable Designation Field (defaults to 'সাধারণ সদস্য' as an editable text field) */}
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
                           <Briefcase className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>আবেদিত পদবী / পদ</span>
+                          <span>আবেদিত পদবী / পদ (সরাসরি সম্পাদনাযোগ্য)</span>
                         </label>
                         <input
                           type="text"
@@ -831,7 +647,7 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
                           className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-slate-50/50 font-medium"
                         />
                         <p className="text-[11px] text-slate-500 mt-1">
-                          ডিফল্ট হিসেবে &apos;সাধারণ সদস্য&apos; নির্ধারণ করা আছে। আপনি চাইলে মুছে নিজের পছন্দসই পদবী লিখতে পারবেন।
+                          ডিফল্ট হিসেবে &apos;সাধারণ সদস্য&apos; দেওয়া আছে। আপনি চাইলে মুছে নিজের পদবী লিখতে পারেন।
                         </p>
 
                         {/* Quick Selection Chips */}
@@ -868,210 +684,136 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
                           onClick={handleNextStep}
                           className="w-2/3 py-3 px-4 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow transition cursor-pointer flex items-center justify-center gap-2"
                         >
-                          <span>পরবর্তী: ফেস স্ক্যান</span>
+                          <span>পরবর্তী: ছবি আপলোড</span>
                           <ArrowRight className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* Survey Step 3: Mandatory Live Face Scan & Liveness Detection (Requirement 3) */}
+                  {/* Survey Step 3: Mandatory Manual Image Upload Flow (Requirement 3: Replaces live face scan) */}
                   {regStep === 3 && (
-                    <div className="space-y-3.5 animate-in fade-in duration-200">
+                    <div className="space-y-4 animate-in fade-in duration-200">
                       <div className="text-center">
                         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-bold border border-emerald-200 mb-1">
-                          <ScanFace className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>লাইভ ফেস স্ক্যান ও লাইভনেস যাচাই</span>
+                          <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>বাধ্যতামূলক প্রোফাইল ছবি আপলোড</span>
                         </div>
                         <p className="text-xs text-slate-500">
-                          নিরাপত্তা নিশ্চিতকরণে আপনার জীবন্ত উপস্থিতি (লুক বামে/ডানে ও চোখের পলক) যাচাই করা হবে
+                          আপনার একটি স্পষ্ট ও সাম্প্রতিক রঙিন ছবি নির্বাচন করুন
                         </p>
                       </div>
 
-                      {/* Camera Viewport or Captured Result Card */}
-                      {capturedPhoto ? (
-                        /* Successfully Captured Photo Card */
-                        <div className="p-4 rounded-3xl bg-emerald-50/60 border border-emerald-200 text-center space-y-3 animate-in zoom-in-95 duration-200">
-                          <div className="relative w-36 h-36 mx-auto rounded-3xl overflow-hidden border-3 border-emerald-500 shadow-md">
+                      {/* Photo Guidelines Card */}
+                      <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-950 space-y-1.5">
+                        <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                          <FileCheck className="w-4 h-4 text-amber-700" />
+                          <span>ছবি আপলোডের নির্দেশিকা (Photo Guidelines):</span>
+                        </div>
+                        <ul className="text-[11px] space-y-1 text-amber-900/90 list-disc list-inside pl-1">
+                          <li>পর্যাপ্ত আলোতে সরাসরি ক্যামেরার দিকে তাকানো মুখমণ্ডলের ছবি হতে হবে</li>
+                          <li>মুখমণ্ডল সম্পূর্ণ ও স্পষ্টভাবে দৃশ্যমান থাকা আবশ্যক</li>
+                          <li>কোনো সানগ্লাস, ক্যাপ বা মাস্ক পরিহিত ছবি গ্রহণ করা হবে না</li>
+                          <li>ফাইলের আকার সর্বোচ্চ ৫ মেগাবাইট (JPG, PNG, WEBP)</li>
+                        </ul>
+                      </div>
+
+                      {photoError && (
+                        <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-200">
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>{photoError}</span>
+                        </div>
+                      )}
+
+                      {/* Hidden File Input */}
+                      <input 
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+
+                      {/* Upload Box or Image Preview Card */}
+                      {uploadedPhoto ? (
+                        /* Uploaded Photo Preview Card */
+                        <div className="p-4 rounded-3xl bg-emerald-50/70 border border-emerald-200 text-center space-y-3 animate-in zoom-in-95 duration-200">
+                          <div className="relative w-32 h-32 mx-auto rounded-3xl overflow-hidden border-3 border-emerald-600 shadow-md bg-white">
                             <img 
-                              src={capturedPhoto} 
-                              alt="Captured Live Photo" 
+                              src={uploadedPhoto} 
+                              alt="Uploaded Face" 
                               className="w-full h-full object-cover"
                             />
-                            <div className="absolute bottom-2 inset-x-2 py-0.5 rounded-full bg-emerald-900/90 text-white text-[10px] font-bold flex items-center justify-center gap-1 backdrop-blur-xs">
+                            <div className="absolute bottom-1.5 inset-x-1.5 py-0.5 rounded-full bg-emerald-800/90 text-white text-[9px] font-bold flex items-center justify-center gap-1 backdrop-blur-xs">
                               <Check className="w-3 h-3 text-emerald-300" />
-                              <span>লাইভনেস নিশ্চিত</span>
+                              <span>ছবি সংরক্ষিত</span>
                             </div>
                           </div>
 
                           <div>
-                            <h4 className="text-sm font-black text-emerald-950 flex items-center justify-center gap-1.5">
+                            <h4 className="text-xs sm:text-sm font-black text-emerald-950 flex items-center justify-center gap-1.5">
                               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                              <span>লাইভ ফেস স্ক্যান সফল হয়েছে!</span>
+                              <span>ছবি সফলভাবে আপলোড হয়েছে!</span>
                             </h4>
-                            <p className="text-[11px] text-emerald-800 mt-0.5">
-                              ছবিটি আবেদনের সাথে সংরক্ষিত হয়েছে এবং অ্যাডমিন প্যানেলে প্রদর্শিত হবে।
-                            </p>
+                            {uploadedPhotoFileName && (
+                              <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-xs mx-auto">
+                                ফাইল: {uploadedPhotoFileName}
+                              </p>
+                            )}
                           </div>
 
-                          <div className="pt-1">
+                          <div className="flex items-center justify-center gap-2 pt-1">
                             <button
                               type="button"
-                              onClick={() => {
-                                setCapturedPhoto(null);
-                                setIsLivenessVerified(false);
-                                setTimeout(() => startCamera(), 150);
-                              }}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold transition cursor-pointer shadow-2xs"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold transition cursor-pointer shadow-2xs"
                             >
                               <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
-                              <span>পুনরায় ছবি তুলুন (Rescan)</span>
+                              <span>অন্য ছবি নির্বাচন</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleRemovePhoto}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-bold transition cursor-pointer shadow-2xs"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>মুছুন</span>
                             </button>
                           </div>
                         </div>
                       ) : (
-                        /* Live Camera & Interactive Liveness Scan Viewport */
-                        <div className="relative rounded-3xl overflow-hidden bg-slate-950 border-2 border-slate-700 shadow-inner">
-                          {/* Flash animation layer */}
-                          {flashEffect && (
-                            <div className="absolute inset-0 bg-white z-30 animate-out fade-out duration-300 pointer-events-none" />
-                          )}
-
-                          {/* Video Element */}
-                          <div className="relative aspect-square max-h-64 sm:max-h-72 mx-auto flex items-center justify-center overflow-hidden">
-                            <video
-                              ref={videoRef}
-                              autoPlay
-                              playsInline
-                              muted
-                              className={`w-full h-full object-cover transform -scale-x-100 ${
-                                cameraActive ? 'opacity-100' : 'opacity-0'
-                              }`}
-                            />
-
-                            {/* Biometric Oval Guide Frame */}
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                              <div className={`w-44 h-56 rounded-[50%] border-2 transition-all duration-300 relative ${
-                                livenessStage === 'done'
-                                  ? 'border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.6)]'
-                                  : livenessStage === 'capturing'
-                                  ? 'border-white shadow-[0_0_30px_rgba(255,255,255,0.8)]'
-                                  : 'border-emerald-400/80 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-                              }`}>
-                                {/* Scanning Radar Target Line */}
-                                {cameraActive && livenessStage !== 'done' && (
-                                  <div className="absolute inset-x-2 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-pulse top-1/2" />
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Camera Initializing Overlay */}
-                            {!cameraActive && !cameraError && (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-20 bg-slate-900/90 text-white">
-                                <Camera className="w-10 h-10 text-emerald-400 mb-2 animate-pulse" />
-                                <p className="text-xs font-bold text-slate-200">ক্যামেরা সংযোগ হচ্ছে...</p>
-                                <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
-                                  ব্রাউজারে ক্যামেরার অনুমতি দিন যাতে লাইভ ফেস স্ক্যান শুরু হতে পারে
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={startCamera}
-                                  className="mt-3 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer"
-                                >
-                                  ক্যামেরা চালু করুন
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Camera Error / Permission Denied Overlay */}
-                            {cameraError && (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-20 bg-slate-900/95 text-white space-y-3">
-                                <AlertCircle className="w-10 h-10 text-rose-400 mx-auto shrink-0" />
-                                <div className="space-y-1">
-                                  <h4 className="text-xs font-bold text-rose-200">ক্যামেরা অ্যাক্সেস প্রয়োজন</h4>
-                                  <p className="text-[11px] text-slate-300 leading-relaxed max-w-xs">
-                                    {cameraError}
-                                  </p>
-                                </div>
-                                <div className="pt-1 w-full max-w-xs space-y-2">
-                                  <button
-                                    type="button"
-                                    disabled={isRequestingPermission}
-                                    onClick={handleGrantCameraPermissionAndRetry}
-                                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-2 shadow-md active:scale-95 disabled:opacity-50"
-                                  >
-                                    <RefreshCw className={`w-3.5 h-3.5 ${isRequestingPermission ? 'animate-spin' : ''}`} />
-                                    <span>{isRequestingPermission ? 'ক্যামেরা অনুমতি চাওয়া হচ্ছে...' : 'ক্যামেরা অনুমতি দিন ও পুনরায় চেষ্টা করুন'}</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowWebViewHelpModal(true)}
-                                    className="inline-flex items-center gap-1.5 text-[11px] text-amber-300 hover:text-amber-200 font-semibold underline underline-offset-2 transition cursor-pointer"
-                                  >
-                                    <Settings className="w-3 h-3" />
-                                    <span>অ্যান্ড্রয়েড অ্যাপ / AppCreator24 সেটিংস সহায়িকা</span>
-                                  </button>
-                                </div>
-                                <p className="text-[10px] text-slate-400">
-                                  সদস্য নিরাপত্তার স্বার্থে লাইভ ফেস স্ক্যান ব্যতীত নিবন্ধন সম্ভব নয়
-                                </p>
-                              </div>
+                        /* Manual Upload Trigger Area */
+                        <div 
+                          onClick={() => fileInputRef.current?.click()}
+                          className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/30 hover:bg-emerald-50/60 rounded-3xl p-6 sm:p-7 text-center transition cursor-pointer space-y-3 group"
+                        >
+                          <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
+                            {isCompressingPhoto ? (
+                              <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <ImageIcon className="w-7 h-7 text-emerald-600" />
                             )}
                           </div>
 
-                          {/* Interactive Liveness Movement Instructions Bar (Requirement 3: Natural movements such as looking left/right and blinking) */}
-                          {cameraActive && (
-                            <div className="p-3 bg-slate-900 border-t border-slate-800 space-y-2">
-                              {/* Step Challenge Instruction Banner */}
-                              <div className="flex items-center justify-center gap-2 text-center text-xs font-black">
-                                {livenessStage === 'align' && (
-                                  <div className="flex items-center gap-2 text-emerald-300 animate-pulse">
-                                    <ScanFace className="w-4 h-4 text-emerald-400" />
-                                    <span>১. ক্যামেরার মুখোমুখি সরাসরি তাকান (সোজা দৃষ্টি)</span>
-                                  </div>
-                                )}
-                                {livenessStage === 'turn' && (
-                                  <div className="flex items-center gap-2 text-amber-300">
-                                    <MoveHorizontal className="w-4 h-4 text-amber-400 animate-bounce" />
-                                    <span>২. মাথা ধীরে ধীরে ডানে অথবা বাঁয়ে ঘোরান</span>
-                                  </div>
-                                )}
-                                {livenessStage === 'blink' && (
-                                  <div className="flex items-center gap-2 text-teal-300 animate-pulse">
-                                    <Eye className="w-4 h-4 text-teal-400" />
-                                    <span>৩. স্বাভাবিকভাবে চোখের পলক ফেলুন (Blink)</span>
-                                  </div>
-                                )}
-                                {livenessStage === 'capturing' && (
-                                  <div className="flex items-center gap-2 text-white">
-                                    <Sparkles className="w-4 h-4 text-amber-300" />
-                                    <span>স্বয়ংক্রিয়ভাবে ছবি তোলা হচ্ছে... স্থির থাকুন</span>
-                                  </div>
-                                )}
-                              </div>
+                          <div className="space-y-1">
+                            <h4 className="text-xs sm:text-sm font-black text-slate-900">
+                              {isCompressingPhoto ? 'ছবি প্রসেস করা হচ্ছে...' : 'ছবি নির্বাচন করতে এখানে ক্লিক করুন'}
+                            </h4>
+                            <p className="text-[11px] text-slate-500">
+                              আপনার ডিভাইস থেকে পরিষ্কার মুখমণ্ডলের ছবি আপলোড করুন
+                            </p>
+                            <span className="inline-block text-[10px] text-emerald-800 font-bold bg-emerald-100/70 px-2 py-0.5 rounded-md mt-1">
+                              সর্বোচ্চ সাইজ: ৫ মেগাবাইট (JPG / PNG / WEBP)
+                            </span>
+                          </div>
 
-                              {/* Liveness Progress Bar */}
-                              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                                <div 
-                                  className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-200"
-                                  style={{ width: `${livenessProgress}%` }}
-                                />
-                              </div>
-
-                              {/* Manual snap backup button */}
-                              <div className="flex justify-between items-center text-[11px] text-slate-400 pt-1">
-                                <span>লাইভনেস ট্র্যাকিং সক্রিয়</span>
-                                <button
-                                  type="button"
-                                  onClick={triggerAutoCapture}
-                                  className="text-emerald-400 hover:text-emerald-300 font-bold hover:underline cursor-pointer"
-                                >
-                                  এখনই ছবি তুলুন
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 group-hover:bg-emerald-800 text-white text-xs font-bold transition shadow-xs"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>গ্যালারি বা ক্যামেরা থেকে ছবি নিন</span>
+                          </button>
                         </div>
                       )}
 
@@ -1086,7 +828,7 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
                         </button>
                         <button
                           type="button"
-                          disabled={!capturedPhoto}
+                          disabled={!uploadedPhoto || isCompressingPhoto}
                           onClick={handleNextStep}
                           className="w-2/3 py-3 px-4 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
@@ -1102,9 +844,9 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
                     <form onSubmit={handleRegisterSubmit} className="space-y-3.5 animate-in fade-in duration-200">
                       {/* Applicant Summary Preview */}
                       <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 flex items-center gap-3">
-                        {capturedPhoto ? (
-                          <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-emerald-500 shrink-0">
-                            <img src={capturedPhoto} alt="Live Face" className="w-full h-full object-cover" />
+                        {uploadedPhoto ? (
+                          <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-emerald-500 shrink-0 bg-white">
+                            <img src={uploadedPhoto} alt="Uploaded Face" className="w-full h-full object-cover" />
                           </div>
                         ) : (
                           <div className="w-12 h-12 rounded-xl bg-slate-200 flex items-center justify-center text-slate-500">
@@ -1116,7 +858,7 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
                           <p className="text-[11px] text-slate-600 font-medium">পদবী: {regDesignation} • {regPhone}</p>
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800">
                             <Check className="w-3 h-3 text-emerald-600" />
-                            <span>ফেস স্ক্যান ভেরিফাইড</span>
+                            <span>প্রোফাইল ছবি সংযুক্ত</span>
                           </span>
                         </div>
                       </div>
@@ -1169,7 +911,7 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
                       <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 flex items-start gap-2">
                         <Shield className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                         <span>
-                          আবেদন জমা দেওয়ার পর তথ্য, লাইভ ছবি ও ডিভাইস রেকর্ড অ্যাডমিন প্যানেলের অনুমোদন কিউতে যুক্ত হবে।
+                          আবেদন জমা দেওয়ার পর তথ্য, ছবি ও ডিভাইস রেকর্ড অ্যাডমিন প্যানেলের অনুমোদন কিউতে যুক্ত হবে। অনুমোদনের পর বরাদ্দকৃত ইউজারনেম দিয়ে লগইন করতে পারবেন।
                         </span>
                       </div>
 
@@ -1205,96 +947,6 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
           )}
         </div>
       </div>
-
-      {/* Android WebView / AppCreator24 Camera Permission Assistance Modal */}
-      {showWebViewHelpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 shadow-2xl text-slate-100 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
-                  <Smartphone className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-black text-white">
-                    অ্যান্ড্রয়েড অ্যাপ ও ওয়েবভিউ ক্যামেরা পারমিশন সহায়িকা
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    AppCreator24 ও Android Studio কন্টেইনারে ক্যামেরা সক্রিয় করার নিয়মাবলী
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowWebViewHelpModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              {/* Step 1: User phone permission */}
-              <div className="p-3.5 rounded-2xl bg-slate-800/70 border border-slate-700/80 space-y-1.5">
-                <h4 className="font-bold text-amber-300 flex items-center gap-1.5">
-                  <span>১. মোবাইল ব্যবহারকারীর ডিভাইস পারমিশন:</span>
-                </h4>
-                <p className="text-slate-300 leading-relaxed text-[11px]">
-                  আপনার মোবাইলের <strong>Settings &gt; Apps / Application Manager &gt; অ্যাপটিতে</strong> প্রবেশ করুন। এরপর <strong>Permissions &gt; Camera</strong> অপশনটিতে ট্যাপ করে <strong>&quot;Allow&quot; (অনুমতি দিন)</strong> সক্রিয় করুন এবং অ্যাপে ফিরে এসে পুনরায় চেষ্টা করুন।
-                </p>
-              </div>
-
-              {/* Step 2: AppCreator24 configuration */}
-              <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 space-y-2">
-                <h4 className="font-bold text-emerald-300 flex items-center gap-1.5">
-                  <Settings className="w-4 h-4 text-emerald-400" />
-                  <span>২. AppCreator24 কন্ট্রোল প্যানেল সেটিংস:</span>
-                </h4>
-                <ul className="text-slate-300 space-y-1 text-[11px] list-disc list-inside">
-                  <li><strong>General Info &gt; General &gt; Permissions:</strong> এখানে <strong>&quot;Camera&quot;</strong> অপশনটি <strong>Yes / Active</strong> নিশ্চিত করুন।</li>
-                  <li><strong>Section (Web):</strong> আপনার Web Section-এর Advanced সেটিংসে গিয়ে <strong>&quot;Allow camera and microphone access in WebView&quot;</strong> অপশনটি <strong>Yes</strong> রাখুন।</li>
-                  <li>পরিবর্তন সেভ করে নতুন করে APK তৈরি করে ফোনে ইনস্টল করুন।</li>
-                </ul>
-              </div>
-
-              {/* Step 3: Android Studio Manifest & WebChromeClient */}
-              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
-                <h4 className="font-bold text-sky-300 flex items-center gap-1.5">
-                  <Code className="w-4 h-4 text-sky-400" />
-                  <span>৩. Android Studio (Java/Kotlin) কোড কনফিগারেশন:</span>
-                </h4>
-                <div className="space-y-1.5 font-mono text-[10px] text-slate-300 bg-slate-900 p-2.5 rounded-xl border border-slate-800 overflow-x-auto">
-                  <p className="text-emerald-400">// AndroidManifest.xml</p>
-                  <p>&lt;uses-permission android:name=&quot;android.permission.CAMERA&quot; /&gt;</p>
-                  <p>&lt;uses-feature android:name=&quot;android.hardware.camera&quot; android:required=&quot;false&quot; /&gt;</p>
-                  <p className="text-emerald-400 pt-1">// MainActivity.java (WebChromeClient Permission Delegation)</p>
-                  <p>WebSettings ws = webView.getSettings();</p>
-                  <p>ws.setJavaScriptEnabled(true);</p>
-                  <p>ws.setDomStorageEnabled(true);</p>
-                  <p>ws.setMediaPlaybackRequiresUserGesture(false);</p>
-                  <p>webView.setWebChromeClient(new WebChromeClient() &#123;</p>
-                  <p>&nbsp;&nbsp;@Override</p>
-                  <p>&nbsp;&nbsp;public void onPermissionRequest(final PermissionRequest request) &#123;</p>
-                  <p>&nbsp;&nbsp;&nbsp;&nbsp;request.grant(request.getResources());</p>
-                  <p>&nbsp;&nbsp;&#125;</p>
-                  <p>&#125;);</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowWebViewHelpModal(false)}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
-              >
-                বুঝেছি, বন্ধ করুন
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };

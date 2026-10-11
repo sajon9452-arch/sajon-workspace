@@ -64,7 +64,8 @@ import {
   saveUserAccounts, 
   loadSecurityAlerts, 
   saveSecurityAlerts,
-  resetMemberDeviceBinding 
+  resetMemberDeviceBinding,
+  updateMemberCredentials
 } from '../utils/authSecurity';
 import { checkSupabaseConnection, SUPABASE_URL } from '../utils/supabaseClient';
 import { compressImageFile } from '../utils/imageCompressor';
@@ -237,6 +238,34 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     saveSecurityAlerts(updated);
     setNoticeMsg('নিরাপত্তা অ্যালার্ট সমাধান হিসেবে চিহ্নিত করা হয়েছে');
     setTimeout(() => setNoticeMsg(''), 3000);
+  };
+
+  // Requirement 6: Credential Recovery Modal States
+  const [credentialModalAccount, setCredentialModalAccount] = useState<UserAccount | null>(null);
+  const [credNewUsername, setCredNewUsername] = useState('');
+  const [credNewPassword, setCredNewPassword] = useState('');
+  const [credError, setCredError] = useState('');
+
+  const handleOpenCredentialModal = (acc: UserAccount) => {
+    setCredentialModalAccount(acc);
+    setCredNewUsername(acc.username);
+    setCredNewPassword('');
+    setCredError('');
+  };
+
+  const handleSaveCredentialRecovery = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!credentialModalAccount) return;
+    const res = updateMemberCredentials(credentialModalAccount.id, credNewUsername, credNewPassword);
+    if (!res.success) {
+      setCredError(res.error || 'ক্রেডেনশিয়াল আপডেট ব্যর্থ হয়েছে');
+      return;
+    }
+    const fresh = loadUserAccounts();
+    setUserAccounts(fresh);
+    setNoticeMsg(`সদস্য "${credentialModalAccount.name}" এর ইউজারনেম ও পাসওয়ার্ড সফলভাবে আপডেট করা হয়েছে।`);
+    setCredentialModalAccount(null);
+    setTimeout(() => setNoticeMsg(''), 4000);
   };
 
   // Member Management States
@@ -1087,7 +1116,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                       >
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-3 border-b border-slate-100">
                           <div className="flex items-center gap-3.5">
-                            {/* Captured Live Face Photo */}
+                            {/* Uploaded Profile Photo */}
                             <div className="relative shrink-0">
                               {account.photoUrl ? (
                                 <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-sm bg-slate-100">
@@ -1102,12 +1131,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                                   <Users className="w-7 h-7" />
                                 </div>
                               )}
-                              {account.livenessVerified && (
-                                <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-bold shadow-xs flex items-center gap-0.5" title="লাইভ ফেস ভেরিফাইড">
-                                  <Check className="w-2.5 h-2.5" />
-                                  <span>লাইভ</span>
-                                </span>
-                              )}
+                              <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-bold shadow-xs flex items-center gap-0.5" title="প্রোফাইল ছবি সংযুক্ত">
+                                <Check className="w-2.5 h-2.5" />
+                                <span>ছবি</span>
+                              </span>
                             </div>
 
                             <div>
@@ -1121,12 +1148,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                                     {account.bloodGroup}
                                   </span>
                                 )}
-                                {account.livenessVerified && (
-                                  <span className="px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 text-[10px] font-bold border border-teal-200 flex items-center gap-1">
-                                    <ShieldCheck className="w-3 h-3 text-teal-600" />
-                                    <span>ফেস স্ক্যান ভেরিফাইড</span>
-                                  </span>
-                                )}
+                                <span className="px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 text-[10px] font-bold border border-teal-200 flex items-center gap-1">
+                                  <ShieldCheck className="w-3 h-3 text-teal-600" />
+                                  <span>ছবি আপলোড ভেরিফাইড</span>
+                                </span>
                               </div>
                               <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-3 flex-wrap">
                                 <span>মোবাইল: <strong className="font-mono text-slate-700">{account.phone}</strong></span>
@@ -1331,7 +1356,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                            <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+                              {/* Requirement 6: Device Reset */}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1347,6 +1373,17 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                                 title="নতুন ডিভাইসে লগইন করতে দিতে ডিভাইস বাইন্ডিং রিসেট করুন"
                               >
                                 ডিভাইস রিসেট
+                              </button>
+
+                              {/* Requirement 6: Credential Recovery */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCredentialModal(acc)}
+                                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition cursor-pointer flex items-center gap-1"
+                                title="সদস্যের ইউজারনেম বা পাসওয়ার্ড পরিবর্তন ও রিকভার করুন"
+                              >
+                                <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>ক্রেডেনশিয়াল রিকভারি</span>
                               </button>
 
                               <button
@@ -2914,6 +2951,123 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 >
                   <Save className="w-4 h-4" />
                   <span>{isSavingFundEdit ? 'সংরক্ষণ হচ্ছে...' : 'পরিবর্তন সংরক্ষণ'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Requirement 6: Dedicated Credential Recovery Modal (Admin Reset Username / Password) */}
+      {credentialModalAccount && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                  <KeyRound className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 leading-tight">
+                    সদস্য ক্রেডেনশিয়াল রিকভারি
+                  </h3>
+                  <span className="text-[10px] text-emerald-700 font-bold">
+                    ইউজারনেম ও পাসওয়ার্ড রিসেট ও পরিবর্তন
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCredentialModalAccount(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Member Details Snapshot */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+              {credentialModalAccount.photoUrl ? (
+                <div className="w-11 h-11 rounded-xl overflow-hidden border-2 border-emerald-500 shrink-0">
+                  <img src={credentialModalAccount.photoUrl} alt={credentialModalAccount.name} className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-sm shrink-0">
+                  {credentialModalAccount.name.charAt(0) || 'স'}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-bold text-slate-900 truncate">{credentialModalAccount.name}</h4>
+                <p className="text-xs text-slate-500 font-mono">মোবাইল: {credentialModalAccount.phone}</p>
+                <span className="text-[10px] text-emerald-700 font-bold">পদবী: {credentialModalAccount.designation || 'সাধারণ সদস্য'}</span>
+              </div>
+            </div>
+
+            {credError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{credError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveCredentialRecovery} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  ইউনিক ইউজারনেম (Username) <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 font-bold text-slate-400 font-mono">@</span>
+                  <input
+                    type="text"
+                    required
+                    value={credNewUsername}
+                    onChange={(e) => {
+                      const clean = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                      setCredNewUsername(clean);
+                      setCredError('');
+                    }}
+                    placeholder="সদস্যের নতুন ইউজারনেম"
+                    className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  শুধুমাত্র ছোট হাতের ইংরেজি অক্ষর, সংখ্যা ও আন্ডারস্কোর (_) ব্যবহার করা যাবে।
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  নতুন পাসওয়ার্ড (Password)
+                </label>
+                <input
+                  type="text"
+                  value={credNewPassword}
+                  onChange={(e) => {
+                    setCredNewPassword(e.target.value);
+                    setCredError('');
+                  }}
+                  placeholder="পরিবর্তন না করতে চাইলে ফাঁকা রাখুন"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  ফাঁকা রাখলে পূর্বের পাসওয়ার্ড অক্ষুণ্ণ থাকবে। নতুন পাসওয়ার্ড লিখলে সদস্য তা দিয়ে লগইন করতে পারবেন।
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setCredentialModalAccount(null)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer font-bold"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow transition cursor-pointer active:scale-95 flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>ক্রেডেনশিয়াল আপডেট ও সেভ</span>
                 </button>
               </div>
             </form>
