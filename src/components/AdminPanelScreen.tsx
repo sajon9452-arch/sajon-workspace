@@ -63,7 +63,8 @@ import {
   loadUserAccounts, 
   saveUserAccounts, 
   loadSecurityAlerts, 
-  saveSecurityAlerts 
+  saveSecurityAlerts,
+  resetMemberDeviceBinding 
 } from '../utils/authSecurity';
 import { checkSupabaseConnection, SUPABASE_URL } from '../utils/supabaseClient';
 import { compressImageFile } from '../utils/imageCompressor';
@@ -1331,6 +1332,23 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                             </div>
 
                             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`সদস্য '${acc.name}' এর বর্তমান ডিভাইস বাইন্ডিং মুছে ফেলতে চান? এতে করে তিনি তার নতুন ফোন/ডিভাইস থেকে লগইন করতে পারবেন।`)) {
+                                    resetMemberDeviceBinding(acc.id);
+                                    const fresh = loadUserAccounts();
+                                    setUserAccounts(fresh);
+                                    setNoticeMsg(`সদস্য '${acc.name}' এর ডিভাইস বাইন্ডিং সফলভাবে রিসেট করা হয়েছে`);
+                                    setTimeout(() => setNoticeMsg(''), 3500);
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition cursor-pointer"
+                                title="নতুন ডিভাইসে লগইন করতে দিতে ডিভাইস বাইন্ডিং রিসেট করুন"
+                              >
+                                ডিভাইস রিসেট
+                              </button>
+
                               <button
                                 type="button"
                                 onClick={() => handleToggleBlockUser(acc)}

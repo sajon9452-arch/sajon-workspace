@@ -278,25 +278,52 @@ export function authenticateMember(
     };
   }
 
-  // Device & IP Tracking Security Check
-  let isSuspicious = false;
-  let suspiciousReason = '';
-
-  const ipMismatch = user.registeredIp && user.registeredIp !== tracking.ip;
+  // Strict Single-Device per Account Security Policy Enforcement
   const deviceMismatch = user.registeredDevice && !normalizeDeviceCompare(user.registeredDevice, tracking.deviceString);
+  const ipMismatch = user.registeredIp && user.registeredIp !== tracking.ip;
 
-  if (ipMismatch || deviceMismatch) {
-    isSuspicious = true;
-    suspiciousReason = `অপরিচিত ডিভাইস বা আইপি থেকে লগইন: বর্তমান আইপি (${tracking.ip}), নিবন্ধিত আইপি (${user.registeredIp})`;
-
-    // Immediate Alert in Admin Panel
+  if (deviceMismatch) {
+    // Immediate High-Priority Security Alert in Admin Panel
     createSecurityAlert({
       userId: user.id,
       username: user.username,
       memberName: user.name,
       phone: user.phone,
-      type: ipMismatch ? 'unrecognized_ip' : 'unrecognized_device',
-      message: `সতর্কতা: সদস্য '${user.name}' (@${user.username}) ভিন্ন আইপি/ডিভাইস থেকে লগইন করেছেন! বর্তমান আইপি: ${tracking.ip} (নিবন্ধিত: ${user.registeredIp})`,
+      type: 'concurrent_attempt',
+      message: `নিরাপত্তা লঙ্ঘন: সদস্য '${user.name}' (@${user.username}) ভিন্ন ডিভাইসে লগইন করার চেষ্টা করেছেন! নিবন্ধিত ডিভাইস: ${user.registeredDevice}, বর্তমান ডিভাইস: ${tracking.deviceString}`,
+      ip: tracking.ip,
+      device: tracking.deviceString
+    });
+
+    // Mark account as suspicious in records
+    const updatedUser: UserAccount = {
+      ...user,
+      isSuspicious: true,
+      suspiciousReason: `অননুমোদিত ভিন্ন ডিভাইস থেকে লগইন প্রচেষ্টা: ${tracking.deviceString}`
+    };
+    saveUserAccounts(accounts.map(a => a.id === user.id ? updatedUser : a));
+
+    return {
+      success: false,
+      error: 'একক ডিভাইস নীতি (Single-Device Policy) লঙ্ঘন: এই অ্যাকাউন্টটি শুধুমাত্র নিবন্ধিত অনুমোদিত ডিভাইসে ব্যবহারযোগ্য। ভিন্ন ডিভাইস থেকে লগইন নিষিদ্ধ করা হয়েছে। অনুগ্রহ করে আপনার অনুমোদিত ডিভাইস ব্যবহার করুন অথবা অ্যাডমিন প্যানেলে যোগাযোগ করুন।'
+    };
+  }
+
+  // Device matches, check for IP network shift
+  let isSuspicious = false;
+  let suspiciousReason = '';
+
+  if (ipMismatch) {
+    isSuspicious = true;
+    suspiciousReason = `ভিন্ন নেটওয়ার্ক/আইপি থেকে লগইন: বর্তমান আইপি (${tracking.ip}), নিবন্ধিত আইপি (${user.registeredIp})`;
+
+    createSecurityAlert({
+      userId: user.id,
+      username: user.username,
+      memberName: user.name,
+      phone: user.phone,
+      type: 'unrecognized_ip',
+      message: `সতর্কতা: সদস্য '${user.name}' (@${user.username}) একই ডিভাইসে কিন্তু ভিন্ন নেটওয়ার্ক/আইপি থেকে লগইন করেছেন (${tracking.ip})`,
       ip: tracking.ip,
       device: tracking.deviceString
     });
@@ -320,4 +347,22 @@ export function authenticateMember(
     success: true,
     user: updatedUser
   };
+}
+
+// Admin Action: Reset / Rebind Member Device for Single-Device Policy
+export function resetMemberDeviceBinding(userId: string, newDevice?: string, newIp?: string): boolean {
+  const accounts = loadUserAccounts();
+  const user = accounts.find(a => a.id === userId);
+  if (!user) return false;
+
+  const updated: UserAccount = {
+    ...user,
+    registeredDevice: newDevice || '',
+    registeredIp: newIp || user.registeredIp,
+    isSuspicious: false,
+    suspiciousReason: undefined
+  };
+
+  saveUserAccounts(accounts.map(a => a.id === userId ? updated : a));
+  return true;
 }
