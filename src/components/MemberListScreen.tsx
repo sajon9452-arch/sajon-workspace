@@ -214,15 +214,6 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
               <UserPlus className="w-4 h-4" />
               <span>নতুন সদস্য যুক্ত করুন</span>
             </button>
-          ) : openAdminModal ? (
-            <button
-              onClick={openAdminModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
-              title="সদস্য নিবন্ধন শুধুমাত্র অনুমোদিত অ্যাডমিনের জন্য"
-            >
-              <Lock className="w-3.5 h-3.5 text-slate-500" />
-              <span>সদস্য যোগ করুন (অ্যাডমিন)</span>
-            </button>
           ) : null}
         </div>
       </div>

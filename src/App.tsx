@@ -146,7 +146,7 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Sync listener: If currently logged in user gets blocked/rejected by admin, kick out immediately
+  // Sync listener: If currently logged in user gets blocked/rejected or admin session drops, kick out immediately
   useEffect(() => {
     const handleAccountSync = () => {
       if (loggedInUser) {
@@ -157,12 +157,26 @@ export default function App() {
           saveLoggedInUser(null);
         }
       }
+      if (isAdmin) {
+        if (!loadIsAdminSession()) {
+          setIsAdmin(false);
+        }
+      }
     };
     window.addEventListener(PMS_SYNC_EVENT, handleAccountSync);
+    window.addEventListener('storage', handleAccountSync);
     return () => {
       window.removeEventListener(PMS_SYNC_EVENT, handleAccountSync);
+      window.removeEventListener('storage', handleAccountSync);
     };
-  }, [loggedInUser]);
+  }, [loggedInUser, isAdmin]);
+
+  // Strict route isolation: Ensure regular members can NEVER access admin panel screen
+  useEffect(() => {
+    if (!isAdmin && activeScreen === 'admin') {
+      setActiveScreen('home');
+    }
+  }, [isAdmin, activeScreen]);
 
   // Automatic redirect safety: If admin session is terminated while on admin screen, immediately return to home
   useEffect(() => {
@@ -550,7 +564,7 @@ export default function App() {
           />
         )}
 
-        {activeScreen === 'admin' && (
+        {activeScreen === 'admin' && isAdmin && (
           <AdminPanelScreen
             profile={profile}
             onUpdateProfile={handleUpdateProfile}

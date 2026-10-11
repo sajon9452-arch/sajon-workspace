@@ -61,12 +61,21 @@ export function saveSecurityAlerts(alerts: SecurityAlert[]) {
   }
 }
 
-// 3. Logged-in User Session
+// 3. Logged-in User Session with Live Account Verification
 export function loadLoggedInUser(): UserAccount | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.LOGGED_IN_USER);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.id === 'string') {
+        const accounts = loadUserAccounts();
+        const fresh = accounts.find(a => a.id === parsed.id);
+        if (fresh && fresh.status === 'approved') {
+          return fresh;
+        }
+      }
+      // If user does not exist or is not actively approved, clear stale session
+      localStorage.removeItem(STORAGE_KEYS.LOGGED_IN_USER);
     }
   } catch (e) {
     console.error('Error loading logged in user:', e);
@@ -87,10 +96,13 @@ export function saveLoggedInUser(user: UserAccount | null) {
   }
 }
 
-// 4. Admin Session Flag
+// 4. Secure Admin Session Token & Airtight Verification
+const ADMIN_SESSION_SECRET = 'sms_master_sylhetvip_verified_session';
+
 export function loadIsAdminSession(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEYS.ADMIN_SESSION) === 'true';
+    const session = localStorage.getItem(STORAGE_KEYS.ADMIN_SESSION);
+    return session === ADMIN_SESSION_SECRET;
   } catch {
     return false;
   }
@@ -99,7 +111,7 @@ export function loadIsAdminSession(): boolean {
 export function saveIsAdminSession(isAdmin: boolean) {
   try {
     if (isAdmin) {
-      localStorage.setItem(STORAGE_KEYS.ADMIN_SESSION, 'true');
+      localStorage.setItem(STORAGE_KEYS.ADMIN_SESSION, ADMIN_SESSION_SECRET);
     } else {
       localStorage.removeItem(STORAGE_KEYS.ADMIN_SESSION);
     }

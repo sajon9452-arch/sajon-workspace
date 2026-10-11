@@ -19,7 +19,6 @@ import {
   RefreshCw, 
   Check, 
   ScanFace, 
-  Upload, 
   Sparkles,
   MoveHorizontal,
   Briefcase
@@ -31,7 +30,6 @@ import {
   authenticateMember 
 } from '../utils/authSecurity';
 import { getFullTrackingSnapshot, DeviceDetails } from '../utils/deviceTracker';
-import { compressImageFile } from '../utils/imageCompressor';
 
 interface AuthGateScreenProps {
   profile: OrganizationProfile;
@@ -118,6 +116,39 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
     };
   }, []);
 
+  // Robust Camera Stream Getter with Fallbacks for Mobile / WebView environments
+  const getCameraStream = async (): Promise<MediaStream> => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('NOT_SUPPORTED');
+    }
+
+    // Attempt 1: Optimal front-facing camera with ideal dimensions
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 640 },
+          height: { ideal: 640 }
+        },
+        audio: false
+      });
+    } catch {
+      // Attempt 2: Generic front camera constraint without resolution locks (Android WebView friendly)
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false
+        });
+      } catch {
+        // Attempt 3: Any available default video feed
+        return await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+      }
+    }
+  };
+
   // Start Camera for Face Scan
   const startCamera = async () => {
     stopCamera();
@@ -126,33 +157,34 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
     setLivenessProgress(10);
 
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraError('আপনার ব্রাউজারে লাইভ ক্যামেরা সাপোর্ট করছে না। অনুগ্রহ করে ফাইল আপলোড অপশন ব্যবহার করুন।');
-        return;
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 640 },
-          height: { ideal: 640 }
-        },
-        audio: false
-      });
-
+      const stream = await getCameraStream();
       streamRef.current = stream;
+
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(e => console.error('Play error:', e));
+        const video = videoRef.current;
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('webkit-playsinline', 'true');
+        video.srcObject = stream;
+        try {
+          await video.play();
+        } catch (playErr) {
+          console.warn('Video playback warning in WebView:', playErr);
+        }
       }
       setCameraActive(true);
       startLivenessChallenge();
     } catch (err: any) {
       console.error('Camera access error:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('ক্যামেরা ব্যবহারের অনুমতি পাওয়া যায়নি। ব্রাউজার সেটিংসে ক্যামেরা এলাও করুন অথবা নিচের বিকল্প ছবি বাটন ব্যবহার করুন।');
+        setCameraError('ক্যামেরা ব্যবহারের অনুমতি (Permission) প্রয়োজন। অনুগ্রহ করে আপনার ডিভাইস বা অ্যাপ সেটিংসে ক্যামেরা এলাও করুন এবং পুনরায় চেষ্টা করুন।');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setCameraError('কোনো ক্যামেরা ডিভাইস পাওয়া যায়নি। অনুগ্রহ করে ডিভাইসের ক্যামেরা সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setCameraError('ক্যামেরাটি অন্য কোনো অ্যাপ্লিকেশনে ব্যবহৃত হচ্ছে। অন্যান্য অ্যাপ বন্ধ করে পুনরায় চেষ্টা করুন।');
       } else {
-        setCameraError('ক্যামেরা চালু করা সম্ভব হয়নি। নিচের বিকল্প আপলোড বাটন ব্যবহার করতে পারেন।');
+        setCameraError('ক্যামেরা চালু করতে সমস্যা হয়েছে। অনুগ্রহ করে ডিভাইসের ক্যামেরা পারমিশন চেক করে পুনরায় চেষ্টা করুন।');
       }
     }
   };
@@ -213,23 +245,6 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
         setLivenessStage('done');
         stopCamera();
       }
-    }
-  };
-
-  // Fallback Photo Upload if camera cannot be used
-  const handleFallbackPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const compressed = await compressImageFile(file, { maxWidth: 500, maxHeight: 500, quality: 0.85 });
-      setCapturedPhoto(compressed);
-      setIsLivenessVerified(true);
-      setLivenessStage('done');
-      setCameraError('');
-      stopCamera();
-    } catch {
-      setCameraError('ছবি প্রক্রিয়াকরণে সমস্যা হয়েছে। অন্য ছবি নির্বাচন করুন।');
     }
   };
 
@@ -909,30 +924,27 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
 
                             {/* Camera Error / Permission Denied Overlay */}
                             {cameraError && (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-20 bg-slate-900/95 text-white space-y-2">
-                                <AlertCircle className="w-9 h-9 text-rose-400 mx-auto" />
-                                <p className="text-xs font-semibold text-rose-200 leading-tight">{cameraError}</p>
-                                <div className="flex flex-col gap-2 pt-1 w-full max-w-xs">
+                              <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-20 bg-slate-900/95 text-white space-y-3">
+                                <AlertCircle className="w-10 h-10 text-rose-400 mx-auto shrink-0" />
+                                <div className="space-y-1">
+                                  <h4 className="text-xs font-bold text-rose-200">ক্যামেরা অ্যাক্সেস প্রয়োজন</h4>
+                                  <p className="text-[11px] text-slate-300 leading-relaxed max-w-xs">
+                                    {cameraError}
+                                  </p>
+                                </div>
+                                <div className="pt-1 w-full max-w-xs">
                                   <button
                                     type="button"
                                     onClick={startCamera}
-                                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-2 shadow-md active:scale-95"
                                   >
                                     <RefreshCw className="w-3.5 h-3.5" />
-                                    <span>পুনরায় চেষ্টা করুন</span>
+                                    <span>ক্যামেরা অনুমতি দিন ও পুনরায় চেষ্টা করুন</span>
                                   </button>
-                                  <label className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5">
-                                    <Upload className="w-3.5 h-3.5" />
-                                    <span>ডিভাইস থেকে সরাসরি ছবি আপলোড করুন</span>
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      capture="user"
-                                      onChange={handleFallbackPhotoUpload}
-                                      className="hidden"
-                                    />
-                                  </label>
                                 </div>
+                                <p className="text-[10px] text-slate-400">
+                                  সদস্য নিরাপত্তার স্বার্থে লাইভ ফেস স্ক্যান ব্যতীত নিবন্ধন সম্ভব নয়
+                                </p>
                               </div>
                             )}
                           </div>
