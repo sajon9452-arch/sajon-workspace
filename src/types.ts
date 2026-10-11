@@ -168,6 +168,8 @@ export interface UserAccount {
   bloodGroup?: string;
   username: string; // assigned by admin or initially requested
   password?: string; // secure password set by user
+  photoUrl?: string; // Captured live face photo during liveness verification
+  livenessVerified?: boolean; // Face liveness check verification status
   status: UserAccountStatus;
   registeredAt: string;
   registeredIp: string;

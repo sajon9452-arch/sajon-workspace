@@ -164,6 +164,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         phone: account.phone,
         area: account.area,
         bloodGroup: account.bloodGroup,
+        photoUrl: account.photoUrl,
         status: 'সক্রিয়',
         joinDate: new Date().toISOString().split('T')[0],
         serial: nextSerial,
@@ -1083,27 +1084,58 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                         key={account.id} 
                         className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-4 hover:border-emerald-300 transition"
                       >
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-slate-100">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="text-base font-black text-slate-900">{account.name}</h4>
-                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200">
-                                {account.designation || 'সাধারণ সদস্য'}
-                              </span>
-                              {account.bloodGroup && (
-                                <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-xs font-bold border border-rose-200">
-                                  {account.bloodGroup}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-3 border-b border-slate-100">
+                          <div className="flex items-center gap-3.5">
+                            {/* Captured Live Face Photo */}
+                            <div className="relative shrink-0">
+                              {account.photoUrl ? (
+                                <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-sm bg-slate-100">
+                                  <img 
+                                    src={account.photoUrl} 
+                                    alt={account.name} 
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
+                                  <Users className="w-7 h-7" />
+                                </div>
+                              )}
+                              {account.livenessVerified && (
+                                <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-bold shadow-xs flex items-center gap-0.5" title="লাইভ ফেস ভেরিফাইড">
+                                  <Check className="w-2.5 h-2.5" />
+                                  <span>লাইভ</span>
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-3">
-                              <span>মোবাইল: <strong className="font-mono text-slate-700">{account.phone}</strong></span>
-                              <span>•</span>
-                              <span>ঠিকানা: {account.area}</span>
-                            </p>
+
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-base font-black text-slate-900">{account.name}</h4>
+                                <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200">
+                                  {account.designation || 'সাধারণ সদস্য'}
+                                </span>
+                                {account.bloodGroup && (
+                                  <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-xs font-bold border border-rose-200">
+                                    {account.bloodGroup}
+                                  </span>
+                                )}
+                                {account.livenessVerified && (
+                                  <span className="px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 text-[10px] font-bold border border-teal-200 flex items-center gap-1">
+                                    <ShieldCheck className="w-3 h-3 text-teal-600" />
+                                    <span>ফেস স্ক্যান ভেরিফাইড</span>
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-3 flex-wrap">
+                                <span>মোবাইল: <strong className="font-mono text-slate-700">{account.phone}</strong></span>
+                                <span>•</span>
+                                <span>ঠিকানা: {account.area}</span>
+                              </p>
+                            </div>
                           </div>
 
-                          <div className="text-right text-[11px] text-slate-500">
+                          <div className="text-right text-[11px] text-slate-500 shrink-0">
                             <div>আবেদনের তারিখ: {new Date(account.registeredAt).toLocaleDateString('bn-BD')}</div>
                             <div className="font-mono text-[10px] text-slate-400">{new Date(account.registeredAt).toLocaleTimeString()}</div>
                           </div>
@@ -1252,15 +1284,25 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                         <div key={acc.id} className="p-4 sm:p-5 hover:bg-slate-50/60 transition space-y-3">
                           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                             <div className="flex items-center gap-3">
-                              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm ${
-                                isBlocked 
-                                  ? 'bg-rose-100 text-rose-800 border border-rose-300' 
-                                  : isFlagged 
-                                  ? 'bg-amber-100 text-amber-800 border border-amber-300' 
-                                  : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              }`}>
-                                {isBlocked ? <Ban className="w-5 h-5 text-rose-700" /> : acc.name.charAt(0) || 'স'}
-                              </div>
+                              {acc.photoUrl ? (
+                                <div className="w-11 h-11 rounded-2xl overflow-hidden border-2 border-emerald-400 shadow-2xs shrink-0 bg-slate-100">
+                                  <img 
+                                    src={acc.photoUrl} 
+                                    alt={acc.name} 
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              ) : (
+                                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 ${
+                                  isBlocked 
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-300' 
+                                    : isFlagged 
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                }`}>
+                                  {isBlocked ? <Ban className="w-5 h-5 text-rose-700" /> : acc.name.charAt(0) || 'স'}
+                                </div>
+                              )}
 
                               <div>
                                 <div className="flex items-center gap-2 flex-wrap">

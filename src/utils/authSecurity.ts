@@ -146,6 +146,8 @@ export async function submitMemberRegistration(
     email?: string;
     bloodGroup?: string;
     password: string;
+    photoUrl?: string;
+    livenessVerified?: boolean;
   },
   tracking: DeviceDetails
 ): Promise<{ success: boolean; account?: UserAccount; message?: string }> {
@@ -183,6 +185,8 @@ export async function submitMemberRegistration(
     bloodGroup: data.bloodGroup || undefined,
     username: tempUsername,
     password: data.password,
+    photoUrl: data.photoUrl,
+    livenessVerified: data.livenessVerified,
     status: 'pending',
     registeredAt: new Date().toISOString(),
     registeredIp: tracking.ip,

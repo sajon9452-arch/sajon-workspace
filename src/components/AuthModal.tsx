@@ -423,16 +423,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       <label className="block text-xs font-bold text-slate-700 mb-1">
                         পদবি / ক্যাটাগরি
                       </label>
-                      <select
+                      <input
+                        type="text"
                         value={regDesignation}
                         onChange={(e) => setRegDesignation(e.target.value)}
+                        placeholder="আপনার পদবী লিখুন..."
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      >
-                        <option value="সাধারণ সদস্য">সাধারণ সদস্য</option>
-                        <option value="প্রবাসী সদস্য">প্রবাসী সদস্য</option>
-                        <option value="আজীবন সদস্য">আজীবন সদস্য</option>
-                        <option value="উপদেষ্টা">উপদেষ্টা</option>
-                      </select>
+                      />
                     </div>
                   </div>
 
