@@ -21,7 +21,12 @@ import {
   ScanFace, 
   Sparkles,
   MoveHorizontal,
-  Briefcase
+  Briefcase,
+  Settings,
+  Smartphone,
+  HelpCircle,
+  X,
+  Code
 } from 'lucide-react';
 import { UserAccount, BloodGroup, OrganizationProfile } from '../types';
 import { 
@@ -74,6 +79,8 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
   const [livenessStage, setLivenessStage] = useState<'align' | 'turn' | 'blink' | 'capturing' | 'done'>('align');
   const [livenessProgress, setLivenessProgress] = useState<number>(0);
   const [flashEffect, setFlashEffect] = useState<boolean>(false);
+  const [isRequestingPermission, setIsRequestingPermission] = useState<boolean>(false);
+  const [showWebViewHelpModal, setShowWebViewHelpModal] = useState<boolean>(false);
 
   // Password & Submission States
   const [regPassword, setRegPassword] = useState('');
@@ -116,36 +123,61 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
     };
   }, []);
 
-  // Robust Camera Stream Getter with Fallbacks for Mobile / WebView environments
-  const getCameraStream = async (): Promise<MediaStream> => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('NOT_SUPPORTED');
-    }
-
-    // Attempt 1: Optimal front-facing camera with ideal dimensions
+  // Prompt Android WebView Wrapper Native Bridge if present (e.g. AppCreator24 / Cordova / Capacitor / Custom Bridge)
+  const triggerAndroidWrapperPermissionRequest = () => {
     try {
-      return await navigator.mediaDevices.getUserMedia({
+      const win = window as any;
+      if (win.Android && typeof win.Android.requestCameraPermission === 'function') {
+        win.Android.requestCameraPermission();
+      } else if (win.AndroidBridge && typeof win.AndroidBridge.requestCameraPermission === 'function') {
+        win.AndroidBridge.requestCameraPermission();
+      } else if (win.AppCreator24 && typeof win.AppCreator24.requestCameraPermission === 'function') {
+        win.AppCreator24.requestCameraPermission();
+      }
+    } catch (e) {
+      console.warn('Android bridge execution notice:', e);
+    }
+  };
+
+  // Cross-environment MediaStream Getter supporting WebView requirements
+  // Properly handles navigator.mediaDevices.getUserMedia({ video: true }) and legacy WebView getUserMedia
+  const getCameraStream = async (): Promise<MediaStream> => {
+    const requestNativeMedia = async (constraints: MediaStreamConstraints): Promise<MediaStream> => {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        return await navigator.mediaDevices.getUserMedia(constraints);
+      }
+      const nav = navigator as any;
+      const legacyGUM = nav?.webkitGetUserMedia || nav?.mozGetUserMedia || nav?.msGetUserMedia || nav?.getUserMedia;
+      if (legacyGUM) {
+        return new Promise<MediaStream>((resolve, reject) => {
+          legacyGUM.call(navigator, constraints, resolve, reject);
+        });
+      }
+      throw new Error('NOT_SUPPORTED');
+    };
+
+    // Priority 1: Front camera facingMode for selfie / face scanning
+    try {
+      return await requestNativeMedia({
         video: {
-          facingMode: 'user',
-          width: { ideal: 640 },
-          height: { ideal: 640 }
+          facingMode: 'user'
         },
         audio: false
       });
-    } catch {
-      // Attempt 2: Generic front camera constraint without resolution locks (Android WebView friendly)
-      try {
-        return await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user' },
-          audio: false
-        });
-      } catch {
-        // Attempt 3: Any available default video feed
-        return await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false
-        });
-      }
+    } catch (err1) {
+      console.warn('Front facingMode getUserMedia failed in WebView, falling back to basic { video: true }:', err1);
+    }
+
+    // Priority 2: Fundamental standard requirement for Android WebView containers:
+    // navigator.mediaDevices.getUserMedia({ video: true })
+    try {
+      return await requestNativeMedia({
+        video: true,
+        audio: false
+      });
+    } catch (err2) {
+      console.warn('Fundamental { video: true } getUserMedia attempt failed:', err2);
+      throw err2;
     }
   };
 
@@ -166,11 +198,16 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
         video.playsInline = true;
         video.setAttribute('playsinline', 'true');
         video.setAttribute('webkit-playsinline', 'true');
+        video.setAttribute('autoplay', 'true');
         video.srcObject = stream;
+        
+        video.onloadedmetadata = () => {
+          video.play().catch(e => console.warn('Video play onloadedmetadata:', e));
+        };
         try {
           await video.play();
         } catch (playErr) {
-          console.warn('Video playback warning in WebView:', playErr);
+          console.warn('Direct video play warning in WebView:', playErr);
         }
       }
       setCameraActive(true);
@@ -178,14 +215,38 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
     } catch (err: any) {
       console.error('Camera access error:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('ক্যামেরা ব্যবহারের অনুমতি (Permission) প্রয়োজন। অনুগ্রহ করে আপনার ডিভাইস বা অ্যাপ সেটিংসে ক্যামেরা এলাও করুন এবং পুনরায় চেষ্টা করুন।');
+        setCameraError('ক্যামেরা ব্যবহারের অনুমতি (Camera Permission) প্রয়োজন। মোবাইল বা অ্যাপ সেটিংসে ক্যামেরা এলাও করুন এবং নিচে দেয়া বাটনে চাপুন।');
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         setCameraError('কোনো ক্যামেরা ডিভাইস পাওয়া যায়নি। অনুগ্রহ করে ডিভাইসের ক্যামেরা সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।');
       } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
         setCameraError('ক্যামেরাটি অন্য কোনো অ্যাপ্লিকেশনে ব্যবহৃত হচ্ছে। অন্যান্য অ্যাপ বন্ধ করে পুনরায় চেষ্টা করুন।');
       } else {
-        setCameraError('ক্যামেরা চালু করতে সমস্যা হয়েছে। অনুগ্রহ করে ডিভাইসের ক্যামেরা পারমিশন চেক করে পুনরায় চেষ্টা করুন।');
+        setCameraError('ক্যামেরা চালু করতে সমস্যা হয়েছে। অনুগ্রহ করে ক্যামেরার অনুমতি দিয়ে পুনরায় চেষ্টা বাটনে চাপ দিন।');
       }
+    }
+  };
+
+  // Explicit JavaScript event handler for the "Grant Camera Permission & Retry" button
+  // Programmatically invokes navigator.mediaDevices.getUserMedia({ video: true }) and prompts WebView wrapper
+  const handleGrantCameraPermissionAndRetry = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    setIsRequestingPermission(true);
+    setCameraError('');
+
+    // 1. Prompt Android wrapper bridge if available in WebView container
+    triggerAndroidWrapperPermissionRequest();
+
+    // 2. Programmatically trigger getUserMedia({ video: true }) directly within synchronous user gesture execution
+    try {
+      await startCamera();
+    } catch (err: any) {
+      console.error('Explicit permission retry error:', err);
+    } finally {
+      setIsRequestingPermission(false);
     }
   };
 
@@ -932,14 +993,24 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
                                     {cameraError}
                                   </p>
                                 </div>
-                                <div className="pt-1 w-full max-w-xs">
+                                <div className="pt-1 w-full max-w-xs space-y-2">
                                   <button
                                     type="button"
-                                    onClick={startCamera}
-                                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-2 shadow-md active:scale-95"
+                                    disabled={isRequestingPermission}
+                                    onClick={handleGrantCameraPermissionAndRetry}
+                                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-2 shadow-md active:scale-95 disabled:opacity-50"
                                   >
-                                    <RefreshCw className="w-3.5 h-3.5" />
-                                    <span>ক্যামেরা অনুমতি দিন ও পুনরায় চেষ্টা করুন</span>
+                                    <RefreshCw className={`w-3.5 h-3.5 ${isRequestingPermission ? 'animate-spin' : ''}`} />
+                                    <span>{isRequestingPermission ? 'ক্যামেরা অনুমতি চাওয়া হচ্ছে...' : 'ক্যামেরা অনুমতি দিন ও পুনরায় চেষ্টা করুন'}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowWebViewHelpModal(true)}
+                                    className="inline-flex items-center gap-1.5 text-[11px] text-amber-300 hover:text-amber-200 font-semibold underline underline-offset-2 transition cursor-pointer"
+                                  >
+                                    <Settings className="w-3 h-3" />
+                                    <span>অ্যান্ড্রয়েড অ্যাপ / AppCreator24 সেটিংস সহায়িকা</span>
                                   </button>
                                 </div>
                                 <p className="text-[10px] text-slate-400">
@@ -1134,6 +1205,95 @@ export const AuthGateScreen: React.FC<AuthGateScreenProps> = ({
           )}
         </div>
       </div>
+
+      {/* Android WebView / AppCreator24 Camera Permission Assistance Modal */}
+      {showWebViewHelpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 shadow-2xl text-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-white">
+                    অ্যান্ড্রয়েড অ্যাপ ও ওয়েবভিউ ক্যামেরা পারমিশন সহায়িকা
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    AppCreator24 ও Android Studio কন্টেইনারে ক্যামেরা সক্রিয় করার নিয়মাবলী
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWebViewHelpModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Step 1: User phone permission */}
+              <div className="p-3.5 rounded-2xl bg-slate-800/70 border border-slate-700/80 space-y-1.5">
+                <h4 className="font-bold text-amber-300 flex items-center gap-1.5">
+                  <span>১. মোবাইল ব্যবহারকারীর ডিভাইস পারমিশন:</span>
+                </h4>
+                <p className="text-slate-300 leading-relaxed text-[11px]">
+                  আপনার মোবাইলের <strong>Settings &gt; Apps / Application Manager &gt; অ্যাপটিতে</strong> প্রবেশ করুন। এরপর <strong>Permissions &gt; Camera</strong> অপশনটিতে ট্যাপ করে <strong>&quot;Allow&quot; (অনুমতি দিন)</strong> সক্রিয় করুন এবং অ্যাপে ফিরে এসে পুনরায় চেষ্টা করুন।
+                </p>
+              </div>
+
+              {/* Step 2: AppCreator24 configuration */}
+              <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 space-y-2">
+                <h4 className="font-bold text-emerald-300 flex items-center gap-1.5">
+                  <Settings className="w-4 h-4 text-emerald-400" />
+                  <span>২. AppCreator24 কন্ট্রোল প্যানেল সেটিংস:</span>
+                </h4>
+                <ul className="text-slate-300 space-y-1 text-[11px] list-disc list-inside">
+                  <li><strong>General Info &gt; General &gt; Permissions:</strong> এখানে <strong>&quot;Camera&quot;</strong> অপশনটি <strong>Yes / Active</strong> নিশ্চিত করুন।</li>
+                  <li><strong>Section (Web):</strong> আপনার Web Section-এর Advanced সেটিংসে গিয়ে <strong>&quot;Allow camera and microphone access in WebView&quot;</strong> অপশনটি <strong>Yes</strong> রাখুন।</li>
+                  <li>পরিবর্তন সেভ করে নতুন করে APK তৈরি করে ফোনে ইনস্টল করুন।</li>
+                </ul>
+              </div>
+
+              {/* Step 3: Android Studio Manifest & WebChromeClient */}
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                <h4 className="font-bold text-sky-300 flex items-center gap-1.5">
+                  <Code className="w-4 h-4 text-sky-400" />
+                  <span>৩. Android Studio (Java/Kotlin) কোড কনফিগারেশন:</span>
+                </h4>
+                <div className="space-y-1.5 font-mono text-[10px] text-slate-300 bg-slate-900 p-2.5 rounded-xl border border-slate-800 overflow-x-auto">
+                  <p className="text-emerald-400">// AndroidManifest.xml</p>
+                  <p>&lt;uses-permission android:name=&quot;android.permission.CAMERA&quot; /&gt;</p>
+                  <p>&lt;uses-feature android:name=&quot;android.hardware.camera&quot; android:required=&quot;false&quot; /&gt;</p>
+                  <p className="text-emerald-400 pt-1">// MainActivity.java (WebChromeClient Permission Delegation)</p>
+                  <p>WebSettings ws = webView.getSettings();</p>
+                  <p>ws.setJavaScriptEnabled(true);</p>
+                  <p>ws.setDomStorageEnabled(true);</p>
+                  <p>ws.setMediaPlaybackRequiresUserGesture(false);</p>
+                  <p>webView.setWebChromeClient(new WebChromeClient() &#123;</p>
+                  <p>&nbsp;&nbsp;@Override</p>
+                  <p>&nbsp;&nbsp;public void onPermissionRequest(final PermissionRequest request) &#123;</p>
+                  <p>&nbsp;&nbsp;&nbsp;&nbsp;request.grant(request.getResources());</p>
+                  <p>&nbsp;&nbsp;&#125;</p>
+                  <p>&#125;);</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowWebViewHelpModal(false)}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
+              >
+                বুঝেছি, বন্ধ করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

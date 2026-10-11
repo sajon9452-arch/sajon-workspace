@@ -11,6 +11,13 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: '25mb' }));
 
+// Set Permissions-Policy headers to allow camera access in all WebView and iframe containers
+app.use((_req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=*, microphone=*, geolocation=*');
+  res.setHeader('Feature-Policy', 'camera *; microphone *; geolocation *');
+  next();
+});
+
 // Health check endpoint for Cloud Run container liveness/readiness
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
