@@ -112,6 +112,22 @@ export default function App() {
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
 
+  // Requirement 9: Network Connection & Offline State Monitoring
+  const [isOffline, setIsOffline] = useState<boolean>(() => {
+    return typeof navigator !== 'undefined' ? !navigator.onLine : false;
+  });
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const handleOpenAuthModal = (mode: 'login' | 'register' = 'login') => {
     setAuthModalMode(mode);
     setIsAuthModalOpen(true);
@@ -456,6 +472,21 @@ export default function App() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col antialiased">
+        {isOffline && (
+          <div className="bg-amber-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between gap-2 shadow-md sticky top-0 z-50 animate-in slide-in-from-top">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-white animate-ping shrink-0" />
+              <span>ইন্টারনেট সংযোগ বিচ্ছিন্ন (Offline) — স্থানীয়ভাবে সংরক্ষিত তথ্য সক্রিয় রয়েছে</span>
+            </div>
+            <button 
+              type="button" 
+              onClick={() => window.location.reload()} 
+              className="px-2.5 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold transition cursor-pointer"
+            >
+              পুনরায় চেষ্টা করুন
+            </button>
+          </div>
+        )}
         <AuthGateScreen
           profile={profile}
           onAdminLoginSuccess={handleAdminLoginSuccess}
@@ -473,6 +504,21 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col antialiased">
+      {isOffline && (
+        <div className="bg-amber-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between gap-2 shadow-md sticky top-0 z-50 animate-in slide-in-from-top">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-white animate-ping shrink-0" />
+            <span>ইন্টারনেট সংযোগ বিচ্ছিন্ন (Offline) — অফলাইন ক্যাশে সংরক্ষিত ডেটা প্রদর্শিত হচ্ছে</span>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => window.location.reload()} 
+            className="px-2.5 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold transition cursor-pointer"
+          >
+            পুনরায় চেষ্টা করুন
+          </button>
+        </div>
+      )}
       <Header
         profile={profile}
         activeScreen={activeScreen}

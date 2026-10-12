@@ -118,6 +118,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [regSearch, setRegSearch] = useState('');
   const [assignedUsernames, setAssignedUsernames] = useState<Record<string, string>>({});
   const [isProcessingApproval, setIsProcessingApproval] = useState<string | null>(null);
+  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null);
 
   // Sync user accounts & security alerts
   useEffect(() => {
@@ -793,15 +794,15 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
           }`}
         >
-          <ShieldAlert className="w-4 h-4 text-amber-500" />
-          <span>নিবন্ধন ও ডিভাইস ট্র্যাকিং</span>
+          <UserCheck className="w-4 h-4 text-emerald-400" />
+          <span>নিবন্ধন আবেদন ও অনুমোদন</span>
           {pendingAccounts.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black">
-              {toBengaliNumber(pendingAccounts.length)}
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black animate-pulse">
+              {toBengaliNumber(pendingAccounts.length)} অপেক্ষমাণ
             </span>
           )}
           {unresolvedAlerts.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-black">
+            <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black">
               {toBengaliNumber(unresolvedAlerts.length)} সতর্কতা
             </span>
           )}
@@ -1005,13 +1006,13 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                    <span>সদস্য নিবন্ধন অনুমোদন ও ডিভাইস ট্র্যাকিং সিকিউরিটি</span>
+                    <span>সদস্য নিবন্ধন ও আবেদন অনুমোদন ব্যবস্থাপনা</span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-400/20 text-emerald-200 border border-emerald-400/30">
-                      লাইভ সিকিউরিটি
+                      অ্যাডমিন কনসোল
                     </span>
                   </h3>
                   <p className="text-xs text-emerald-200/80 mt-0.5 max-w-xl">
-                    অনলাইন নিবন্ধন পর্যালোচনা, ইউনিক ইউজারনেম বরাদ্দ, সদস্যদের আইপি ও ডিভাইস ট্র্যাকিং এবং সন্দেহজনক একাউন্ট তাৎক্ষণিক ব্লক করার প্রশাসনিক নিয়ন্ত্রণ।
+                    অনলাইন সদস্য আবেদন পর্যালোচনা, আপলোডকৃত ছবি ও তথ্য যাচাই, ইউনিক ইউজারনেম বরাদ্দ, অনুমোদন এবং ডিভাইস বাইন্ডিং নিয়ন্ত্রণ।
                   </p>
                 </div>
               </div>
@@ -1040,12 +1041,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 onClick={() => setRegSubTab('pending')}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
                   regSubTab === 'pending'
-                    ? 'bg-amber-400 text-emerald-950 shadow-xs'
+                    ? 'bg-amber-400 text-emerald-950 shadow-xs font-black'
                     : 'bg-white/10 text-white hover:bg-white/20'
                 }`}
               >
                 <Clock className="w-3.5 h-3.5" />
-                <span>অনুমোদন অপেক্ষমাণ ({toBengaliNumber(pendingAccounts.length)})</span>
+                <span>অনুমোদন অপেক্ষমাণ আবেদন ({toBengaliNumber(pendingAccounts.length)})</span>
               </button>
 
               <button
@@ -1053,12 +1054,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 onClick={() => setRegSubTab('approved')}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
                   regSubTab === 'approved'
-                    ? 'bg-emerald-400 text-emerald-950 shadow-xs'
+                    ? 'bg-emerald-400 text-emerald-950 shadow-xs font-black'
                     : 'bg-white/10 text-white hover:bg-white/20'
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
-                <span>অনুমোদিত অ্যাকাউন্ট ও ডিভাইস ট্র্যাকিং ({toBengaliNumber(approvedAccounts.length)})</span>
+                <span>অনুমোদিত অ্যাকাউন্ট ও ডিভাইস নিয়ন্ত্রণ ({toBengaliNumber(approvedAccounts.length)})</span>
               </button>
 
               <button
@@ -1066,12 +1067,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 onClick={() => setRegSubTab('alerts')}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
                   regSubTab === 'alerts'
-                    ? 'bg-rose-500 text-white shadow-xs'
+                    ? 'bg-rose-500 text-white shadow-xs font-black'
                     : 'bg-white/10 text-white hover:bg-white/20'
                 }`}
               >
                 <ShieldAlert className="w-3.5 h-3.5" />
-                <span>নিরাপত্তা অ্যালার্ট ও সতর্কতা ({toBengaliNumber(securityAlerts.length)})</span>
+                <span>নিরাপত্তা অ্যালার্ট ও লগইন ট্র্যাকিং ({toBengaliNumber(securityAlerts.length)})</span>
               </button>
             </div>
           </div>
@@ -1119,12 +1120,19 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                             {/* Uploaded Profile Photo */}
                             <div className="relative shrink-0">
                               {account.photoUrl ? (
-                                <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-sm bg-slate-100">
+                                <div 
+                                  onClick={() => account.photoUrl && setPreviewPhoto({ url: account.photoUrl, name: account.name })}
+                                  className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-sm bg-slate-100 cursor-pointer group relative"
+                                  title="ছবি বড় করে দেখতে ক্লিক করুন"
+                                >
                                   <img 
                                     src={account.photoUrl} 
                                     alt={account.name} 
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-cover group-hover:scale-110 transition duration-200"
                                   />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
+                                    <Search className="w-5 h-5" />
+                                  </div>
                                 </div>
                               ) : (
                                 <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
@@ -1311,11 +1319,15 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                             <div className="flex items-center gap-3">
                               {acc.photoUrl ? (
-                                <div className="w-11 h-11 rounded-2xl overflow-hidden border-2 border-emerald-400 shadow-2xs shrink-0 bg-slate-100">
+                                <div 
+                                  onClick={() => acc.photoUrl && setPreviewPhoto({ url: acc.photoUrl, name: acc.name })}
+                                  className="w-11 h-11 rounded-2xl overflow-hidden border-2 border-emerald-400 shadow-2xs shrink-0 bg-slate-100 cursor-pointer group relative"
+                                  title="ছবি বড় করে দেখতে ক্লিক করুন"
+                                >
                                   <img 
                                     src={acc.photoUrl} 
                                     alt={acc.name} 
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-cover group-hover:scale-110 transition duration-200"
                                   />
                                 </div>
                               ) : (
@@ -3071,6 +3083,40 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Full Photo Inspection Modal */}
+      {previewPhoto && (
+        <div 
+          onClick={() => setPreviewPhoto(null)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3 text-center"
+          >
+            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+              <h4 className="text-sm font-bold text-white truncate">{previewPhoto.name} এর প্রোফাইল ছবি</h4>
+              <button 
+                type="button"
+                onClick={() => setPreviewPhoto(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="w-full aspect-square rounded-2xl overflow-hidden border-2 border-emerald-500 bg-slate-950">
+              <img src={previewPhoto.url} alt={previewPhoto.name} className="w-full h-full object-contain" />
+            </div>
+            <button
+              type="button"
+              onClick={() => setPreviewPhoto(null)}
+              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition cursor-pointer"
+            >
+              বন্ধ করুন
+            </button>
           </div>
         </div>
       )}

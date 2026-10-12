@@ -190,4 +190,29 @@ public class MainActivity extends AppCompatActivity {
 1. মোবাইলের **Settings > Apps (অ্যাপস) > সিলেট মানব সেবা সংগঠন** এ যান।
 2. **Permissions (অনুমতিসমূহ)** এ ট্যাপ করুন।
 3. **Camera (ক্যামেরা)** অপশনে ট্যাপ করে **"Allow" (অনুমতি দিন)** সিলেক্ট করুন।
-4. অ্যাপে এসে **"ক্যামেরা অনুমতি দিন ও পুনরায় চেষ্টা করুন"** বাটনে ট্যাপ করুন।
+4. অ্যাপে ফিরে এসে আবার চেষ্টা করুন।
+
+---
+
+## ৪. অফলাইন ত্রুটি হ্যান্ডলিং ও কাস্টম এরর পেজ (Offline & Network Error Interception)
+
+অ্যান্ড্রয়েড ডিফল্ট এরর স্ক্রিন (যেমন: `net::ERR_QUIC_PROTOCOL_ERROR`, `net::ERR_INTERNET_DISCONNECTED` বা "Webpage not available") সম্পূর্ণ দূর করার জন্য `WebViewClient`-এ `onReceivedError` ওভাররাইড করে কাস্টম অফলাইন পেজ প্রদর্শন করা হয়েছে:
+
+```java
+// WebViewClient-এ এরর ইন্টারসেপ্টর:
+myWebView.setWebViewClient(new WebViewClient() {
+    @Override
+    public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+        if (request != null && request.isForMainFrame()) {
+            showCustomOfflineErrorPage(view);
+        }
+    }
+
+    @Override
+    public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+        showCustomOfflineErrorPage(view);
+    }
+});
+```
+
+এতে করে ইন্টারনেট সংযোগ বিচ্ছিন্ন হলেও ব্রাউজারের কোনো কুৎসিত এরর বা ক্র্যাশ দেখা যাবে না; বরং সুন্দর বাংলায় "ইন্টারনেট সংযোগ বিচ্ছিন্ন" শিরোনামে একটি কাস্টম পেজ ও "পুনরায় চেষ্টা করুন (Try Again)" বাটন দেখা যাবে।
