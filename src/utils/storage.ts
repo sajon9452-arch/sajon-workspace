@@ -36,6 +36,8 @@ const STORAGE_KEYS = {
   SUPPORT_REPORTS: 'pms_support_reports',
   PAYMENT_SETTINGS: 'pms_payment_settings',
   MANUAL_TOTAL_BALANCE: 'pms_manual_total_balance',
+  MONTHLY_EXPENSE: 'pms_monthly_expense',
+  EXTRA_MONEY: 'pms_extra_money',
   ADMIN_PIN: 'pms_admin_pin',
   PERMANENTLY_DELETED: 'pms_permanently_deleted_records'
 };
@@ -358,7 +360,53 @@ export function saveManualTotalBalance(amount: number | null) {
   }
 }
 
-// 12. Admin PIN
+// 12. Monthly Expense (মাসিক খরচ)
+export function loadMonthlyExpense(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.MONTHLY_EXPENSE);
+    if (raw !== null) {
+      const parsed = parseFloat(raw);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return 0;
+}
+
+export function saveMonthlyExpense(amount: number) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.MONTHLY_EXPENSE, amount.toString());
+    notifyStorageChange(STORAGE_KEYS.MONTHLY_EXPENSE, amount);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// 13. Extra Money (এক্সট্রা টাকা)
+export function loadExtraMoney(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.EXTRA_MONEY);
+    if (raw !== null) {
+      const parsed = parseFloat(raw);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return 0;
+}
+
+export function saveExtraMoney(amount: number) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.EXTRA_MONEY, amount.toString());
+    notifyStorageChange(STORAGE_KEYS.EXTRA_MONEY, amount);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// 14. Admin PIN
 export function loadAdminPin(): string {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.ADMIN_PIN);

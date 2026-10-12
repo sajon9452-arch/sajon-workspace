@@ -37,6 +37,10 @@ import {
   savePaymentSettings, 
   loadManualTotalBalance, 
   saveManualTotalBalance,
+  loadMonthlyExpense,
+  saveMonthlyExpense,
+  loadExtraMoney,
+  saveExtraMoney,
   PMS_SYNC_EVENT,
   markIdAsPermanentlyDeleted,
   isIdPermanentlyDeleted
@@ -106,6 +110,8 @@ export default function App() {
   const [supportReports, setSupportReports] = useState<SupportReportItem[]>(() => loadSupportReports());
   const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(() => loadPaymentSettings());
   const [manualTotalBalance, setManualTotalBalance] = useState<number | null>(() => loadManualTotalBalance());
+  const [monthlyExpense, setMonthlyExpense] = useState<number>(() => loadMonthlyExpense());
+  const [extraMoney, setExtraMoney] = useState<number>(() => loadExtraMoney());
 
   // Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -212,6 +218,9 @@ export default function App() {
         setDonors(loadDonors());
         setNotices(loadNotices());
         setFunds(loadFunds());
+        setManualTotalBalance(loadManualTotalBalance());
+        setMonthlyExpense(loadMonthlyExpense());
+        setExtraMoney(loadExtraMoney());
       }
     };
     window.addEventListener(PMS_SYNC_EVENT, handleSync);
@@ -396,6 +405,16 @@ export default function App() {
     }
   };
 
+  const handleUpdateMonthlyExpense = (amount: number) => {
+    setMonthlyExpense(amount);
+    saveMonthlyExpense(amount);
+  };
+
+  const handleUpdateExtraMoney = (amount: number) => {
+    setExtraMoney(amount);
+    saveExtraMoney(amount);
+  };
+
   // 3. Donor Handlers
   const handleAddDonor = async (newDonor: Omit<BloodDonor, 'id'>): Promise<BloodDonor> => {
     const id = `d-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -578,6 +597,8 @@ export default function App() {
             fundRecords={funds}
             members={members}
             manualTotalBalance={manualTotalBalance}
+            monthlyExpense={monthlyExpense}
+            extraMoney={extraMoney}
             paymentConfig={paymentConfig}
             isAdmin={isAdmin}
             onBack={() => setActiveScreen('home')}
@@ -627,6 +648,10 @@ export default function App() {
             onToggleFundStatus={handleToggleFundStatus}
             manualTotalBalance={manualTotalBalance}
             onUpdateManualTotalBalance={handleUpdateManualTotalBalance}
+            monthlyExpense={monthlyExpense}
+            onUpdateMonthlyExpense={handleUpdateMonthlyExpense}
+            extraMoney={extraMoney}
+            onUpdateExtraMoney={handleUpdateExtraMoney}
             paymentConfig={paymentConfig}
             onUpdatePaymentConfig={handleUpdatePaymentConfig}
             onBack={() => setActiveScreen('home')}

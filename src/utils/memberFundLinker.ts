@@ -83,12 +83,19 @@ export function autoSyncMembersToFunds(
       if (isMatch) {
         found = true;
         const targetPhone = member.phone || f.phone || '';
-        if (f.memberId !== member.id || f.memberName !== member.name || f.phone !== targetPhone) {
+        const targetDesignation = member.designation || (member.isExecutive ? 'কার্যকরী কমিটি সদস্য' : 'সাধারণ সদস্য');
+        if (
+          f.memberId !== member.id ||
+          f.memberName !== member.name ||
+          f.phone !== targetPhone ||
+          f.designation !== targetDesignation
+        ) {
           result[idx] = {
             ...f,
             memberId: member.id,
             memberName: member.name,
-            phone: targetPhone
+            phone: targetPhone,
+            designation: targetDesignation
           };
         }
       }
@@ -96,19 +103,25 @@ export function autoSyncMembersToFunds(
 
     if (!found) {
       // Auto-populate fund entry for this member so there is NO missing member
+      const memberDesignation = member.designation || (member.isExecutive ? 'কার্যকরী কমিটি সদস্য' : 'সাধারণ সদস্য');
       const newFundRecord: FundRecord = {
         id: `fund-member-${member.id}`,
         memberId: member.id,
         memberName: member.name,
         phone: member.phone || '',
+        designation: memberDesignation,
         amount: 500,
         status: 'Due',
         type: 'income',
         date: currentDate,
         month: 'মার্চ ২০২৬',
+        paidMonths: '',
+        dueMonths: 'মার্চ ২০২৬',
+        paidAmount: 0,
+        dueAmount: 500,
         description: 'মাসিক নিয়মিত চাঁদা',
         category: 'মাসিক চাঁদা',
-        notes: member.isExecutive ? 'কার্যকরী কমিটি সদস্য' : 'সাধারণ সদস্য'
+        notes: memberDesignation
       };
       result.push(newFundRecord);
     }

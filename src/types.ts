@@ -51,11 +51,16 @@ export interface FundRecord {
   memberId?: string;
   memberName: string;
   phone?: string;
+  designation?: string;
   senderPhone?: string;
   amount: number;
   status: PaymentStatus;
   date: string;
   month?: string;
+  paidMonths?: string;
+  dueMonths?: string;
+  paidAmount?: number;
+  dueAmount?: number;
   description: string;
   category: 'মাসিক চাঁদা' | 'এককালীন অনুদান' | 'জরুরি সাহায্য' | 'খরচ' | string;
   type?: 'income' | 'expense';
