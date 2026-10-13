@@ -16,7 +16,6 @@ import {
   Coins,
   Sparkles,
   LayoutGrid,
-  Table as TableIcon,
   User,
   Calendar,
   AlertCircle
@@ -55,9 +54,6 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentStatus>('all');
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [smsSentNotice, setSmsSentNotice] = useState<string | null>(null);
-  // Requirement 3: Default view for member subscription list MUST BE CARD VIEW
-  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
-  const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
 
   // 1. 100% COMPLETE AUTO-SYNC: All members are automatically populated into Fund Management
   // Name, Mobile Number, and Designation are strictly auto-synced from Member list
@@ -351,38 +347,11 @@ export const FundScreen: React.FC<FundScreenProps> = ({
               <span>বকেয়া ({toBengaliNumber(effectiveFundRecords.filter(f => f.status === 'Due').length)})</span>
             </button>
           </div>
-
-          {/* Requirement 3: View Mode Switcher (Default is Card View) */}
-          <div className="flex items-center gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-2xs shrink-0">
-            <button
-              onClick={() => setViewMode('card')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                viewMode === 'card'
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>কার্ড ভিউ (ডিফল্ট)</span>
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                viewMode === 'table'
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <TableIcon className="w-3.5 h-3.5" />
-              <span>টেবিল ভিউ</span>
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* Requirement 3: Auto-Synced Member Fund Cards (Larger Card View as Default) */}
-      {viewMode === 'card' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+      {/* Requirement 2: Auto-Synced Member Fund Cards (Strictly Card View Only, Prominent & Larger) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
           {filteredRecords.map((record) => {
             const isPaid = record.status === 'Paid';
             const matchedMember = record.memberId 
@@ -566,130 +535,6 @@ export const FundScreen: React.FC<FundScreenProps> = ({
             );
           })}
         </div>
-      )}
-
-      {/* Alternative View: Table View */}
-      {viewMode === 'table' && (
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
-                  <th className="p-3.5 sm:p-4">সদস্যের নাম ও পদবি (স্বয়ংক্রিয় সিঙ্ক)</th>
-                  <th className="p-3.5 sm:p-4">মোবাইল নম্বর</th>
-                  <th className="p-3.5 sm:p-4">মাস ও বিবরণ</th>
-                  <th className="p-3.5 sm:p-4">চাঁদার পরিমাণ</th>
-                  <th className="p-3.5 sm:p-4 text-center">পরিশোধের স্ট্যাটাস</th>
-                  <th className="p-3.5 sm:p-4 text-right">রসিদ / SMS</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredRecords.map((record) => {
-                  const isPaid = record.status === 'Paid';
-                  const matchedMember = record.memberId 
-                    ? memberMap.get(record.memberId) 
-                    : (record.phone ? memberMap.get(sanitizePhone(record.phone)) : null);
-
-                  const memberName = matchedMember ? matchedMember.name : record.memberName;
-                  const memberPhone = matchedMember?.phone || record.phone || '';
-                  const memberDesignation = matchedMember?.designation || record.designation || 'সাধারণ সদস্য';
-
-                  return (
-                    <tr key={record.id} className="hover:bg-slate-50/70 transition">
-                      <td className="p-3.5 sm:p-4 font-bold text-slate-900">
-                        <div className="text-sm font-black text-slate-900">{memberName}</div>
-                        <div className="text-[11px] text-emerald-700 font-bold mt-0.5">
-                          {memberDesignation}
-                        </div>
-                      </td>
-
-                      <td className="p-3.5 sm:p-4">
-                        {memberPhone ? (
-                          <div className="flex items-center gap-1.5 font-mono text-slate-700 font-bold">
-                            <span>{memberPhone}</span>
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(memberPhone);
-                                setCopiedPhone(memberPhone);
-                                setTimeout(() => setCopiedPhone(null), 2000);
-                              }}
-                              className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                              title="নম্বর কপি করুন"
-                            >
-                              {copiedPhone === memberPhone ? (
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">নম্বর নেই</span>
-                        )}
-                      </td>
-
-                      <td className="p-3.5 sm:p-4 text-slate-600">
-                        <div className="font-semibold text-slate-800">{record.month || 'চলতি মাস'}</div>
-                        {record.paidMonths && (
-                          <div className="text-[10px] text-emerald-700 font-bold mt-0.5">
-                            পরিশোধ: {record.paidMonths}
-                          </div>
-                        )}
-                        {record.dueMonths && (
-                          <div className="text-[10px] text-amber-700 font-bold mt-0.5">
-                            বকেয়া: {record.dueMonths}
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="p-3.5 sm:p-4">
-                        <span className={`font-black text-sm ${isPaid ? 'text-emerald-700' : 'text-amber-600'}`}>
-                          {formatBengaliCurrency(record.amount)}
-                        </span>
-                      </td>
-
-                      <td className="p-3.5 sm:p-4 text-center">
-                        <span
-                          className={`px-3 py-1 rounded-full text-[11px] font-bold inline-flex items-center gap-1 cursor-default select-none shadow-2xs ${
-                            isPaid
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : 'bg-amber-100 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          {isPaid ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>পরিশোধিত</span>
-                            </>
-                          ) : (
-                            <>
-                              <Clock className="w-3.5 h-3.5 text-amber-600" />
-                              <span>বকেয়া</span>
-                            </>
-                          )}
-                        </span>
-                      </td>
-
-                      <td className="p-3.5 sm:p-4 text-right">
-                        {memberPhone && (
-                          <button
-                            onClick={() => handleSendSms(record)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 transition cursor-pointer font-bold text-[11px]"
-                            title="SMS রসিদ কপি / পাঠান"
-                          >
-                            <Send className="w-3 h-3 text-emerald-600" />
-                            <span>মেসেজ</span>
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {filteredRecords.length === 0 && (
         <div className="p-12 text-center text-slate-500 bg-white rounded-3xl border border-slate-200">
