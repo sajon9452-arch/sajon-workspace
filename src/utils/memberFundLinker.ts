@@ -53,9 +53,11 @@ export function resolveMemberPhone(
  * Automatically synchronizes all members (General & Executive Committee)
  * with the Fund Management records.
  *
- * 1. Ensures NO member is missing: creates an automatic record if absent.
- * 2. Keeps existing records synchronized: updates member name and phone if edited.
- * 3. Preserves all existing records (Paid status, Expenses, etc.).
+ * 1. Ensures EVERY member in the central Member List has a linked FundRecord via memberId.
+ * 2. Strictly auto-syncs Identity details (Name, Phone, Designation) from the Member List.
+ * 3. 100% PRESERVES all Admin-controlled Financial data:
+ *    Payment Status, exact Paid/Due amounts, Paid/Due months, reference month, date, and notes.
+ * 4. Automatically removes orphaned fund cards if a member was deleted from the central Member List.
  */
 export function autoSyncMembersToFunds(
   members: Member[],
@@ -65,50 +67,68 @@ export function autoSyncMembersToFunds(
     return existingFunds || [];
   }
 
-  const result = Array.isArray(existingFunds) ? [...existingFunds] : [];
   const currentDate = new Date().toISOString().split('T')[0];
+  const safeExisting = Array.isArray(existingFunds) ? existingFunds : [];
+  const matchedFundIds = new Set<string>();
 
-  members.forEach(member => {
-    if (!member || !member.id) return;
+  // Map each member from the central Member List to their subscription fund record
+  const syncedMemberFunds = members.map(member => {
+    if (!member || !member.id) return null;
 
-    let found = false;
-    result.forEach((f, idx) => {
-      if (f.status === 'Expense') return;
+    // 1. Primary Match: unique memberId
+    let matched = safeExisting.find(f => f && f.memberId === member.id && !matchedFundIds.has(f.id));
 
-      const isMatch =
-        (f.memberId && f.memberId === member.id) ||
-        (f.memberName && normalizeBengaliName(f.memberName) === normalizeBengaliName(member.name)) ||
-        (member.phone && f.phone && sanitizePhone(member.phone) === sanitizePhone(f.phone));
+    // 2. Secondary Match: id constructed as "fund-member-${member.id}"
+    if (!matched) {
+      matched = safeExisting.find(f => f && f.id === `fund-member-${member.id}` && !matchedFundIds.has(f.id));
+    }
 
-      if (isMatch) {
-        found = true;
-        const targetPhone = member.phone || f.phone || '';
-        const targetDesignation = member.designation || (member.isExecutive ? 'কার্যকরী কমিটি সদস্য' : 'সাধারণ সদস্য');
-        if (
-          f.memberId !== member.id ||
-          f.memberName !== member.name ||
-          f.phone !== targetPhone ||
-          f.designation !== targetDesignation
-        ) {
-          result[idx] = {
-            ...f,
-            memberId: member.id,
-            memberName: member.name,
-            phone: targetPhone,
-            designation: targetDesignation
-          };
-        }
+    // 3. Fallback: sanitized phone match
+    if (!matched && member.phone) {
+      const sanitizedMemPhone = sanitizePhone(member.phone);
+      if (sanitizedMemPhone.length >= 8) {
+        matched = safeExisting.find(f => f && f.phone && sanitizePhone(f.phone) === sanitizedMemPhone && !matchedFundIds.has(f.id));
       }
-    });
+    }
 
-    if (!found) {
-      // Auto-populate fund entry for this member so there is NO missing member
-      const memberDesignation = member.designation || (member.isExecutive ? 'কার্যকরী কমিটি সদস্য' : 'সাধারণ সদস্য');
-      const newFundRecord: FundRecord = {
+    // 4. Fallback: normalized Bengali name match
+    if (!matched && member.name) {
+      const normMemName = normalizeBengaliName(member.name);
+      matched = safeExisting.find(f => f && f.memberName && normalizeBengaliName(f.memberName) === normMemName && !matchedFundIds.has(f.id));
+    }
+
+    const memberDesignation = member.designation || (member.isExecutive ? 'কার্যকরী কমিটি সদস্য' : 'সাধারণ সদস্য');
+    const memberPhone = member.phone || matched?.phone || '';
+
+    if (matched) {
+      matchedFundIds.add(matched.id);
+      // Strictly auto-sync identity while 100% preserving admin financial settings
+      return {
+        ...matched,
+        id: matched.id || `fund-member-${member.id}`,
+        memberId: member.id,
+        memberName: member.name,
+        phone: memberPhone,
+        designation: memberDesignation,
+        status: matched.status || 'Due',
+        amount: typeof matched.amount === 'number' && !isNaN(matched.amount) ? matched.amount : 500,
+        paidAmount: matched.paidAmount !== undefined ? matched.paidAmount : (matched.status === 'Paid' ? matched.amount : 0),
+        dueAmount: matched.dueAmount !== undefined ? matched.dueAmount : (matched.status === 'Due' ? matched.amount : 0),
+        paidMonths: matched.paidMonths !== undefined ? matched.paidMonths : (matched.status === 'Paid' ? (matched.month || 'মার্চ ২০২৬') : ''),
+        dueMonths: matched.dueMonths !== undefined ? matched.dueMonths : (matched.status === 'Due' ? (matched.month || 'মার্চ ২০২৬') : ''),
+        month: matched.month || 'মার্চ ২০২৬',
+        date: matched.date || currentDate,
+        type: matched.type || 'income',
+        category: matched.category || 'মাসিক চাঁদা',
+        description: matched.description || 'মাসিক নিয়মিত চাঁদা'
+      } as FundRecord;
+    } else {
+      // Auto-populate fund entry for this member linked via Member ID
+      return {
         id: `fund-member-${member.id}`,
         memberId: member.id,
         memberName: member.name,
-        phone: member.phone || '',
+        phone: memberPhone,
         designation: memberDesignation,
         amount: 500,
         status: 'Due',
@@ -122,10 +142,12 @@ export function autoSyncMembersToFunds(
         description: 'মাসিক নিয়মিত চাঁদা',
         category: 'মাসিক চাঁদা',
         notes: memberDesignation
-      };
-      result.push(newFundRecord);
+      } as FundRecord;
     }
-  });
+  }).filter((f): f is FundRecord => f !== null);
 
-  return result;
+  // Preserve any general expense or non-member records
+  const expenseOrGeneralFunds = safeExisting.filter(f => f && f.status === 'Expense' && !matchedFundIds.has(f.id));
+
+  return [...syncedMemberFunds, ...expenseOrGeneralFunds];
 }

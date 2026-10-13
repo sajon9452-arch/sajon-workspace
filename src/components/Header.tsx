@@ -16,7 +16,8 @@ import {
   LogOut,
   UserPlus,
   KeyRound,
-  User
+  User,
+  Eye
 } from 'lucide-react';
 import { ActiveScreen, OrganizationProfile, UserAccount } from '../types';
 
@@ -26,6 +27,8 @@ interface HeaderProps {
   setActiveScreen: (screen: ActiveScreen) => void;
   isAdmin: boolean;
   setIsAdmin: (val: boolean) => void;
+  adminViewMode?: 'admin' | 'user';
+  onSelectViewMode?: (mode: 'admin' | 'user') => void;
   loggedInUser?: UserAccount | null;
   onLogout?: () => void;
   onMemberLogout?: () => void;
@@ -39,6 +42,8 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveScreen,
   isAdmin,
   setIsAdmin,
+  adminViewMode = 'admin',
+  onSelectViewMode,
   loggedInUser,
   onLogout,
   onMemberLogout,
@@ -69,6 +74,12 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline text-amber-300 font-semibold">
               রেজিস্ট্রেশন নং: {profile.regNumber}
             </span>
+            {isAdmin && (
+              <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-black border border-amber-400/40 text-[10px]">
+                <ShieldCheck className="w-3 h-3 text-amber-300" />
+                <span>সুপার অ্যাডমিন • {adminViewMode === 'admin' ? 'অ্যাডমিন প্যানেল ভিউ' : 'ইউজার ভিউ (প্রিভিউ)'}</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -133,24 +144,46 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           {isAdmin ? (
-            <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/40 p-1 rounded-2xl shadow-sm">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {/* Requirement 2: Dual-View Switcher UI on Header/Top Bar */}
+              <div className="flex items-center bg-emerald-950/95 border border-emerald-400/60 p-1 rounded-2xl shadow-md gap-1">
+                <button
+                  type="button"
+                  onClick={() => onSelectViewMode && onSelectViewMode('user')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    adminViewMode === 'user'
+                      ? 'bg-emerald-400 text-emerald-950 shadow-sm ring-2 ring-white/60'
+                      : 'text-emerald-200 hover:text-white hover:bg-emerald-900/60'
+                  }`}
+                  title="ইউজার ভিউ: সাধারণ সদস্য ও ব্যবহারকারীরা যেভাবে দেখেন সেই ইন্টারফেস দেখুন"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>ইউজার ভিউ</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onSelectViewMode && onSelectViewMode('admin')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    adminViewMode === 'admin'
+                      ? 'bg-amber-400 text-amber-950 shadow-sm ring-2 ring-white/60'
+                      : 'text-emerald-200 hover:text-white hover:bg-emerald-900/60'
+                  }`}
+                  title="অ্যাডমিন প্যানেল ভিউ: সকল প্রশাসনিক ড্যাশবোর্ড ও নিয়ন্ত্রণ প্যানেল"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-950" />
+                  <span>অ্যাডমিন প্যানেল ভিউ</span>
+                </button>
+              </div>
+
+              {/* Admin Logout Button */}
               <button
-                onClick={() => setActiveScreen('admin')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                  activeScreen === 'admin' 
-                    ? 'bg-amber-400 text-emerald-950 shadow-xs' 
-                    : 'text-emerald-100 hover:text-white'
-                }`}
-              >
-                <Settings className="w-3.5 h-3.5" />
-                <span>অ্যাডমিন প্যানেল</span>
-              </button>
-              <button
+                type="button"
                 onClick={handleLogout}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs text-rose-300 hover:text-white hover:bg-rose-900/60 font-semibold cursor-pointer transition"
-                title="লগআউট"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs text-rose-200 hover:text-white bg-rose-950/70 hover:bg-rose-900 border border-rose-600/50 font-bold cursor-pointer transition shadow-xs"
+                title="অ্যাডমিন সেশন থেকে লগআউট"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <LogOut className="w-3.5 h-3.5 text-rose-300" />
                 <span className="hidden sm:inline">লগআউট</span>
               </button>
             </div>

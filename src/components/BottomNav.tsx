@@ -6,6 +6,8 @@ interface BottomNavProps {
   activeScreen: ActiveScreen;
   setActiveScreen: (screen: ActiveScreen) => void;
   isAdmin: boolean;
+  adminViewMode?: 'admin' | 'user';
+  onSelectViewMode?: (mode: 'admin' | 'user') => void;
   loggedInUser?: UserAccount | null;
   openAuthModal: (mode?: 'login' | 'register') => void;
 }
@@ -14,6 +16,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   activeScreen,
   setActiveScreen,
   isAdmin,
+  adminViewMode = 'admin',
+  onSelectViewMode,
   loggedInUser,
   openAuthModal
 }) => {
@@ -70,8 +74,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <span className="text-[10px]">ক্যালেন্ডার</span>
         </button>
 
-        {/* Isolated Action: Admin only if isAdmin; otherwise Login / Member status */}
-        {isAdmin ? (
+        {/* Isolated Action: Admin only if isAdmin in admin view; otherwise Login / Member status */}
+        {isAdmin && adminViewMode !== 'user' ? (
           <button
             onClick={() => setActiveScreen('admin')}
             className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition cursor-pointer ${

@@ -75,10 +75,13 @@ import { AdminPanelScreen } from './components/AdminPanelScreen';
 import { AuthModal } from './components/AuthModal';
 import { AuthGateScreen } from './components/AuthGateScreen';
 import { EmergencyHelplineModal } from './components/EmergencyHelplineModal';
+import { Eye, ShieldCheck } from 'lucide-react';
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>('home');
   const [isAdmin, setIsAdmin] = useState<boolean>(() => loadIsAdminSession());
+  // Requirement 3: Admin View Switcher (User View vs. Admin Panel View)
+  const [adminViewMode, setAdminViewMode] = useState<'admin' | 'user'>('admin');
   const [loggedInUser, setLoggedInUser] = useState<UserAccount | null>(() => {
     const user = loadLoggedInUser();
     if (user) {
@@ -97,6 +100,9 @@ export default function App() {
   // Strict Authentication status: Either master admin session OR approved regular member
   const isApprovedMember = loggedInUser !== null && loggedInUser.status === 'approved';
   const isAuthenticated = isAdmin || isApprovedMember;
+
+  // Real-time preview mode: When admin selects 'user' view, pass isAdmin: false to user screens
+  const effectiveIsAdminForScreens = isAdmin && adminViewMode === 'admin';
 
   // Data States
   const [profile, setProfile] = useState<OrganizationProfile>(() => loadOrgProfile());
@@ -142,6 +148,7 @@ export default function App() {
   const handleAdminLoginSuccess = () => {
     setIsAdmin(true);
     saveIsAdminSession(true);
+    setAdminViewMode('admin');
     setActiveScreen('admin');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -157,7 +164,21 @@ export default function App() {
   const handleAdminLogout = () => {
     setIsAdmin(false);
     saveIsAdminSession(false);
+    setAdminViewMode('admin');
     setActiveScreen('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Seamless Dual-View Mode Switcher: User View vs Admin Panel View
+  const handleSelectViewMode = (mode: 'admin' | 'user') => {
+    setAdminViewMode(mode);
+    if (mode === 'admin') {
+      setActiveScreen('admin');
+    } else {
+      if (activeScreen === 'admin') {
+        setActiveScreen('home');
+      }
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -362,7 +383,16 @@ export default function App() {
   };
 
   const handleEditFund = async (updatedFund: FundRecord): Promise<void> => {
-    const updated = funds.map(f => f.id === updatedFund.id ? updatedFund : f);
+    const matchIndex = funds.findIndex(
+      f => f.id === updatedFund.id || (f.memberId && updatedFund.memberId && f.memberId === updatedFund.memberId)
+    );
+    let updated: FundRecord[];
+    if (matchIndex >= 0) {
+      updated = [...funds];
+      updated[matchIndex] = updatedFund;
+    } else {
+      updated = [updatedFund, ...funds];
+    }
     setFunds(updated);
     saveFunds(updated);
     await safeSyncToSupabase('funds', updatedFund);
@@ -378,18 +408,43 @@ export default function App() {
 
   const handleToggleFundStatus = async (id: string, newStatus: PaymentStatus): Promise<void> => {
     let changedFund: FundRecord | null = null;
-    const updated = funds.map(f => {
-      if (f.id === id) {
-        const u = {
-          ...f,
+    const matchIndex = funds.findIndex(f => f.id === id || (f.memberId && f.memberId === id));
+    let updated: FundRecord[];
+    if (matchIndex >= 0) {
+      updated = funds.map((f, idx) => {
+        if (idx === matchIndex) {
+          const u: FundRecord = {
+            ...f,
+            status: newStatus,
+            paidAmount: newStatus === 'Paid' ? (f.amount || 500) : 0,
+            dueAmount: newStatus === 'Due' ? (f.amount || 500) : 0,
+            paidMonths: newStatus === 'Paid' ? (f.month || 'মার্চ ২০২৬') : '',
+            dueMonths: newStatus === 'Due' ? (f.month || 'মার্চ ২০২৬') : '',
+            approvedAt: newStatus === 'Paid' ? new Date().toISOString() : undefined
+          };
+          changedFund = u;
+          return u;
+        }
+        return f;
+      });
+    } else {
+      const effectiveList = autoSyncMembersToFunds(members, funds);
+      const target = effectiveList.find(f => f.id === id || f.memberId === id);
+      if (target) {
+        changedFund = {
+          ...target,
           status: newStatus,
-          approvedAt: newStatus === 'Paid' ? new Date().toISOString() : f.approvedAt
+          paidAmount: newStatus === 'Paid' ? (target.amount || 500) : 0,
+          dueAmount: newStatus === 'Due' ? (target.amount || 500) : 0,
+          paidMonths: newStatus === 'Paid' ? (target.month || 'মার্চ ২০২৬') : '',
+          dueMonths: newStatus === 'Due' ? (target.month || 'মার্চ ২০২৬') : '',
+          approvedAt: newStatus === 'Paid' ? new Date().toISOString() : undefined
         };
-        changedFund = u;
-        return u;
+        updated = [changedFund, ...funds];
+      } else {
+        updated = funds;
       }
-      return f;
-    });
+    }
     setFunds(updated);
     saveFunds(updated);
     if (changedFund) {
@@ -544,12 +599,35 @@ export default function App() {
         setActiveScreen={setActiveScreen}
         isAdmin={isAdmin}
         setIsAdmin={setIsAdmin}
+        adminViewMode={adminViewMode}
+        onSelectViewMode={handleSelectViewMode}
         loggedInUser={loggedInUser}
         onLogout={handleAdminLogout}
         onMemberLogout={handleMemberLogout}
         openAuthModal={handleOpenAuthModal}
         openEmergencyModal={() => setIsEmergencyModalOpen(true)}
       />
+
+      {/* Requirement 3: Real-Time Preview Banner for Super Admin in User View */}
+      {isAdmin && adminViewMode === 'user' && (
+        <div className="bg-emerald-950 text-white px-4 py-2 text-xs font-semibold flex items-center justify-between gap-3 shadow-md sticky top-[57px] z-30 border-b border-emerald-600/50 animate-in slide-in-from-top">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+            <Eye className="w-4 h-4 text-emerald-300 shrink-0" />
+            <span className="text-emerald-100">
+              <strong className="text-white">ইউজার ভিউ (প্রিভিউ মোড):</strong> আপনি সাধারণ সদস্যদের দৃষ্টিকোণ থেকে ইন্টারফেস দেখছেন।
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleSelectViewMode('admin')}
+            className="flex items-center gap-1.5 px-3 py-1 bg-amber-400 hover:bg-amber-300 text-emerald-950 rounded-xl text-xs font-black transition cursor-pointer shadow-xs shrink-0"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>অ্যাডমিন প্যানেল ভিউ-এ যান</span>
+          </button>
+        </div>
+      )}
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
         {activeScreen === 'home' && (
@@ -575,7 +653,7 @@ export default function App() {
           <MemberListScreen
             members={members}
             onAddMember={handleAddMember}
-            isAdmin={isAdmin}
+            isAdmin={effectiveIsAdminForScreens}
             openAdminModal={() => handleOpenAuthModal('login')}
             onBack={() => setActiveScreen('home')}
           />
@@ -587,7 +665,7 @@ export default function App() {
             onAddDonor={handleAddDonor}
             onEditDonor={handleEditDonor}
             onDeleteDonor={handleDeleteDonor}
-            isAdmin={isAdmin}
+            isAdmin={effectiveIsAdminForScreens}
             onBack={() => setActiveScreen('home')}
           />
         )}
@@ -600,7 +678,7 @@ export default function App() {
             monthlyExpense={monthlyExpense}
             extraMoney={extraMoney}
             paymentConfig={paymentConfig}
-            isAdmin={isAdmin}
+            isAdmin={effectiveIsAdminForScreens}
             onBack={() => setActiveScreen('home')}
           />
         )}
@@ -610,7 +688,7 @@ export default function App() {
             notices={notices}
             onAddNotice={handleAddNotice}
             onDeleteNotice={handleDeleteNotice}
-            isAdmin={isAdmin}
+            isAdmin={effectiveIsAdminForScreens}
             onBack={() => setActiveScreen('home')}
           />
         )}
@@ -626,7 +704,7 @@ export default function App() {
             reports={supportReports}
             profile={profile}
             onAddReport={handleAddReport}
-            isAdmin={isAdmin}
+            isAdmin={effectiveIsAdminForScreens}
             onBack={() => setActiveScreen('home')}
           />
         )}
@@ -665,6 +743,8 @@ export default function App() {
         activeScreen={activeScreen}
         setActiveScreen={setActiveScreen}
         isAdmin={isAdmin}
+        adminViewMode={adminViewMode}
+        onSelectViewMode={handleSelectViewMode}
         loggedInUser={loggedInUser}
         openAuthModal={handleOpenAuthModal}
       />

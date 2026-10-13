@@ -352,8 +352,15 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
     setIsSavingFundEdit(true);
     try {
+      const resolvedMemberId = editingFundRecord.memberId || (
+        editingFundRecord.id.startsWith('fund-member-')
+          ? editingFundRecord.id.replace('fund-member-', '')
+          : undefined
+      );
+
       const updated: FundRecord = {
         ...editingFundRecord,
+        memberId: resolvedMemberId,
         status: editFundStatus,
         amount,
         paidAmount,

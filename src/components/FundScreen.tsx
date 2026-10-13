@@ -74,14 +74,22 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   // Financial Statistics
   const totalIncome = useMemo(() => {
     return effectiveFundRecords
-      .filter(f => f.status === 'Paid')
-      .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+      .reduce((sum, f) => {
+        if (f.paidAmount !== undefined && !isNaN(Number(f.paidAmount))) {
+          return sum + Number(f.paidAmount);
+        }
+        return f.status === 'Paid' ? sum + (Number(f.amount) || 0) : sum;
+      }, 0);
   }, [effectiveFundRecords]);
 
   const totalDue = useMemo(() => {
     return effectiveFundRecords
-      .filter(f => f.status === 'Due')
-      .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+      .reduce((sum, f) => {
+        if (f.dueAmount !== undefined && !isNaN(Number(f.dueAmount))) {
+          return sum + Number(f.dueAmount);
+        }
+        return f.status === 'Due' ? sum + (Number(f.amount) || 0) : sum;
+      }, 0);
   }, [effectiveFundRecords]);
 
   // Requirement 1: Current Net Balance is strictly manualTotalBalance (never auto-calculated from entries)
