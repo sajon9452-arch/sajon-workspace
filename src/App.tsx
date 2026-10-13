@@ -11,6 +11,7 @@ import {
   HumanitarianActivity, 
   OrganizationRule,
   SupportReportItem,
+  SupportTeamMember,
   PaymentStatus,
   UserAccount 
 } from './types';
@@ -33,6 +34,8 @@ import {
   saveOrganizationRules, 
   loadSupportReports, 
   saveSupportReports, 
+  loadSupportMembers,
+  saveSupportMembers,
   loadPaymentSettings, 
   savePaymentSettings, 
   loadManualTotalBalance, 
@@ -114,6 +117,7 @@ export default function App() {
   const [humanitarianActivities, setHumanitarianActivities] = useState<HumanitarianActivity[]>(() => loadHumanitarianActivities());
   const [organizationRules, setOrganizationRules] = useState<OrganizationRule[]>(() => loadOrganizationRules());
   const [supportReports, setSupportReports] = useState<SupportReportItem[]>(() => loadSupportReports());
+  const [supportMembers, setSupportMembers] = useState<SupportTeamMember[]>(() => loadSupportMembers());
   const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(() => loadPaymentSettings());
   const [manualTotalBalance, setManualTotalBalance] = useState<number | null>(() => loadManualTotalBalance());
   const [monthlyExpense, setMonthlyExpense] = useState<number>(() => loadMonthlyExpense());
@@ -242,6 +246,7 @@ export default function App() {
         setManualTotalBalance(loadManualTotalBalance());
         setMonthlyExpense(loadMonthlyExpense());
         setExtraMoney(loadExtraMoney());
+        setSupportMembers(loadSupportMembers());
       }
     };
     window.addEventListener(PMS_SYNC_EVENT, handleSync);
@@ -518,7 +523,7 @@ export default function App() {
     await safeDeleteFromSupabase('notices', id);
   };
 
-  // 5. Support Report Handlers
+  // 5. Support Report & Support Team Directory Handlers
   const handleAddReport = async (newReport: Omit<SupportReportItem, 'id'>): Promise<SupportReportItem> => {
     const id = `sup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const item: SupportReportItem = {
@@ -529,6 +534,31 @@ export default function App() {
     setSupportReports(updated);
     saveSupportReports(updated);
     return item;
+  };
+
+  const handleAddSupportMember = async (newMember: Omit<SupportTeamMember, 'id'>): Promise<SupportTeamMember> => {
+    const id = `supp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const item: SupportTeamMember = {
+      ...newMember,
+      id
+    };
+    const updated = [...supportMembers, item];
+    setSupportMembers(updated);
+    saveSupportMembers(updated);
+    return item;
+  };
+
+  const handleEditSupportMember = async (updatedMember: SupportTeamMember): Promise<void> => {
+    const updated = supportMembers.map(m => m.id === updatedMember.id ? updatedMember : m);
+    setSupportMembers(updated);
+    saveSupportMembers(updated);
+  };
+
+  const handleDeleteSupportMember = async (id: string): Promise<void> => {
+    markIdAsPermanentlyDeleted(id);
+    const updated = supportMembers.filter(m => m.id !== id);
+    setSupportMembers(updated);
+    saveSupportMembers(updated);
   };
 
   // 6. Organization Profile & Payment Settings
@@ -701,6 +731,10 @@ export default function App() {
 
         {activeScreen === 'support' && (
           <SupportScreen
+            supportMembers={supportMembers}
+            onAddSupportMember={handleAddSupportMember}
+            onEditSupportMember={handleEditSupportMember}
+            onDeleteSupportMember={handleDeleteSupportMember}
             reports={supportReports}
             profile={profile}
             onAddReport={handleAddReport}

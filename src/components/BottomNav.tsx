@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Users, Droplet, Wallet, Calendar, ShieldCheck, KeyRound, User } from 'lucide-react';
+import { Home, Users, Droplet, Wallet, Headphones, ShieldCheck, KeyRound, User } from 'lucide-react';
 import { ActiveScreen, UserAccount } from '../types';
 
 interface BottomNavProps {
@@ -64,14 +64,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <span className="text-[10px]">তহবিল</span>
         </button>
 
+        {/* Requirement 3: Support Team tab replacing Calendar */}
         <button
-          onClick={() => setActiveScreen('calendar')}
+          onClick={() => setActiveScreen('support')}
           className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition cursor-pointer ${
-            activeScreen === 'calendar' ? 'text-emerald-700 font-bold' : 'text-slate-500 hover:text-slate-800'
+            activeScreen === 'support' ? 'text-emerald-700 font-bold' : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          <Calendar className="w-5 h-5 text-teal-600" />
-          <span className="text-[10px]">ক্যালেন্ডার</span>
+          <Headphones className="w-5 h-5 text-emerald-600" />
+          <span className="text-[10px]">সাপোর্ট টিম</span>
         </button>
 
         {/* Isolated Action: Admin only if isAdmin in admin view; otherwise Login / Member status */}

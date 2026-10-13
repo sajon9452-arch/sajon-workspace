@@ -3,6 +3,7 @@ import {
   Users, 
   Droplet, 
   Wallet, 
+  Headphones,
   Calendar as CalendarIcon, 
   BellRing, 
   Heart, 
@@ -265,22 +266,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         </div>
 
-        {/* 2026 Calendar */}
+        {/* Support Team Directory */}
         <div 
-          onClick={() => onNavigate('calendar')}
+          onClick={() => onNavigate('support')}
           className="bg-white p-4 sm:p-5 rounded-3xl border border-teal-100 shadow-xs hover:shadow-md transition cursor-pointer group flex flex-col justify-between"
         >
           <div>
             <div className="w-11 h-11 rounded-2xl bg-teal-100 text-teal-800 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-              <CalendarIcon className="w-6 h-6 text-teal-700" />
+              <Headphones className="w-6 h-6 text-teal-700" />
             </div>
-            <span className="text-xs text-slate-500 font-semibold">বর্ষপঞ্জি ২০২৬</span>
-            <div className="text-2xl sm:text-3xl font-black text-teal-800 mt-0.5">
-              ১২ মাস
+            <span className="text-xs text-slate-500 font-semibold">কাস্টমার কেয়ার ও হেল্পডেস্ক</span>
+            <div className="text-xl sm:text-2xl font-black text-teal-800 mt-0.5">
+              সাপোর্ট টিম
             </div>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-teal-700 font-bold">
-            <span>সরকারি ছুটির তালিকা</span>
+            <span>সরাসরি প্রতিনিধি যোগাযোগ</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
           </div>
         </div>

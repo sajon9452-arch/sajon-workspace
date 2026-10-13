@@ -5,6 +5,7 @@ import {
   FundRecord, 
   OrganizationProfile, 
   SupportReportItem, 
+  SupportTeamMember,
   HomeSlide, 
   HumanitarianActivity, 
   OrganizationRule,
@@ -20,6 +21,7 @@ import {
   INITIAL_HUMANITARIAN_ACTIVITIES, 
   INITIAL_ORGANIZATION_RULES, 
   INITIAL_SUPPORT_REPORTS, 
+  INITIAL_SUPPORT_MEMBERS,
   INITIAL_PAYMENT_CONFIG 
 } from '../data/initialData';
 import { sortMembersOldestFirst } from './helpers';
@@ -34,6 +36,7 @@ const STORAGE_KEYS = {
   HUMANITARIAN_ACTIVITIES: 'pms_humanitarian_activities',
   ORGANIZATION_RULES: 'pms_organization_rules',
   SUPPORT_REPORTS: 'pms_support_reports',
+  SUPPORT_MEMBERS: 'pms_support_team_members',
   PAYMENT_SETTINGS: 'pms_payment_settings',
   MANUAL_TOTAL_BALANCE: 'pms_manual_total_balance',
   MONTHLY_EXPENSE: 'pms_monthly_expense',
@@ -308,6 +311,32 @@ export function saveSupportReports(reports: SupportReportItem[]) {
     const filtered = reports.filter(s => !isIdPermanentlyDeleted(s.id));
     localStorage.setItem(STORAGE_KEYS.SUPPORT_REPORTS, JSON.stringify(filtered));
     notifyStorageChange(STORAGE_KEYS.SUPPORT_REPORTS, filtered);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// 9.1 Support Team Directory Members
+export function loadSupportMembers(): SupportTeamMember[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SUPPORT_MEMBERS);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter(s => !isIdPermanentlyDeleted(s.id));
+      }
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return INITIAL_SUPPORT_MEMBERS;
+}
+
+export function saveSupportMembers(members: SupportTeamMember[]) {
+  try {
+    const filtered = members.filter(s => !isIdPermanentlyDeleted(s.id));
+    localStorage.setItem(STORAGE_KEYS.SUPPORT_MEMBERS, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.SUPPORT_MEMBERS, filtered);
   } catch (e) {
     console.error(e);
   }

@@ -123,6 +123,20 @@ export interface SupportReportItem {
   photoUrl?: string;
 }
 
+export interface SupportTeamMember {
+  id: string;
+  name: string;
+  phone: string;
+  photoUrl?: string;
+  designation: string;
+  subject: string;
+  description: string;
+  category?: string;
+  availableHours?: string;
+  email?: string;
+  serial: number;
+}
+
 export interface HomeSlide {
   id: string;
   title: string;

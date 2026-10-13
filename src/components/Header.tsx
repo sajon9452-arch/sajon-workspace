@@ -1,22 +1,13 @@
 import React from 'react';
 import { 
   HeartHandshake, 
-  Lock, 
   PhoneCall, 
   ArrowLeft,
-  Settings,
-  Users,
-  Droplet,
-  Wallet,
-  Calendar as CalendarIcon,
-  BellRing,
-  HelpCircle,
-  ShieldCheck,
-  Phone,
-  LogOut,
-  UserPlus,
-  KeyRound,
-  User,
+  ShieldCheck, 
+  Phone, 
+  LogOut, 
+  UserPlus, 
+  KeyRound, 
   Eye
 } from 'lucide-react';
 import { ActiveScreen, OrganizationProfile, UserAccount } from '../types';
@@ -119,14 +110,16 @@ export const Header: React.FC<HeaderProps> = ({
               <HeartHandshake className="w-8 h-8 text-emerald-700" />
             )}
           </div>
-          <div>
-            <h1 className="text-lg sm:text-2xl font-black tracking-tight text-white leading-tight flex items-center gap-2">
-              <span>{profile.name}</span>
+          {/* Requirement 1: Header Text Formatting (Strict 3-Line Clean Stack) */}
+          <div className="flex flex-col justify-center min-w-0">
+            <h1 className="text-sm sm:text-lg md:text-xl font-black tracking-tight text-white leading-tight">
+              {profile.name || 'সিলেট মানবসেবা সংগঠন'}
             </h1>
-            <p className="text-[11px] sm:text-xs text-emerald-200 font-medium flex items-center gap-2 mt-0.5">
-              <span>{profile.tagline || 'মানবতার কল্যাণে নিবেদিত প্রাণ'}</span>
-              <span className="text-emerald-400">•</span>
-              <span className="text-amber-300 font-semibold">{profile.address}</span>
+            <p className="text-[10px] sm:text-xs text-emerald-200 font-medium leading-snug mt-0.5">
+              {profile.tagline || 'মানবতার কল্যাণে নিবেদিত প্রান'}
+            </p>
+            <p className="text-[10px] sm:text-xs text-amber-300 font-bold leading-snug">
+              {profile.address || 'পতেঙ্গা, চট্টগ্রাম'}
             </p>
           </div>
         </div>
@@ -220,88 +213,6 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Navigation Tabs Bar */}
-      <div className="bg-emerald-950/70 border-t border-emerald-800/50 px-4 py-2 overflow-x-auto no-scrollbar">
-        <div className="max-w-6xl mx-auto flex items-center gap-1.5 sm:gap-2 text-xs font-bold whitespace-nowrap">
-          <button
-            onClick={() => setActiveScreen('home')}
-            className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-              activeScreen === 'home' 
-                ? 'bg-emerald-600 text-white shadow-sm' 
-                : 'text-emerald-100 hover:bg-emerald-800/60'
-            }`}
-          >
-            প্রধান পাতা
-          </button>
-          <button
-            onClick={() => setActiveScreen('members')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition cursor-pointer ${
-              activeScreen === 'members' 
-                ? 'bg-emerald-600 text-white shadow-sm' 
-                : 'text-emerald-100 hover:bg-emerald-800/60'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5 text-emerald-300" />
-            <span>সদস্য তালিকা</span>
-          </button>
-          <button
-            onClick={() => setActiveScreen('blood')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition cursor-pointer ${
-              activeScreen === 'blood' 
-                ? 'bg-rose-700 text-white shadow-sm' 
-                : 'text-rose-100 hover:bg-rose-900/60'
-            }`}
-          >
-            <Droplet className="w-3.5 h-3.5 text-rose-300" />
-            <span>রক্তদান সেবা</span>
-          </button>
-          <button
-            onClick={() => setActiveScreen('fund')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition cursor-pointer ${
-              activeScreen === 'fund' 
-                ? 'bg-emerald-600 text-white shadow-sm' 
-                : 'text-emerald-100 hover:bg-emerald-800/60'
-            }`}
-          >
-            <Wallet className="w-3.5 h-3.5 text-amber-300" />
-            <span>তহবিল ও চাঁদা</span>
-          </button>
-          <button
-            onClick={() => setActiveScreen('calendar')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition cursor-pointer ${
-              activeScreen === 'calendar' 
-                ? 'bg-emerald-600 text-white shadow-sm' 
-                : 'text-emerald-100 hover:bg-emerald-800/60'
-            }`}
-          >
-            <CalendarIcon className="w-3.5 h-3.5 text-teal-300" />
-            <span>ক্যালেন্ডার ২০২৬</span>
-          </button>
-          <button
-            onClick={() => setActiveScreen('notices')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition cursor-pointer ${
-              activeScreen === 'notices' 
-                ? 'bg-emerald-600 text-white shadow-sm' 
-                : 'text-emerald-100 hover:bg-emerald-800/60'
-            }`}
-          >
-            <BellRing className="w-3.5 h-3.5 text-yellow-300" />
-            <span>নোটিশ বোর্ড</span>
-          </button>
-          <button
-            onClick={() => setActiveScreen('support')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition cursor-pointer ${
-              activeScreen === 'support' 
-                ? 'bg-emerald-600 text-white shadow-sm' 
-                : 'text-emerald-100 hover:bg-emerald-800/60'
-            }`}
-          >
-            <HelpCircle className="w-3.5 h-3.5 text-emerald-300" />
-            <span>সহায়তা কেন্দ্র</span>
-          </button>
         </div>
       </div>
     </header>
