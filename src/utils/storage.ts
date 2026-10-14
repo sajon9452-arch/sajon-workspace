@@ -335,7 +335,7 @@ export function loadOrganizationRules(): OrganizationRule[] {
   } catch (e) {
     console.error(e);
   }
-  return [];
+  return INITIAL_ORGANIZATION_RULES.filter(r => !isIdPermanentlyDeleted(r.id));
 }
 
 export function saveOrganizationRules(rules: OrganizationRule[]) {

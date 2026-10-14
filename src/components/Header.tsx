@@ -112,13 +112,13 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           {/* Requirement 1: Header Text Formatting (Strict 3-Line Clean Stack) */}
           <div className="flex flex-col justify-center min-w-0">
-            <h1 className="text-sm sm:text-lg md:text-xl font-black tracking-tight text-white leading-tight">
+            <h1 className="text-sm sm:text-base md:text-lg font-black tracking-tight text-white leading-tight whitespace-nowrap">
               {profile.name || 'সিলেট মানবসেবা সংগঠন'}
             </h1>
-            <p className="text-[10px] sm:text-xs text-emerald-200 font-medium leading-snug mt-0.5">
+            <p className="text-[10px] sm:text-xs text-emerald-200 font-medium leading-snug mt-0.5 whitespace-nowrap">
               {profile.tagline || 'মানবতার কল্যাণে নিবেদিত প্রান'}
             </p>
-            <p className="text-[10px] sm:text-xs text-amber-300 font-bold leading-snug">
+            <p className="text-[10px] sm:text-xs text-amber-300 font-bold leading-snug whitespace-nowrap">
               {profile.address || 'পতেঙ্গা, চট্টগ্রাম'}
             </p>
           </div>

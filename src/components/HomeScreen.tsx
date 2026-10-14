@@ -15,13 +15,22 @@ import {
   Gift, 
   PlusCircle,
   X,
-  Maximize2
+  Maximize2,
+  BookOpen,
+  Share2,
+  Mail,
+  Phone,
+  ExternalLink,
+  Globe,
+  Youtube,
+  Facebook
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
   HomeSlide, 
   AidDonationRecord, 
-  ExtraContributionRecord 
+  ExtraContributionRecord,
+  OrganizationRule
 } from '../types';
 import { toBengaliNumber, formatBengaliCurrency } from '../utils/helpers';
 
@@ -30,8 +39,9 @@ interface HomeScreenProps {
   homeSlides: HomeSlide[];
   aidDonations: AidDonationRecord[];
   extraContributions: ExtraContributionRecord[];
+  organizationRules?: OrganizationRule[];
   isAdmin: boolean;
-  onNavigateToAdminTab?: (tab: 'slides' | 'donations' | 'contributions') => void;
+  onNavigateToAdminTab?: (tab: 'slides' | 'donations' | 'contributions' | 'rules' | 'profile') => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -39,6 +49,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   homeSlides = [],
   aidDonations = [],
   extraContributions = [],
+  organizationRules = [],
   isAdmin,
   onNavigateToAdminTab
 }) => {
@@ -58,7 +69,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   // Lightbox / Image Zoom Modal
   const [zoomedImage, setZoomedImage] = useState<{ url: string; title: string; subtitle?: string } | null>(null);
 
-  // Filter only active slides (if isActive is defined)
+  // Filter only active slides
   const activeSlidesList = homeSlides.filter(s => s.isActive !== false);
 
   // Auto rotate slides every 5 seconds (pause on hover/interaction)
@@ -148,6 +159,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const totalAidDisbursed = aidDonations.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   const totalExtraReceived = extraContributions.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
+  // Active Organization Rules (sorted by pointNumber)
+  const activeRules = [...organizationRules]
+    .filter(r => r.isActive !== false)
+    .sort((a, b) => (a.pointNumber || 0) - (b.pointNumber || 0));
+
   const currentSlide = activeSlidesList[currentSlideIndex] || activeSlidesList[0];
 
   return (
@@ -173,8 +189,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 className="relative h-64 sm:h-80 md:h-[420px] lg:h-[480px] w-full overflow-hidden cursor-pointer"
                 onClick={() => currentSlide.imageUrl && setZoomedImage({ 
                   url: currentSlide.imageUrl, 
-                  title: 'সংগঠনের ফটো গ্যালারি', 
-                  subtitle: currentSlide.title 
+                  title: 'সিলেট মানবসেবা সংগঠন', 
+                  subtitle: 'গ্রুপ ফটো ও কার্যক্রম গ্যালারি' 
                 })}
                 title="ছবি বড় করে দেখতে ক্লিক করুন"
               >
@@ -197,7 +213,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   <span>বড় করে দেখুন</span>
                 </div>
 
-                {/* Previous & Next Desktop/Tablet Navigation Buttons */}
+                {/* Previous & Next Navigation Buttons */}
                 {activeSlidesList.length > 1 && (
                   <>
                     <button
@@ -343,7 +359,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         )}
 
-        {/* Multiple Records Cards Grid - Refined Card Layout */}
+        {/* Multiple Records Cards Grid */}
         {filteredDonations.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5 sm:gap-6">
             {filteredDonations.map((item) => (
@@ -554,6 +570,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             • Large photo at top
             • All details strictly underneath the photo
             • Multiple records dynamically supported
+            • Personal payment numbers removed (exclusive for donor records)
           ========================================================================= */}
       <section className="space-y-5">
         {/* Section Header */}
@@ -607,7 +624,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         )}
 
-        {/* Multiple Contribution Cards Grid - Exactly Same Refined Structure */}
+        {/* Multiple Contribution Cards Grid */}
         {filteredContributions.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5 sm:gap-6">
             {filteredContributions.map((item) => (
@@ -706,99 +723,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       </div>
                     )}
                   </div>
-
-                  {/* Optional Personal Payment Numbers (বিকাশ / নগদ / রকেট) */}
-                  {(item.bkashNumber || item.nagadNumber || item.rocketNumber) && (
-                    <div className="pt-2 border-t border-slate-100 space-y-2">
-                      <div className="flex items-center gap-1.5 text-amber-900 text-xs font-black">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <span>যোগাযোগ ও আর্থিক লেনদেন নম্বর (ঐচ্ছিক):</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {item.bkashNumber && (
-                          <div className="flex items-center justify-between bg-pink-50/60 px-3 py-2 rounded-2xl border border-pink-200 shadow-2xs">
-                            <div className="flex items-center gap-1.5 truncate">
-                              <span className="px-2 py-0.5 rounded-lg bg-pink-600 text-white text-[10px] font-black">বিকাশ</span>
-                              <span className="font-mono text-slate-900 font-bold text-xs truncate">{item.bkashNumber}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleCopy(item.bkashNumber!, `ext-b-${item.id}`)}
-                              className="p-1 rounded-lg text-pink-700 hover:bg-pink-100 transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold"
-                              title="বিকাশ নম্বর কপি করুন"
-                            >
-                              {copiedKey === `ext-b-${item.id}` ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span className="text-emerald-700">কপি হয়েছে</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3.5 h-3.5" />
-                                  <span>কপি</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        )}
-
-                        {item.nagadNumber && (
-                          <div className="flex items-center justify-between bg-orange-50/60 px-3 py-2 rounded-2xl border border-orange-200 shadow-2xs">
-                            <div className="flex items-center gap-1.5 truncate">
-                              <span className="px-2 py-0.5 rounded-lg bg-orange-600 text-white text-[10px] font-black">নগদ</span>
-                              <span className="font-mono text-slate-900 font-bold text-xs truncate">{item.nagadNumber}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleCopy(item.nagadNumber!, `ext-n-${item.id}`)}
-                              className="p-1 rounded-lg text-orange-700 hover:bg-orange-100 transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold"
-                              title="নগদ নম্বর কপি করুন"
-                            >
-                              {copiedKey === `ext-n-${item.id}` ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span className="text-emerald-700">কপি হয়েছে</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3.5 h-3.5" />
-                                  <span>কপি</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        )}
-
-                        {item.rocketNumber && (
-                          <div className="flex items-center justify-between bg-purple-50/60 px-3 py-2 rounded-2xl border border-purple-200 shadow-2xs col-span-full">
-                            <div className="flex items-center gap-1.5 truncate">
-                              <span className="px-2 py-0.5 rounded-lg bg-purple-600 text-white text-[10px] font-black">রকেট</span>
-                              <span className="font-mono text-slate-900 font-bold text-xs truncate">{item.rocketNumber}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleCopy(item.rocketNumber!, `ext-r-${item.id}`)}
-                              className="p-1 rounded-lg text-purple-700 hover:bg-purple-100 transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold"
-                              title="রকেট নম্বর কপি করুন"
-                            >
-                              {copiedKey === `ext-r-${item.id}` ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span className="text-emerald-700">কপি হয়েছে</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3.5 h-3.5" />
-                                  <span>কপি</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             ))}
@@ -812,6 +736,220 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </p>
           </div>
         )}
+      </section>
+
+      {/* =========================================================================
+          SECTION 4: Organization Rules & Guidelines (সংগঠনের নিয়মাবলি)
+          - Displayed below donation sections in a clean, numbered list (1, 2, 3...)
+          - Solely editable via Admin Panel
+          ========================================================================= */}
+      <section className="space-y-4">
+        <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="p-2.5 rounded-2xl bg-teal-100 text-teal-800">
+                <BookOpen className="w-5 h-5 text-teal-700" />
+              </div>
+              <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                সংগঠনের নিয়মাবলি ও নির্দেশিকা
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-teal-100 text-teal-800">
+                {toBengaliNumber(activeRules.length)}টি ধারা
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              সংগঠনের আদর্শ, অভ্যন্তরীণ শৃঙ্খলা, সদস্য আচরণ ও মানবিক কার্যক্রম পরিচালনার মৌলিক নিয়মাবলি
+            </p>
+          </div>
+
+          {isAdmin && onNavigateToAdminTab && (
+            <button
+              onClick={() => onNavigateToAdminTab('rules')}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>নিয়মাবলি পরিচালনা ও সম্পাদন</span>
+            </button>
+          )}
+        </div>
+
+        {activeRules.length > 0 ? (
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-xs divide-y divide-slate-100 space-y-3">
+            {activeRules.map((rule, idx) => (
+              <div 
+                key={rule.id} 
+                className="pt-3 first:pt-0 flex items-start gap-3.5 group hover:bg-slate-50/70 p-2.5 rounded-2xl transition"
+              >
+                {/* Number Badge (1, 2, 3...) */}
+                <div className="w-8 h-8 rounded-2xl bg-emerald-700 text-white font-black text-xs sm:text-sm flex items-center justify-center shrink-0 shadow-xs mt-0.5 group-hover:scale-105 transition-transform">
+                  {toBengaliNumber(rule.pointNumber || idx + 1)}
+                </div>
+
+                <div className="flex-1 min-w-0 space-y-1">
+                  {rule.category && (
+                    <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200/60">
+                      {rule.category}
+                    </span>
+                  )}
+                  <p className="text-xs sm:text-sm text-slate-800 font-medium leading-relaxed">
+                    {rule.ruleText}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 rounded-3xl bg-white border border-slate-200 text-center space-y-2">
+            <BookOpen className="w-10 h-10 text-slate-300 mx-auto" />
+            <h4 className="text-sm font-bold text-slate-700">কোনো নিয়মাবলি যুক্ত করা নেই</h4>
+            <p className="text-xs text-slate-400">অ্যাডমিন প্যানেল থেকে নিয়মাবলি এন্ট্রি করুন।</p>
+          </div>
+        )}
+      </section>
+
+      {/* =========================================================================
+          SECTION 5: Official Social Media / Page Link & Official Email Address
+          - Clickable direct links to official Facebook page, email, hotline, YouTube
+          - Fully manageable via Admin Panel (Profile tab)
+          ========================================================================= */}
+      <section className="space-y-4">
+        <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="p-2.5 rounded-2xl bg-indigo-100 text-indigo-800">
+                <Share2 className="w-5 h-5 text-indigo-700" />
+              </div>
+              <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                অফিসিয়াল যোগাযোগ ও সোশ্যাল মিডিয়া
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500">
+              সংগঠনের সাথে সার্বক্ষণিক যোগাযোগের জন্য অফিসিয়াল ফেসবুক পেজ, ইমেইল এবং মোবাইল নম্বরে ক্লিক করুন
+            </p>
+          </div>
+
+          {isAdmin && onNavigateToAdminTab && (
+            <button
+              onClick={() => onNavigateToAdminTab('profile')}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>যোগাযোগ তথ্য সম্পাদন করুন</span>
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Official Facebook Page Link */}
+          {profile.facebookUrl ? (
+            <a
+              href={profile.facebookUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-blue-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <Facebook className="w-6 h-6" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ফেসবুক পেজ</span>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-blue-700 transition-colors">
+                    অফিসিয়াল ফেসবুক পেজ
+                  </h4>
+                  <p className="text-[11px] text-slate-500 truncate">ভিজিট করতে এখানে ক্লিক করুন</p>
+                </div>
+              </div>
+              <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-blue-600 shrink-0 transition-colors" />
+            </a>
+          ) : (
+            <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs flex items-center gap-3.5 opacity-60">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
+                <Facebook className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 block">ফেসবুক পেজ</span>
+                <h4 className="text-xs font-bold text-slate-700">শীঘ্রই যুক্ত করা হবে</h4>
+              </div>
+            </div>
+          )}
+
+          {/* Official Email Address */}
+          {profile.email ? (
+            <a
+              href={`mailto:${profile.email}`}
+              className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-700 group-hover:text-white transition-colors">
+                  <Mail className="w-6 h-6" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">অফিসিয়াল ইমেইল</span>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-emerald-700 transition-colors font-mono">
+                    {profile.email}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 truncate">মেইল পাঠাতে ক্লিক করুন</p>
+                </div>
+              </div>
+              <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 shrink-0 transition-colors" />
+            </a>
+          ) : (
+            <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs flex items-center gap-3.5 opacity-60">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
+                <Mail className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 block">অফিসিয়াল ইমেইল</span>
+                <h4 className="text-xs font-bold text-slate-700">শীঘ্রই যুক্ত করা হবে</h4>
+              </div>
+            </div>
+          )}
+
+          {/* Official Hotline & Mobile */}
+          <a
+            href={`tel:${profile.hotline || profile.phone || '01886122678'}`}
+            className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-teal-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 group-hover:bg-teal-700 group-hover:text-white transition-colors">
+                <Phone className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">হটলাইন ও যোগাযোগ</span>
+                <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-teal-700 transition-colors font-mono">
+                  {profile.hotline || profile.phone || '01886122678'}
+                </h4>
+                <p className="text-[11px] text-slate-500 truncate">সরাসরি কল করতে ট্যাপ করুন</p>
+              </div>
+            </div>
+            <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-teal-600 shrink-0 transition-colors" />
+          </a>
+
+          {/* Official YouTube Channel / Media */}
+          {profile.youtubeUrl && (
+            <a
+              href={profile.youtubeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-red-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer sm:col-span-2 lg:col-span-3"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                  <Youtube className="w-6 h-6" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ইউটিউব চ্যানেল / মিডিয়া</span>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-red-700 transition-colors">
+                    অফিসিয়াল ইউটিউব চ্যানেল
+                  </h4>
+                  <p className="text-[11px] text-slate-500 truncate">ভিডিও ও মানবিক কার্যক্রমের তথ্যচিত্র দেখতে ক্লিক করুন</p>
+                </div>
+              </div>
+              <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-red-600 shrink-0 transition-colors" />
+            </a>
+          )}
+        </div>
       </section>
 
       {/* Lightbox / Zoom Modal */}

@@ -43,7 +43,8 @@ import {
   Image as ImageIcon,
   Heart,
   Gift,
-  Eye
+  Eye,
+  BookOpen
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
@@ -56,7 +57,8 @@ import {
   SecurityAlert,
   HomeSlide,
   AidDonationRecord,
-  ExtraContributionRecord
+  ExtraContributionRecord,
+  OrganizationRule
 } from '../types';
 import { 
   toBengaliNumber, 
@@ -113,6 +115,10 @@ interface AdminPanelScreenProps {
   onAddExtraContribution?: (contribution: Omit<ExtraContributionRecord, 'id'>) => Promise<ExtraContributionRecord>;
   onEditExtraContribution?: (contribution: ExtraContributionRecord) => Promise<void>;
   onDeleteExtraContribution?: (id: string) => Promise<void>;
+  organizationRules?: OrganizationRule[];
+  onAddRule?: (rule: Omit<OrganizationRule, 'id'>) => Promise<OrganizationRule>;
+  onEditRule?: (rule: OrganizationRule) => Promise<void>;
+  onDeleteRule?: (id: string) => Promise<void>;
   paymentConfig: PaymentGatewayConfig;
   onUpdatePaymentConfig: (config: PaymentGatewayConfig) => void;
   initialTab?: string;
@@ -148,13 +154,17 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onAddExtraContribution,
   onEditExtraContribution,
   onDeleteExtraContribution,
+  organizationRules = [],
+  onAddRule,
+  onEditRule,
+  onDeleteRule,
   paymentConfig,
   onUpdatePaymentConfig,
   initialTab,
   onBack,
   onLogout
 }) => {
-  const [activeTab, setActiveTab] = useState<'members' | 'registrations' | 'funds' | 'slides' | 'donations' | 'contributions' | 'profile' | 'payments' | 'security'>(
+  const [activeTab, setActiveTab] = useState<'members' | 'registrations' | 'funds' | 'slides' | 'donations' | 'contributions' | 'rules' | 'profile' | 'payments' | 'security'>(
     (initialTab as any) || 'members'
   );
   
@@ -566,7 +576,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [hotline, setHotline] = useState(profile.hotline);
   const [regNumber, setRegNumber] = useState(profile.regNumber);
   const [phone, setPhone] = useState(profile.phone);
-  const [email, setEmail] = useState(profile.email);
+  const [email, setEmail] = useState(profile.email || '');
+  const [facebookUrl, setFacebookUrl] = useState(profile.facebookUrl || '');
+  const [youtubeUrl, setYoutubeUrl] = useState(profile.youtubeUrl || '');
   const [logoUrl, setLogoUrl] = useState(profile.logoUrl || '');
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
@@ -580,7 +592,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     setHotline(profile.hotline);
     setRegNumber(profile.regNumber);
     setPhone(profile.phone);
-    setEmail(profile.email);
+    setEmail(profile.email || '');
+    setFacebookUrl(profile.facebookUrl || '');
+    setYoutubeUrl(profile.youtubeUrl || '');
     setLogoUrl(profile.logoUrl || '');
   }, [profile]);
 
@@ -781,10 +795,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       hotline,
       regNumber,
       phone,
-      email,
+      email: email ? email.trim() : '',
+      facebookUrl: facebookUrl ? facebookUrl.trim() : undefined,
+      youtubeUrl: youtubeUrl ? youtubeUrl.trim() : undefined,
       logoUrl: logoUrl.trim() || undefined
     });
-    setNoticeMsg('সংগঠনের প্রোফাইল ও লোগো সফলভাবে আপডেট করা হয়েছে');
+    setNoticeMsg('সংগঠনের প্রোফাইল ও অফিসিয়াল যোগাযোগ তথ্য সফলভাবে আপডেট করা হয়েছে');
     setTimeout(() => setNoticeMsg(''), 3000);
   };
 
@@ -872,8 +888,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
   const handleSaveSlide = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slideTitle.trim()) {
-      setErrorMsg('স্লাইডারের শিরোনাম আবশ্যক');
+    if (!slideImageUrl.trim()) {
+      setErrorMsg('স্লাইডারের ছবি নির্বাচন বা আপলোড করা আবশ্যক');
       setTimeout(() => setErrorMsg(''), 3000);
       return;
     }
@@ -882,22 +898,14 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       if (editingSlide && onEditHomeSlide) {
         await onEditHomeSlide({
           ...editingSlide,
-          title: slideTitle.trim(),
-          description: slideDescription.trim(),
-          category: slideCategory.trim(),
-          date: slideDate.trim(),
-          location: slideLocation.trim(),
+          title: 'সংগঠনের গ্রুপ ফটো',
           imageUrl: slideImageUrl.trim(),
           isActive: slideIsActive
         });
-        setNoticeMsg('স্লাইডার তথ্য সফলভাবে আপডেট করা হয়েছে');
+        setNoticeMsg('স্লাইডার ছবি সফলভাবে আপডেট করা হয়েছে');
       } else if (onAddHomeSlide) {
         await onAddHomeSlide({
-          title: slideTitle.trim(),
-          description: slideDescription.trim(),
-          category: slideCategory.trim(),
-          date: slideDate.trim(),
-          location: slideLocation.trim(),
+          title: 'সংগঠনের গ্রুপ ফটো',
           imageUrl: slideImageUrl.trim(),
           isActive: slideIsActive
         });
@@ -1127,10 +1135,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
           providerReference: contribProviderRef.trim(),
           amount: amt,
           date: contribDate.trim(),
-          description: contribDescription.trim(),
-          bkashNumber: contribBkash.trim() || undefined,
-          nagadNumber: contribNagad.trim() || undefined,
-          rocketNumber: contribRocket.trim() || undefined
+          description: contribDescription.trim()
         });
         setNoticeMsg('অতিরিক্ত অনুদান রেকর্ড সফলভাবে আপডেট করা হয়েছে');
       } else if (onAddExtraContribution) {
@@ -1141,10 +1146,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
           providerReference: contribProviderRef.trim(),
           amount: amt,
           date: contribDate.trim(),
-          description: contribDescription.trim(),
-          bkashNumber: contribBkash.trim() || undefined,
-          nagadNumber: contribNagad.trim() || undefined,
-          rocketNumber: contribRocket.trim() || undefined
+          description: contribDescription.trim()
         });
         setNoticeMsg('নতুন অতিরিক্ত অনুদান রেকর্ড সফলভাবে যোগ করা হয়েছে');
       }
@@ -1161,6 +1163,92 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       await onDeleteExtraContribution(id);
       setNoticeMsg('অতিরিক্ত অনুদান রেকর্ড মুছে ফেলা হয়েছে');
       setTimeout(() => setNoticeMsg(''), 3000);
+    }
+  };
+
+  // ==========================================
+  // ORGANIZATION RULES MANAGEMENT
+  // ==========================================
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<OrganizationRule | null>(null);
+  const [rulePointNumber, setRulePointNumber] = useState<number>(1);
+  const [ruleText, setRuleText] = useState('');
+  const [ruleCategory, setRuleCategory] = useState('মৌলিক আদর্শ');
+  const [ruleIsActive, setRuleIsActive] = useState(true);
+
+  const handleOpenAddRule = () => {
+    setEditingRule(null);
+    let nextPoint = 1;
+    if (organizationRules.length > 0) {
+      nextPoint = Math.max(...organizationRules.map(r => r.pointNumber || 0)) + 1;
+    }
+    setRulePointNumber(nextPoint);
+    setRuleText('');
+    setRuleCategory('মৌলিক আদর্শ');
+    setRuleIsActive(true);
+    setIsRuleModalOpen(true);
+  };
+
+  const handleOpenEditRule = (rule: OrganizationRule) => {
+    setEditingRule(rule);
+    setRulePointNumber(rule.pointNumber);
+    setRuleText(rule.ruleText);
+    setRuleCategory(rule.category || 'সাধারণ');
+    setRuleIsActive(rule.isActive !== false);
+    setIsRuleModalOpen(true);
+  };
+
+  const handleSaveRule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ruleText.trim()) {
+      setErrorMsg('নিয়মাবলির বিবরণ আবশ্যক');
+      setTimeout(() => setErrorMsg(''), 3000);
+      return;
+    }
+
+    try {
+      if (editingRule && onEditRule) {
+        await onEditRule({
+          ...editingRule,
+          pointNumber: Number(rulePointNumber) || 1,
+          ruleText: ruleText.trim(),
+          category: ruleCategory.trim(),
+          isActive: ruleIsActive
+        });
+        setNoticeMsg('নিয়মাবলি সফলভাবে আপডেট করা হয়েছে');
+      } else if (onAddRule) {
+        await onAddRule({
+          pointNumber: Number(rulePointNumber) || 1,
+          ruleText: ruleText.trim(),
+          category: ruleCategory.trim(),
+          isActive: ruleIsActive
+        });
+        setNoticeMsg('নতুন নিয়মাবলি সফলভাবে যুক্ত হয়েছে');
+      }
+      setIsRuleModalOpen(false);
+      setTimeout(() => setNoticeMsg(''), 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteRule = async (id: string) => {
+    if (!window.confirm('আপনি কি নিশ্চিত যে এই নিয়মটি স্থায়ীভাবে মুছে ফেলতে চান?')) return;
+    if (onDeleteRule) {
+      await onDeleteRule(id);
+      setNoticeMsg('নিয়মাবলি সফলভাবে মুছে ফেলা হয়েছে');
+      setTimeout(() => setNoticeMsg(''), 3000);
+    }
+  };
+
+  const handleToggleRuleActive = async (rule: OrganizationRule) => {
+    if (onEditRule) {
+      await onEditRule({
+        ...rule,
+        isActive: rule.isActive === false ? true : false
+      });
+      setNoticeMsg(rule.isActive === false ? 'ধারাটি সক্রিয় করা হয়েছে' : 'ধারাটি নিষ্ক্রিয় করা হয়েছে');
+      setTimeout(() => setNoticeMsg(''), 2500);
     }
   };
 
@@ -1330,6 +1418,19 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         >
           <Gift className="w-4 h-4 text-amber-500" />
           <span>অতিরিক্ত অনুদান ({toBengaliNumber(extraContributions.length)})</span>
+        </button>
+
+        {/* Organization Rules Tab */}
+        <button
+          onClick={() => setActiveTab('rules')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+            activeTab === 'rules'
+              ? 'bg-teal-700 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <BookOpen className="w-4 h-4 text-teal-600" />
+          <span>সংগঠনের নিয়মাবলি ({toBengaliNumber(organizationRules.length)})</span>
         </button>
 
         <button
@@ -2738,6 +2839,48 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               </div>
             </div>
 
+            {/* Official Links & Contact for Home Page Footer */}
+            <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-200/80 space-y-3">
+              <h4 className="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
+                <Globe className="w-4 h-4 text-indigo-700" />
+                <span>অফিসিয়াল যোগাযোগ, সোশ্যাল মিডিয়া ও ইমেইল (হোম পেজে প্রদর্শিত)</span>
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">অফিসিয়াল ইমেইল এড্রেস</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="sylhetmanabseva@gmail.com"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">অফিসিয়াল ফেসবুক পেজ লিংক</label>
+                  <input
+                    type="url"
+                    value={facebookUrl}
+                    onChange={(e) => setFacebookUrl(e.target.value)}
+                    placeholder="https://facebook.com/yourpage"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">ইউটিউব / মিডিয়া লিংক (ঐচ্ছিক)</label>
+                  <input
+                    type="url"
+                    value={youtubeUrl}
+                    onChange={(e) => setYoutubeUrl(e.target.value)}
+                    placeholder="https://youtube.com/@channel"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="pt-2">
               <button
                 type="submit"
@@ -3325,6 +3468,116 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               <Gift className="w-10 h-10 text-slate-300 mx-auto" />
               <h4 className="text-sm font-bold text-slate-700">কোনো অতিরিক্ত অনুদান পাওয়া যায়নি</h4>
               <p className="text-xs text-slate-400">নতুন শুভাকাঙ্ক্ষী অনুদান এন্ট্রি করুন।</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 8. Organization Rules & Guidelines Management Tab */}
+      {activeTab === 'rules' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-teal-700" />
+                <span>সংগঠনের নিয়মাবলি ও নির্দেশিকা ব্যবস্থাপনা</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                হোম পেজে প্রদর্শিত সংগঠনের মৌলিক নিয়মাবলি, ধারা ও নির্দেশিকা সহজে যুক্ত, সম্পাদনা বা সক্রিয়/নিষ্ক্রিয় করুন
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenAddRule}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 whitespace-nowrap"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>নতুন নিয়মাবলি/ধারা যোগ করুন</span>
+            </button>
+          </div>
+
+          {/* Rules List */}
+          {organizationRules.length > 0 ? (
+            <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs divide-y divide-slate-100 space-y-4">
+              {[...organizationRules]
+                .sort((a, b) => (a.pointNumber || 0) - (b.pointNumber || 0))
+                .map((rule, idx) => (
+                  <div
+                    key={rule.id}
+                    className="pt-4 first:pt-0 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 group hover:bg-slate-50/70 p-3 rounded-2xl transition"
+                  >
+                    <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                      {/* Number Badge (1, 2, 3...) */}
+                      <div className={`w-8 h-8 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center shrink-0 shadow-xs mt-0.5 ${
+                        rule.isActive !== false
+                          ? 'bg-emerald-700 text-white'
+                          : 'bg-slate-300 text-slate-600'
+                      }`}>
+                        {toBengaliNumber(rule.pointNumber || idx + 1)}
+                      </div>
+
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {rule.category && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200/60">
+                              {rule.category}
+                            </span>
+                          )}
+                          {rule.isActive === false && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
+                              নিষ্ক্রিয় (লুকানো)
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs sm:text-sm text-slate-800 font-medium leading-relaxed">
+                          {rule.ruleText}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleRuleActive(rule)}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-xl transition cursor-pointer ${
+                          rule.isActive !== false
+                            ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                        }`}
+                        title={rule.isActive !== false ? 'হোম পেজ থেকে লুকান' : 'হোম পেজে সক্রিয় করুন'}
+                      >
+                        {rule.isActive !== false ? 'হাইড করুন' : 'সক্রিয় করুন'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditRule(rule)}
+                        className="p-1.5 rounded-xl bg-slate-100 hover:bg-teal-50 text-slate-600 hover:text-teal-700 transition cursor-pointer"
+                        title="সম্পাদনা"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRule(rule.id)}
+                        className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 transition cursor-pointer"
+                        title="স্থায়ীভাবে মুছে ফেলুন"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-2">
+              <BookOpen className="w-10 h-10 text-slate-300 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-700">কোনো নিয়মাবলি যুক্ত করা নেই</h4>
+              <p className="text-xs text-slate-400">
+                সংগঠনের গঠনতন্ত্র ও আচরণবিধির ধারা যুক্ত করতে উপরের বাটনে ক্লিক করুন।
+              </p>
             </div>
           )}
         </div>
@@ -4206,45 +4459,32 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveSlide} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  স্লাইডারের শিরোনাম / অনুষ্ঠানের নাম <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={slideTitle}
-                  onChange={(e) => setSlideTitle(e.target.value)}
-                  placeholder="যেমন: সিলেট মানবসেবা সংগঠনের বার্ষিক মিলনমেলা ও ত্রাণ বিতরণ"
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
-              </div>
-
+            <form onSubmit={handleSaveSlide} className="space-y-4 text-xs">
               {/* Photo Upload or URL */}
               <div className="space-y-2">
                 <label className="block font-bold text-slate-700">
-                  ছবি নির্বাচন (ডিভাইস থেকে আপলোড অথবা লিঙ্ক) <span className="text-rose-500">*</span>
+                  গ্রুপ ফটো / ব্যানার নির্বাচন (ডিভাইস থেকে আপলোড অথবা লিঙ্ক) <span className="text-rose-500">*</span>
                 </label>
                 <div className="flex items-center gap-3">
                   {slideImageUrl ? (
-                    <div className="relative w-24 h-16 rounded-xl overflow-hidden border border-emerald-400 shrink-0">
+                    <div className="relative w-28 h-18 rounded-xl overflow-hidden border border-emerald-400 shrink-0 shadow-xs">
                       <img src={slideImageUrl} alt="প্রিভিউ" className="w-full h-full object-cover" />
                       <button
                         type="button"
                         onClick={() => setSlideImageUrl('')}
-                        className="absolute top-0 right-0 p-0.5 bg-rose-600 text-white rounded-bl"
+                        className="absolute top-0 right-0 p-1 bg-rose-600 text-white rounded-bl-lg hover:bg-rose-700 transition cursor-pointer"
+                        title="ছবি সরান"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ) : (
-                    <div className="w-24 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
-                      <ImageIcon className="w-6 h-6" />
+                    <div className="w-28 h-18 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                      <ImageIcon className="w-8 h-8" />
                     </div>
                   )}
                   <div className="flex-1 space-y-1.5">
-                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition text-xs">
+                    <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition text-xs border border-slate-200">
                       <Upload className="w-3.5 h-3.5" />
                       <span>গ্যালারি থেকে ফটো আপলোড</span>
                       <input
@@ -4258,68 +4498,27 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                       type="url"
                       value={slideImageUrl}
                       onChange={(e) => setSlideImageUrl(e.target.value)}
-                      placeholder="অথবা ছবির সরাসরি ওয়েব লিঙ্ক (URL) দিন"
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs"
+                      placeholder="অথবা সরাসরি ওয়েব ইমেজ লিঙ্ক (URL) দিন"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                     />
                   </div>
                 </div>
+                <p className="text-[11px] text-slate-500">
+                  হোম পেজের টপ স্লাইডারে শুধুমাত্র ফ্রেশ ও পরিষ্কার গ্রুপ ফটো প্রদর্শিত হবে। কোনো শিরোনাম বা ওভারলে টেক্সট থাকবে না।
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">ক্যাটাগরি</label>
-                  <input
-                    type="text"
-                    value={slideCategory}
-                    onChange={(e) => setSlideCategory(e.target.value)}
-                    placeholder="যেমন: ত্রাণ বিতরণ / মিলনমেলা"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">তারিখ</label>
-                  <input
-                    type="text"
-                    value={slideDate}
-                    onChange={(e) => setSlideDate(e.target.value)}
-                    placeholder="যেমন: ২০২৬ / ১৫ মার্চ"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">স্থান / লোকেশন</label>
-                <input
-                  type="text"
-                  value={slideLocation}
-                  onChange={(e) => setSlideLocation(e.target.value)}
-                  placeholder="যেমন: পতেঙ্গা, চট্টগ্রাম"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">বিস্তারিত ক্যাপশন বা বিবরণ</label>
-                <textarea
-                  rows={2}
-                  value={slideDescription}
-                  onChange={(e) => setSlideDescription(e.target.value)}
-                  placeholder="ছবি সম্পর্কিত সংক্ষিপ্ত তথ্য..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+              {/* Visibility Toggle */}
+              <div className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200">
                 <input
                   type="checkbox"
                   id="slideActiveCheck"
                   checked={slideIsActive}
                   onChange={(e) => setSlideIsActive(e.target.checked)}
-                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                 />
-                <label htmlFor="slideActiveCheck" className="font-bold text-slate-800 cursor-pointer">
-                  হোম পেজের স্লাইডারে দৃশ্যমান রাখুন
+                <label htmlFor="slideActiveCheck" className="font-bold text-slate-800 cursor-pointer select-none">
+                  হোম পেজের স্লাইডারে দৃশ্যমান রাখুন (Active Slide)
                 </label>
               </div>
 
@@ -4681,45 +4880,6 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 />
               </div>
 
-              {/* Personal voluntary numbers if any */}
-              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
-                <div className="font-bold text-amber-900 text-xs">
-                  যোগাযোগ বা লেনদেন নম্বর (ঐচ্ছিক)
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">বিকাশ</label>
-                    <input
-                      type="text"
-                      value={contribBkash}
-                      onChange={(e) => setContribBkash(e.target.value)}
-                      placeholder="01886122678"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">নগদ</label>
-                    <input
-                      type="text"
-                      value={contribNagad}
-                      onChange={(e) => setContribNagad(e.target.value)}
-                      placeholder="01711223344"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">রকেট</label>
-                    <input
-                      type="text"
-                      value={contribRocket}
-                      onChange={(e) => setContribRocket(e.target.value)}
-                      placeholder="01886122678-5"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -4734,6 +4894,103 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 >
                   <Save className="w-4 h-4" />
                   <span>{editingContrib ? 'আপডেট করুন' : 'অনুদান সংরক্ষণ'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Add / Edit Organization Rule Modal */}
+      {isRuleModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-teal-700" />
+                <span>{editingRule ? 'সংগঠনের নিয়মাবলি সম্পাদনা' : 'নতুন নিয়মাবলি / ধারা যোগ'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsRuleModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveRule} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    ক্রমিক / ধারা নম্বর (1, 2, 3...) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={rulePointNumber}
+                    onChange={(e) => setRulePointNumber(parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    বিষয় / ক্যাটাগরি
+                  </label>
+                  <input
+                    type="text"
+                    value={ruleCategory}
+                    onChange={(e) => setRuleCategory(e.target.value)}
+                    placeholder="যেমন: মৌলিক আদর্শ / আর্থিক শৃঙ্খলা"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  নিয়মাবলি বা নির্দেশিকার পূর্ণ বিবরণ <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={ruleText}
+                  onChange={(e) => setRuleText(e.target.value)}
+                  placeholder="যেমন: সংগঠনের প্রতিটি সদস্যকে সর্বদা নিঃস্বার্থ মানবসেবা ও আর্তমানবতার কল্যাণে নিবেদিত থাকতে হবে..."
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 leading-relaxed focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                />
+              </div>
+
+              {/* Visibility Toggle */}
+              <div className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="ruleActiveCheck"
+                  checked={ruleIsActive}
+                  onChange={(e) => setRuleIsActive(e.target.checked)}
+                  className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
+                />
+                <label htmlFor="ruleActiveCheck" className="font-bold text-slate-800 cursor-pointer select-none">
+                  হোম পেজে সক্রিয় ও দৃশ্যমান রাখুন
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsRuleModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer font-bold"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold shadow transition cursor-pointer active:scale-95 flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{editingRule ? 'আপডেট করুন' : 'ধারা সংরক্ষণ করুন'}</span>
                 </button>
               </div>
             </form>

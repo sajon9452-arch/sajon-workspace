@@ -639,6 +639,29 @@ export default function App() {
     saveExtraContributions(updated);
   };
 
+  // 5.4 Organization Rule Handlers
+  const handleAddRule = async (newRule: Omit<OrganizationRule, 'id'>): Promise<OrganizationRule> => {
+    const id = `rule-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const rule: OrganizationRule = { ...newRule, id };
+    const updated = [...organizationRules, rule];
+    setOrganizationRules(updated);
+    saveOrganizationRules(updated);
+    return rule;
+  };
+
+  const handleEditRule = async (updatedRule: OrganizationRule): Promise<void> => {
+    const updated = organizationRules.map(r => r.id === updatedRule.id ? updatedRule : r);
+    setOrganizationRules(updated);
+    saveOrganizationRules(updated);
+  };
+
+  const handleDeleteRule = async (id: string): Promise<void> => {
+    markIdAsPermanentlyDeleted(id);
+    const updated = organizationRules.filter(r => r.id !== id);
+    setOrganizationRules(updated);
+    saveOrganizationRules(updated);
+  };
+
   // 6. Organization Profile & Payment Settings
   const handleUpdateProfile = (newProfile: OrganizationProfile) => {
     setProfile(newProfile);
@@ -744,6 +767,7 @@ export default function App() {
             homeSlides={homeSlides}
             aidDonations={aidDonations}
             extraContributions={extraContributions}
+            organizationRules={organizationRules}
             isAdmin={effectiveIsAdminForScreens}
             onNavigateToAdminTab={(tab) => {
               setAdminActiveTab(tab);
@@ -850,6 +874,10 @@ export default function App() {
             onAddExtraContribution={handleAddExtraContribution}
             onEditExtraContribution={handleEditExtraContribution}
             onDeleteExtraContribution={handleDeleteExtraContribution}
+            organizationRules={organizationRules}
+            onAddRule={handleAddRule}
+            onEditRule={handleEditRule}
+            onDeleteRule={handleDeleteRule}
             paymentConfig={paymentConfig}
             onUpdatePaymentConfig={handleUpdatePaymentConfig}
             initialTab={adminActiveTab}

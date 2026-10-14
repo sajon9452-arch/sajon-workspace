@@ -16,8 +16,8 @@ import {
 import { DEFAULT_TRANSPARENT_LOGO } from '../utils/defaultLogo';
 
 export const INITIAL_ORG_PROFILE: OrganizationProfile = {
-  name: 'সিলেট মানব সেবা সংগঠন',
-  tagline: 'মানবতার কল্যাণে নিবেদিত প্রাণ',
+  name: 'সিলেট মানবসেবা সংগঠন',
+  tagline: 'মানবতার কল্যাণে নিবেদিত প্রান',
   establishedDate: '১৫/০৮/২০২২ইং',
   establishedYear: '২০২২',
   address: 'পতেঙ্গা, চট্টগ্রাম',
@@ -169,7 +169,50 @@ export const INITIAL_EXTRA_CONTRIBUTIONS: ExtraContributionRecord[] = [
 ];
 
 export const INITIAL_HUMANITARIAN_ACTIVITIES: HumanitarianActivity[] = [];
-export const INITIAL_ORGANIZATION_RULES: OrganizationRule[] = [];
+export const INITIAL_ORGANIZATION_RULES: OrganizationRule[] = [
+  {
+    id: 'rule-1',
+    pointNumber: 1,
+    ruleText: 'সংগঠনের প্রতিটি সদস্যকে সর্বদা নিঃস্বার্থ মানবসেবা, আর্তমানবতার কল্যাণ ও সামাজিক উন্নয়নে নিবেদিত থাকতে হবে।',
+    category: 'মৌলিক আদর্শ',
+    isActive: true
+  },
+  {
+    id: 'rule-2',
+    pointNumber: 2,
+    ruleText: 'সংগঠনের নির্ধারিত মাসিক চাঁদা প্রতি মাসের ১০ তারিখের মধ্যে ফান্ডে নিয়মিত পরিশোধ করতে হবে।',
+    category: 'আর্থিক শৃঙ্খলা',
+    isActive: true
+  },
+  {
+    id: 'rule-3',
+    pointNumber: 3,
+    ruleText: 'জরুরি মুমূর্ষু রোগীর রক্তের প্রয়োজনে এবং প্রাকৃতিক দুর্যোগে ত্রাণ বিতরণে স্বতঃস্ফূর্তভাবে অংশগ্রহণ করতে হবে।',
+    category: 'সেবামূলক কার্যক্রম',
+    isActive: true
+  },
+  {
+    id: 'rule-4',
+    pointNumber: 4,
+    ruleText: 'সংগঠনের সকল কার্যক্রম সম্পূর্ণ অরাজনৈতিক, অলাভজনক এবং দল-মত-ধর্ম নির্বিশেষে সর্বজনীন।',
+    category: 'সংগঠন নীতি',
+    isActive: true
+  },
+  {
+    id: 'rule-5',
+    pointNumber: 5,
+    ruleText: 'সংগঠনের অভ্যন্তরীণ শৃঙ্খলা, সুনাম ও সদস্যদের পারস্পরিক সৌহার্দ্য রক্ষা করা প্রত্যেকের আবশ্যিক দায়িত্ব।',
+    category: 'শৃঙ্খলা ও আচরণ',
+    isActive: true
+  },
+  {
+    id: 'rule-6',
+    pointNumber: 6,
+    ruleText: 'যেকোনো ব্যক্তিগত সমস্যা বা সাংগঠনিক মতানৈক্য কেন্দ্রীয় কার্যনির্বাহী পরিষদের পরামর্শক্রমে সমাধান করতে হবে।',
+    category: 'প্রশাসনিক নিয়ম',
+    isActive: true
+  }
+];
 export const INITIAL_SUPPORT_REPORTS: SupportReportItem[] = [];
 
 export const INITIAL_SUPPORT_MEMBERS: SupportTeamMember[] = [
