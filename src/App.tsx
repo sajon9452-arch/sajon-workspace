@@ -13,7 +13,9 @@ import {
   SupportReportItem,
   SupportTeamMember,
   PaymentStatus,
-  UserAccount 
+  UserAccount,
+  AidDonationRecord,
+  ExtraContributionRecord
 } from './types';
 import { 
   loadOrgProfile, 
@@ -28,6 +30,10 @@ import {
   saveNotices, 
   loadHomeSlides, 
   saveHomeSlides, 
+  loadAidDonations,
+  saveAidDonations,
+  loadExtraContributions,
+  saveExtraContributions,
   loadHumanitarianActivities, 
   saveHumanitarianActivities, 
   loadOrganizationRules, 
@@ -114,6 +120,8 @@ export default function App() {
   const [notices, setNotices] = useState<Notice[]>(() => loadNotices());
   const [funds, setFunds] = useState<FundRecord[]>(() => autoSyncMembersToFunds(loadMembers(), loadFunds()));
   const [homeSlides, setHomeSlides] = useState<HomeSlide[]>(() => loadHomeSlides());
+  const [aidDonations, setAidDonations] = useState<AidDonationRecord[]>(() => loadAidDonations());
+  const [extraContributions, setExtraContributions] = useState<ExtraContributionRecord[]>(() => loadExtraContributions());
   const [humanitarianActivities, setHumanitarianActivities] = useState<HumanitarianActivity[]>(() => loadHumanitarianActivities());
   const [organizationRules, setOrganizationRules] = useState<OrganizationRule[]>(() => loadOrganizationRules());
   const [supportReports, setSupportReports] = useState<SupportReportItem[]>(() => loadSupportReports());
@@ -122,6 +130,7 @@ export default function App() {
   const [manualTotalBalance, setManualTotalBalance] = useState<number | null>(() => loadManualTotalBalance());
   const [monthlyExpense, setMonthlyExpense] = useState<number>(() => loadMonthlyExpense());
   const [extraMoney, setExtraMoney] = useState<number>(() => loadExtraMoney());
+  const [adminActiveTab, setAdminActiveTab] = useState<string>('members');
 
   // Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -561,6 +570,75 @@ export default function App() {
     saveSupportMembers(updated);
   };
 
+  // 5.1 Home Slide Handlers
+  const handleAddHomeSlide = async (newSlide: Omit<HomeSlide, 'id'>): Promise<HomeSlide> => {
+    const id = `slide-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const slide: HomeSlide = { ...newSlide, id };
+    const updated = [...homeSlides, slide];
+    setHomeSlides(updated);
+    saveHomeSlides(updated);
+    return slide;
+  };
+
+  const handleEditHomeSlide = async (updatedSlide: HomeSlide): Promise<void> => {
+    const updated = homeSlides.map(s => s.id === updatedSlide.id ? updatedSlide : s);
+    setHomeSlides(updated);
+    saveHomeSlides(updated);
+  };
+
+  const handleDeleteHomeSlide = async (id: string): Promise<void> => {
+    markIdAsPermanentlyDeleted(id);
+    const updated = homeSlides.filter(s => s.id !== id);
+    setHomeSlides(updated);
+    saveHomeSlides(updated);
+  };
+
+  // 5.2 Aid Donation Record Handlers
+  const handleAddAidDonation = async (newDonation: Omit<AidDonationRecord, 'id'>): Promise<AidDonationRecord> => {
+    const id = `aid-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const donation: AidDonationRecord = { ...newDonation, id, createdAt: new Date().toISOString() };
+    const updated = [donation, ...aidDonations];
+    setAidDonations(updated);
+    saveAidDonations(updated);
+    return donation;
+  };
+
+  const handleEditAidDonation = async (updatedDonation: AidDonationRecord): Promise<void> => {
+    const updated = aidDonations.map(d => d.id === updatedDonation.id ? updatedDonation : d);
+    setAidDonations(updated);
+    saveAidDonations(updated);
+  };
+
+  const handleDeleteAidDonation = async (id: string): Promise<void> => {
+    markIdAsPermanentlyDeleted(id);
+    const updated = aidDonations.filter(d => d.id !== id);
+    setAidDonations(updated);
+    saveAidDonations(updated);
+  };
+
+  // 5.3 Extra Contribution Handlers
+  const handleAddExtraContribution = async (newContrib: Omit<ExtraContributionRecord, 'id'>): Promise<ExtraContributionRecord> => {
+    const id = `extra-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const contrib: ExtraContributionRecord = { ...newContrib, id, createdAt: new Date().toISOString() };
+    const updated = [contrib, ...extraContributions];
+    setExtraContributions(updated);
+    saveExtraContributions(updated);
+    return contrib;
+  };
+
+  const handleEditExtraContribution = async (updatedContrib: ExtraContributionRecord): Promise<void> => {
+    const updated = extraContributions.map(c => c.id === updatedContrib.id ? updatedContrib : c);
+    setExtraContributions(updated);
+    saveExtraContributions(updated);
+  };
+
+  const handleDeleteExtraContribution = async (id: string): Promise<void> => {
+    markIdAsPermanentlyDeleted(id);
+    const updated = extraContributions.filter(c => c.id !== id);
+    setExtraContributions(updated);
+    saveExtraContributions(updated);
+  };
+
   // 6. Organization Profile & Payment Settings
   const handleUpdateProfile = (newProfile: OrganizationProfile) => {
     setProfile(newProfile);
@@ -663,19 +741,15 @@ export default function App() {
         {activeScreen === 'home' && (
           <HomeScreen
             profile={profile}
-            members={members}
-            donors={donors}
-            notices={notices}
-            funds={funds}
             homeSlides={homeSlides}
-            humanitarianActivities={humanitarianActivities}
-            organizationRules={organizationRules}
-            manualTotalBalance={manualTotalBalance}
-            onNavigate={(screen) => {
-              setActiveScreen(screen);
+            aidDonations={aidDonations}
+            extraContributions={extraContributions}
+            isAdmin={effectiveIsAdminForScreens}
+            onNavigateToAdminTab={(tab) => {
+              setAdminActiveTab(tab);
+              setActiveScreen('admin');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            openEmergencyModal={() => setIsEmergencyModalOpen(true)}
           />
         )}
 
@@ -764,8 +838,21 @@ export default function App() {
             onUpdateMonthlyExpense={handleUpdateMonthlyExpense}
             extraMoney={extraMoney}
             onUpdateExtraMoney={handleUpdateExtraMoney}
+            homeSlides={homeSlides}
+            onAddHomeSlide={handleAddHomeSlide}
+            onEditHomeSlide={handleEditHomeSlide}
+            onDeleteHomeSlide={handleDeleteHomeSlide}
+            aidDonations={aidDonations}
+            onAddAidDonation={handleAddAidDonation}
+            onEditAidDonation={handleEditAidDonation}
+            onDeleteAidDonation={handleDeleteAidDonation}
+            extraContributions={extraContributions}
+            onAddExtraContribution={handleAddExtraContribution}
+            onEditExtraContribution={handleEditExtraContribution}
+            onDeleteExtraContribution={handleDeleteExtraContribution}
             paymentConfig={paymentConfig}
             onUpdatePaymentConfig={handleUpdatePaymentConfig}
+            initialTab={adminActiveTab}
             onBack={() => setActiveScreen('home')}
             onLogout={handleAdminLogout}
           />

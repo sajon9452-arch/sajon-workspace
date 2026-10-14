@@ -9,7 +9,9 @@ import {
   HomeSlide, 
   HumanitarianActivity, 
   OrganizationRule,
-  PaymentGatewayConfig 
+  PaymentGatewayConfig,
+  AidDonationRecord,
+  ExtraContributionRecord
 } from '../types';
 import { 
   INITIAL_ORG_PROFILE, 
@@ -18,6 +20,8 @@ import {
   INITIAL_NOTICES, 
   INITIAL_FUNDS, 
   INITIAL_HOME_SLIDES, 
+  INITIAL_AID_DONATIONS,
+  INITIAL_EXTRA_CONTRIBUTIONS,
   INITIAL_HUMANITARIAN_ACTIVITIES, 
   INITIAL_ORGANIZATION_RULES, 
   INITIAL_SUPPORT_REPORTS, 
@@ -33,6 +37,8 @@ const STORAGE_KEYS = {
   NOTICES: 'pms_notices',
   FUNDS: 'pms_fund_records',
   HOME_SLIDES: 'pms_home_slides',
+  AID_DONATIONS: 'pms_aid_donations',
+  EXTRA_CONTRIBUTIONS: 'pms_extra_contributions',
   HUMANITARIAN_ACTIVITIES: 'pms_humanitarian_activities',
   ORGANIZATION_RULES: 'pms_organization_rules',
   SUPPORT_REPORTS: 'pms_support_reports',
@@ -212,7 +218,7 @@ export function saveNotices(notices: Notice[]) {
   }
 }
 
-// 6. Home Slides (Strictly dynamic: Never restores dummy records)
+// 6. Home Slides (Dynamic banner photos)
 export function loadHomeSlides(): HomeSlide[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.HOME_SLIDES);
@@ -225,7 +231,7 @@ export function loadHomeSlides(): HomeSlide[] {
   } catch (e) {
     console.error(e);
   }
-  return [];
+  return INITIAL_HOME_SLIDES;
 }
 
 export function saveHomeSlides(slides: HomeSlide[]) {
@@ -233,6 +239,58 @@ export function saveHomeSlides(slides: HomeSlide[]) {
     const filtered = slides.filter(s => !isIdPermanentlyDeleted(s.id));
     localStorage.setItem(STORAGE_KEYS.HOME_SLIDES, JSON.stringify(filtered));
     notifyStorageChange(STORAGE_KEYS.HOME_SLIDES, filtered);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// 6.1 Aid & Donation Recipients (Multiple Records Support)
+export function loadAidDonations(): AidDonationRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.AID_DONATIONS);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(d => !isIdPermanentlyDeleted(d.id));
+      }
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return INITIAL_AID_DONATIONS;
+}
+
+export function saveAidDonations(records: AidDonationRecord[]) {
+  try {
+    const filtered = records.filter(d => !isIdPermanentlyDeleted(d.id));
+    localStorage.setItem(STORAGE_KEYS.AID_DONATIONS, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.AID_DONATIONS, filtered);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// 6.2 Extra Contributions / Additional Funds
+export function loadExtraContributions(): ExtraContributionRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.EXTRA_CONTRIBUTIONS);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(c => !isIdPermanentlyDeleted(c.id));
+      }
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return INITIAL_EXTRA_CONTRIBUTIONS;
+}
+
+export function saveExtraContributions(records: ExtraContributionRecord[]) {
+  try {
+    const filtered = records.filter(c => !isIdPermanentlyDeleted(c.id));
+    localStorage.setItem(STORAGE_KEYS.EXTRA_CONTRIBUTIONS, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.EXTRA_CONTRIBUTIONS, filtered);
   } catch (e) {
     console.error(e);
   }

@@ -40,7 +40,10 @@ import {
   RefreshCw,
   AlertTriangle,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Heart,
+  Gift,
+  Eye
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
@@ -50,7 +53,10 @@ import {
   PaymentStatus,
   PaymentGatewayConfig,
   UserAccount,
-  SecurityAlert
+  SecurityAlert,
+  HomeSlide,
+  AidDonationRecord,
+  ExtraContributionRecord
 } from '../types';
 import { 
   toBengaliNumber, 
@@ -95,8 +101,21 @@ interface AdminPanelScreenProps {
   onUpdateMonthlyExpense?: (amount: number) => void;
   extraMoney?: number;
   onUpdateExtraMoney?: (amount: number) => void;
+  homeSlides?: HomeSlide[];
+  onAddHomeSlide?: (slide: Omit<HomeSlide, 'id'>) => Promise<HomeSlide>;
+  onEditHomeSlide?: (slide: HomeSlide) => Promise<void>;
+  onDeleteHomeSlide?: (id: string) => Promise<void>;
+  aidDonations?: AidDonationRecord[];
+  onAddAidDonation?: (donation: Omit<AidDonationRecord, 'id'>) => Promise<AidDonationRecord>;
+  onEditAidDonation?: (donation: AidDonationRecord) => Promise<void>;
+  onDeleteAidDonation?: (id: string) => Promise<void>;
+  extraContributions?: ExtraContributionRecord[];
+  onAddExtraContribution?: (contribution: Omit<ExtraContributionRecord, 'id'>) => Promise<ExtraContributionRecord>;
+  onEditExtraContribution?: (contribution: ExtraContributionRecord) => Promise<void>;
+  onDeleteExtraContribution?: (id: string) => Promise<void>;
   paymentConfig: PaymentGatewayConfig;
   onUpdatePaymentConfig: (config: PaymentGatewayConfig) => void;
+  initialTab?: string;
   onBack: () => void;
   onLogout?: () => void;
 }
@@ -117,12 +136,27 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onUpdateMonthlyExpense,
   extraMoney = 0,
   onUpdateExtraMoney,
+  homeSlides = [],
+  onAddHomeSlide,
+  onEditHomeSlide,
+  onDeleteHomeSlide,
+  aidDonations = [],
+  onAddAidDonation,
+  onEditAidDonation,
+  onDeleteAidDonation,
+  extraContributions = [],
+  onAddExtraContribution,
+  onEditExtraContribution,
+  onDeleteExtraContribution,
   paymentConfig,
   onUpdatePaymentConfig,
+  initialTab,
   onBack,
   onLogout
 }) => {
-  const [activeTab, setActiveTab] = useState<'members' | 'registrations' | 'funds' | 'profile' | 'payments' | 'security'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'registrations' | 'funds' | 'slides' | 'donations' | 'contributions' | 'profile' | 'payments' | 'security'>(
+    (initialTab as any) || 'members'
+  );
   
   // User Accounts & Security Tracking State
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>(() => loadUserAccounts());
@@ -787,6 +821,349 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     setTimeout(() => setNoticeMsg(''), 3000);
   };
 
+  // ==========================================
+  // SLIDES MANAGEMENT STATES & HANDLERS
+  // ==========================================
+  const [isSlideModalOpen, setIsSlideModalOpen] = useState(false);
+  const [editingSlide, setEditingSlide] = useState<HomeSlide | null>(null);
+  const [slideTitle, setSlideTitle] = useState('');
+  const [slideDescription, setSlideDescription] = useState('');
+  const [slideCategory, setSlideCategory] = useState('সাধারণ');
+  const [slideDate, setSlideDate] = useState('২০২৬');
+  const [slideLocation, setSlideLocation] = useState('পতেঙ্গা, চট্টগ্রাম');
+  const [slideImageUrl, setSlideImageUrl] = useState('');
+  const [slideIsActive, setSlideIsActive] = useState(true);
+
+  const handleOpenAddSlide = () => {
+    setEditingSlide(null);
+    setSlideTitle('');
+    setSlideDescription('');
+    setSlideCategory('কেন্দ্রীয় মিলনমেলা');
+    setSlideDate('২০২৬');
+    setSlideLocation('পতেঙ্গা, চট্টগ্রাম');
+    setSlideImageUrl('');
+    setSlideIsActive(true);
+    setIsSlideModalOpen(true);
+  };
+
+  const handleOpenEditSlide = (slide: HomeSlide) => {
+    setEditingSlide(slide);
+    setSlideTitle(slide.title);
+    setSlideDescription(slide.description || '');
+    setSlideCategory(slide.category || 'সাধারণ');
+    setSlideDate(slide.date || '');
+    setSlideLocation(slide.location || '');
+    setSlideImageUrl(slide.imageUrl || '');
+    setSlideIsActive(slide.isActive !== false);
+    setIsSlideModalOpen(true);
+  };
+
+  const handleSlidePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const compressed = await compressImageFile(file, { maxWidth: 1200, maxHeight: 800, quality: 0.8 });
+        setSlideImageUrl(compressed);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  const handleSaveSlide = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!slideTitle.trim()) {
+      setErrorMsg('স্লাইডারের শিরোনাম আবশ্যক');
+      setTimeout(() => setErrorMsg(''), 3000);
+      return;
+    }
+
+    try {
+      if (editingSlide && onEditHomeSlide) {
+        await onEditHomeSlide({
+          ...editingSlide,
+          title: slideTitle.trim(),
+          description: slideDescription.trim(),
+          category: slideCategory.trim(),
+          date: slideDate.trim(),
+          location: slideLocation.trim(),
+          imageUrl: slideImageUrl.trim(),
+          isActive: slideIsActive
+        });
+        setNoticeMsg('স্লাইডার তথ্য সফলভাবে আপডেট করা হয়েছে');
+      } else if (onAddHomeSlide) {
+        await onAddHomeSlide({
+          title: slideTitle.trim(),
+          description: slideDescription.trim(),
+          category: slideCategory.trim(),
+          date: slideDate.trim(),
+          location: slideLocation.trim(),
+          imageUrl: slideImageUrl.trim(),
+          isActive: slideIsActive
+        });
+        setNoticeMsg('স্লাইডারে নতুন ছবি সফলভাবে যুক্ত হয়েছে');
+      }
+      setIsSlideModalOpen(false);
+      setTimeout(() => setNoticeMsg(''), 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteSlide = async (id: string) => {
+    if (!window.confirm('আপনি কি নিশ্চিত যে এই স্লাইডার ছবিটি মুছে ফেলতে চান?')) return;
+    if (onDeleteHomeSlide) {
+      await onDeleteHomeSlide(id);
+      setNoticeMsg('স্লাইডার ছবি সফলভাবে মুছে ফেলা হয়েছে');
+      setTimeout(() => setNoticeMsg(''), 3000);
+    }
+  };
+
+  const handleToggleSlideActive = async (slide: HomeSlide) => {
+    if (onEditHomeSlide) {
+      await onEditHomeSlide({
+        ...slide,
+        isActive: slide.isActive === false ? true : false
+      });
+      setNoticeMsg('স্লাইডার স্ট্যাটাস পরিবর্তিত হয়েছে');
+      setTimeout(() => setNoticeMsg(''), 2500);
+    }
+  };
+
+  // ==========================================
+  // AID & DONATIONS MANAGEMENT STATES & HANDLERS
+  // ==========================================
+  const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
+  const [editingDonation, setEditingDonation] = useState<AidDonationRecord | null>(null);
+  const [donationRecipientName, setDonationRecipientName] = useState('');
+  const [donationPhotoUrl, setDonationPhotoUrl] = useState('');
+  const [donationAddress, setDonationAddress] = useState('');
+  const [donationProviderRef, setDonationProviderRef] = useState('');
+  const [donationAmount, setDonationAmount] = useState('');
+  const [donationDate, setDonationDate] = useState('');
+  const [donationDescription, setDonationDescription] = useState('');
+  const [donationBkash, setDonationBkash] = useState('');
+  const [donationNagad, setDonationNagad] = useState('');
+  const [donationRocket, setDonationRocket] = useState('');
+  const [donationAdminSearch, setDonationAdminSearch] = useState('');
+
+  const handleOpenAddDonation = () => {
+    setEditingDonation(null);
+    setDonationRecipientName('');
+    setDonationPhotoUrl('');
+    setDonationAddress('পতেঙ্গা, চট্টগ্রাম');
+    setDonationProviderRef('মোঃ কামরুল হাসান (সভাপতি)');
+    setDonationAmount('10000');
+    setDonationDate(new Date().toLocaleDateString('bn-BD'));
+    setDonationDescription('');
+    setDonationBkash('');
+    setDonationNagad('');
+    setDonationRocket('');
+    setIsDonationModalOpen(true);
+  };
+
+  const handleOpenEditDonation = (item: AidDonationRecord) => {
+    setEditingDonation(item);
+    setDonationRecipientName(item.recipientName);
+    setDonationPhotoUrl(item.photoUrl || '');
+    setDonationAddress(item.address || '');
+    setDonationProviderRef(item.providerReference || '');
+    setDonationAmount(item.amount ? item.amount.toString() : '');
+    setDonationDate(item.date || '');
+    setDonationDescription(item.description || '');
+    setDonationBkash(item.bkashNumber || '');
+    setDonationNagad(item.nagadNumber || '');
+    setDonationRocket(item.rocketNumber || '');
+    setIsDonationModalOpen(true);
+  };
+
+  const handleDonationPhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const compressed = await compressImageFile(file, { maxWidth: 600, maxHeight: 600, quality: 0.8 });
+        setDonationPhotoUrl(compressed);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  const handleSaveDonation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!donationRecipientName.trim() || !donationAmount || !donationProviderRef.trim()) {
+      setErrorMsg('সাহায্যপ্রাপ্তের নাম, টাকার পরিমাণ এবং দায়িত্বশীলের রেফারেন্স আবশ্যক');
+      setTimeout(() => setErrorMsg(''), 3000);
+      return;
+    }
+
+    const parsedAmt = parseFloat(donationAmount);
+    const amt = isNaN(parsedAmt) ? 0 : parsedAmt;
+
+    try {
+      if (editingDonation && onEditAidDonation) {
+        await onEditAidDonation({
+          ...editingDonation,
+          recipientName: donationRecipientName.trim(),
+          photoUrl: donationPhotoUrl.trim(),
+          address: donationAddress.trim(),
+          providerReference: donationProviderRef.trim(),
+          amount: amt,
+          date: donationDate.trim(),
+          description: donationDescription.trim(),
+          bkashNumber: donationBkash.trim() || undefined,
+          nagadNumber: donationNagad.trim() || undefined,
+          rocketNumber: donationRocket.trim() || undefined
+        });
+        setNoticeMsg('অনুদান ও সাহায্য রেকর্ড সফলভাবে আপডেট করা হয়েছে');
+      } else if (onAddAidDonation) {
+        await onAddAidDonation({
+          recipientName: donationRecipientName.trim(),
+          photoUrl: donationPhotoUrl.trim(),
+          address: donationAddress.trim(),
+          providerReference: donationProviderRef.trim(),
+          amount: amt,
+          date: donationDate.trim(),
+          description: donationDescription.trim(),
+          bkashNumber: donationBkash.trim() || undefined,
+          nagadNumber: donationNagad.trim() || undefined,
+          rocketNumber: donationRocket.trim() || undefined
+        });
+        setNoticeMsg('নতুন সাহায্য রেকর্ড সফলভাবে যোগ করা হয়েছে');
+      }
+      setIsDonationModalOpen(false);
+      setTimeout(() => setNoticeMsg(''), 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteDonation = async (id: string) => {
+    if (!window.confirm('আপনি কি নিশ্চিত যে এই অনুদান রেকর্ডটি স্থায়ীভাবে মুছে ফেলতে চান?')) return;
+    if (onDeleteAidDonation) {
+      await onDeleteAidDonation(id);
+      setNoticeMsg('অনুদান রেকর্ড মুছে ফেলা হয়েছে');
+      setTimeout(() => setNoticeMsg(''), 3000);
+    }
+  };
+
+  // ==========================================
+  // EXTRA CONTRIBUTIONS MANAGEMENT STATES & HANDLERS
+  // ==========================================
+  const [isContribModalOpen, setIsContribModalOpen] = useState(false);
+  const [editingContrib, setEditingContrib] = useState<ExtraContributionRecord | null>(null);
+  const [contribDonorName, setContribDonorName] = useState('');
+  const [contribPhotoUrl, setContribPhotoUrl] = useState('');
+  const [contribAddress, setContribAddress] = useState('');
+  const [contribProviderRef, setContribProviderRef] = useState('');
+  const [contribAmount, setContribAmount] = useState('');
+  const [contribDate, setContribDate] = useState('');
+  const [contribDescription, setContribDescription] = useState('');
+  const [contribBkash, setContribBkash] = useState('');
+  const [contribNagad, setContribNagad] = useState('');
+  const [contribRocket, setContribRocket] = useState('');
+  const [contribAdminSearch, setContribAdminSearch] = useState('');
+
+  const handleOpenAddContrib = () => {
+    setEditingContrib(null);
+    setContribDonorName('');
+    setContribPhotoUrl('');
+    setContribAddress('প্রবাসী / চট্টগ্রাম');
+    setContribProviderRef('মোঃ কামরুল হাসান (সভাপতি)');
+    setContribAmount('20000');
+    setContribDate(new Date().toLocaleDateString('bn-BD'));
+    setContribDescription('');
+    setContribBkash('');
+    setContribNagad('');
+    setContribRocket('');
+    setIsContribModalOpen(true);
+  };
+
+  const handleOpenEditContrib = (item: ExtraContributionRecord) => {
+    setEditingContrib(item);
+    setContribDonorName(item.donorName);
+    setContribPhotoUrl(item.photoUrl || '');
+    setContribAddress(item.address || '');
+    setContribProviderRef(item.providerReference || '');
+    setContribAmount(item.amount ? item.amount.toString() : '');
+    setContribDate(item.date || '');
+    setContribDescription(item.description || '');
+    setContribBkash(item.bkashNumber || '');
+    setContribNagad(item.nagadNumber || '');
+    setContribRocket(item.rocketNumber || '');
+    setIsContribModalOpen(true);
+  };
+
+  const handleContribPhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const compressed = await compressImageFile(file, { maxWidth: 600, maxHeight: 600, quality: 0.8 });
+        setContribPhotoUrl(compressed);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  const handleSaveContrib = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contribDonorName.trim() || !contribAmount || !contribProviderRef.trim()) {
+      setErrorMsg('শুভাকাঙ্ক্ষীর নাম, অনুদানের পরিমাণ এবং মাধ্যমের রেফারেন্স আবশ্যক');
+      setTimeout(() => setErrorMsg(''), 3000);
+      return;
+    }
+
+    const parsedAmt = parseFloat(contribAmount);
+    const amt = isNaN(parsedAmt) ? 0 : parsedAmt;
+
+    try {
+      if (editingContrib && onEditExtraContribution) {
+        await onEditExtraContribution({
+          ...editingContrib,
+          donorName: contribDonorName.trim(),
+          photoUrl: contribPhotoUrl.trim(),
+          address: contribAddress.trim(),
+          providerReference: contribProviderRef.trim(),
+          amount: amt,
+          date: contribDate.trim(),
+          description: contribDescription.trim(),
+          bkashNumber: contribBkash.trim() || undefined,
+          nagadNumber: contribNagad.trim() || undefined,
+          rocketNumber: contribRocket.trim() || undefined
+        });
+        setNoticeMsg('অতিরিক্ত অনুদান রেকর্ড সফলভাবে আপডেট করা হয়েছে');
+      } else if (onAddExtraContribution) {
+        await onAddExtraContribution({
+          donorName: contribDonorName.trim(),
+          photoUrl: contribPhotoUrl.trim(),
+          address: contribAddress.trim(),
+          providerReference: contribProviderRef.trim(),
+          amount: amt,
+          date: contribDate.trim(),
+          description: contribDescription.trim(),
+          bkashNumber: contribBkash.trim() || undefined,
+          nagadNumber: contribNagad.trim() || undefined,
+          rocketNumber: contribRocket.trim() || undefined
+        });
+        setNoticeMsg('নতুন অতিরিক্ত অনুদান রেকর্ড সফলভাবে যোগ করা হয়েছে');
+      }
+      setIsContribModalOpen(false);
+      setTimeout(() => setNoticeMsg(''), 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteContrib = async (id: string) => {
+    if (!window.confirm('আপনি কি নিশ্চিত যে এই অতিরিক্ত অনুদান রেকর্ডটি স্থায়ীভাবে মুছে ফেলতে চান?')) return;
+    if (onDeleteExtraContribution) {
+      await onDeleteExtraContribution(id);
+      setNoticeMsg('অতিরিক্ত অনুদান রেকর্ড মুছে ফেলা হয়েছে');
+      setTimeout(() => setNoticeMsg(''), 3000);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-20 sm:pb-8">
       {/* Header */}
@@ -914,6 +1291,45 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         >
           <Wallet className="w-4 h-4" />
           <span>তহবিল ও চাঁদা ব্যবস্থাপনা ({toBengaliNumber(effectiveAdminFunds.length)})</span>
+        </button>
+
+        {/* Dynamic Image Slider Management Tab */}
+        <button
+          onClick={() => setActiveTab('slides')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+            activeTab === 'slides'
+              ? 'bg-emerald-700 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <ImageIcon className="w-4 h-4 text-emerald-500" />
+          <span>স্লাইডার ফটো ({toBengaliNumber(homeSlides.length)})</span>
+        </button>
+
+        {/* Aid & Donations Directory Management Tab */}
+        <button
+          onClick={() => setActiveTab('donations')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+            activeTab === 'donations'
+              ? 'bg-emerald-700 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Heart className="w-4 h-4 text-rose-500" />
+          <span>সাহায্য ও অনুদান ({toBengaliNumber(aidDonations.length)})</span>
+        </button>
+
+        {/* Extra Contributions Management Tab */}
+        <button
+          onClick={() => setActiveTab('contributions')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+            activeTab === 'contributions'
+              ? 'bg-emerald-700 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Gift className="w-4 h-4 text-amber-500" />
+          <span>অতিরিক্ত অনুদান ({toBengaliNumber(extraContributions.length)})</span>
         </button>
 
         <button
@@ -2515,6 +2931,405 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         </div>
       )}
 
+      {/* 5. Image Slider Management Tab */}
+      {activeTab === 'slides' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-emerald-700" />
+                <span>হোম স্লাইডার ও ব্যানার ফটো নিয়ন্ত্রণ</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                হোম পেজের শীর্ষ স্লাইডারে প্রদর্শিত গ্রুপ ছবি, ত্রাণ বিতরণ ও ব্যানারসমূহ পরিচালনা করুন
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenAddSlide}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 whitespace-nowrap"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>নতুন স্লাইড ফটো যোগ করুন</span>
+            </button>
+          </div>
+
+          {/* Slides List Grid */}
+          {homeSlides.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {homeSlides.map((slide, idx) => (
+                <div
+                  key={slide.id}
+                  className="bg-white rounded-3xl overflow-hidden border border-slate-200/90 shadow-xs flex flex-col justify-between hover:shadow-md transition"
+                >
+                  <div className="relative h-44 w-full bg-slate-900 overflow-hidden">
+                    {slide.imageUrl ? (
+                      <img
+                        src={slide.imageUrl}
+                        alt={slide.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-500 bg-slate-800">
+                        <ImageIcon className="w-10 h-10 text-slate-600" />
+                      </div>
+                    )}
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-600 text-white shadow">
+                        #{toBengaliNumber(idx + 1)} {slide.category || 'সাধারণ'}
+                      </span>
+                      {slide.isActive !== false ? (
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/90 text-white backdrop-blur-xs">
+                          সক্রিয়
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-600 text-slate-200 backdrop-blur-xs">
+                          লুকানো
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 leading-snug line-clamp-2">
+                        {slide.title}
+                      </h4>
+                      {slide.description && (
+                        <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                          {slide.description}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-2 flex-wrap">
+                        {slide.location && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-rose-500" />
+                            <span>{slide.location}</span>
+                          </span>
+                        )}
+                        {slide.date && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-amber-500" />
+                            <span>{slide.date}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSlideActive(slide)}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-xl transition cursor-pointer ${
+                          slide.isActive !== false
+                            ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                        }`}
+                      >
+                        {slide.isActive !== false ? 'হাইড করুন' : 'সক্রিয় করুন'}
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditSlide(slide)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 transition cursor-pointer"
+                          title="সম্পাদনা"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSlide(slide.id)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 transition cursor-pointer"
+                          title="মুছে ফেলুন"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-2">
+              <ImageIcon className="w-10 h-10 text-slate-300 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-700">কোনো স্লাইডার ছবি যোগ করা হয়নি</h4>
+              <p className="text-xs text-slate-400">
+                উপরের বাটনে ক্লিক করে সংগঠনের গ্রুপ ছবি ও কার্যক্রমের ব্যানার যুক্ত করুন।
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 6. Aid & Donation Recipients Management Tab */}
+      {activeTab === 'donations' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Heart className="w-5 h-5 text-rose-600" />
+                <span>অনুদান ও সাহায্য প্রাপ্তদের তালিকা ব্যবস্থাপনা</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                সাহায্যপ্রাপ্তদের নাম, ছবি, ঠিকানা, দায়িত্বশীলের রেফারেন্স, টাকার পরিমাণ ও বিবরণ পরিচালনা করুন
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenAddDonation}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 whitespace-nowrap"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>নতুন অনুদান রেকর্ড যোগ করুন</span>
+            </button>
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={donationAdminSearch}
+              onChange={(e) => setDonationAdminSearch(e.target.value)}
+              placeholder="নাম, ঠিকানা বা রেফারেন্স দিয়ে খুঁজুন..."
+              className="w-full pl-9 pr-4 py-2.5 text-xs rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            />
+          </div>
+
+          {/* Donations List */}
+          {aidDonations.filter(d => {
+            if (!donationAdminSearch.trim()) return true;
+            const q = donationAdminSearch.toLowerCase();
+            return (
+              (d.recipientName || '').toLowerCase().includes(q) ||
+              (d.address || '').toLowerCase().includes(q) ||
+              (d.providerReference || '').toLowerCase().includes(q)
+            );
+          }).length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {aidDonations
+                .filter(d => {
+                  if (!donationAdminSearch.trim()) return true;
+                  const q = donationAdminSearch.toLowerCase();
+                  return (
+                    (d.recipientName || '').toLowerCase().includes(q) ||
+                    (d.address || '').toLowerCase().includes(q) ||
+                    (d.providerReference || '').toLowerCase().includes(q)
+                  );
+                })
+                .map((item) => (
+                  <div
+                    key={item.id}
+                    className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-3"
+                  >
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                        {item.photoUrl ? (
+                          <img src={item.photoUrl} alt={item.recipientName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-emerald-600 bg-emerald-50">
+                            <Heart className="w-6 h-6" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <h4 className="text-sm font-black text-slate-900 truncate">
+                            {item.recipientName}
+                          </h4>
+                          <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                            {formatBengaliCurrency(item.amount)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
+                          <span className="truncate">{item.address}</span>
+                        </div>
+                        <div className="text-xs text-slate-600 font-medium mt-1">
+                          <span className="text-slate-400">রেফারেন্স: </span>
+                          <strong>{item.providerReference}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {item.description && (
+                      <p className="text-xs text-slate-600 line-clamp-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                        {item.description}
+                      </p>
+                    )}
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                      <span>{item.date}</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditDonation(item)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 transition cursor-pointer"
+                          title="সম্পাদনা"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDonation(item.id)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 transition cursor-pointer"
+                          title="মুছে ফেলুন"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-2">
+              <Heart className="w-10 h-10 text-slate-300 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-700">কোনো অনুদান রেকর্ড পাওয়া যায়নি</h4>
+              <p className="text-xs text-slate-400">নতুন সাহায্যপ্রাপ্তদের তথ্য যুক্ত করুন।</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 7. Extra Contributions Management Tab */}
+      {activeTab === 'contributions' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Gift className="w-5 h-5 text-amber-600" />
+                <span>অতিরিক্ত অনুদান ও বিশেষ তহবিল ব্যবস্থাপনা</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                শুভাকাঙ্ক্ষী, প্রবাসী ভাই ও বিশেষ দাতাদের প্রদত্ত অনুদান রেকর্ড পরিচালনা করুন
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenAddContrib}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 whitespace-nowrap"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>নতুন অতিরিক্ত অনুদান যোগ করুন</span>
+            </button>
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={contribAdminSearch}
+              onChange={(e) => setContribAdminSearch(e.target.value)}
+              placeholder="দাতার নাম, এলাকা বা রেফারেন্স দিয়ে খুঁজুন..."
+              className="w-full pl-9 pr-4 py-2.5 text-xs rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+            />
+          </div>
+
+          {/* Contributions List */}
+          {extraContributions.filter(c => {
+            if (!contribAdminSearch.trim()) return true;
+            const q = contribAdminSearch.toLowerCase();
+            return (
+              (c.donorName || '').toLowerCase().includes(q) ||
+              (c.address || '').toLowerCase().includes(q) ||
+              (c.providerReference || '').toLowerCase().includes(q)
+            );
+          }).length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {extraContributions
+                .filter(c => {
+                  if (!contribAdminSearch.trim()) return true;
+                  const q = contribAdminSearch.toLowerCase();
+                  return (
+                    (c.donorName || '').toLowerCase().includes(q) ||
+                    (c.address || '').toLowerCase().includes(q) ||
+                    (c.providerReference || '').toLowerCase().includes(q)
+                  );
+                })
+                .map((item) => (
+                  <div
+                    key={item.id}
+                    className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-3"
+                  >
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                        {item.photoUrl ? (
+                          <img src={item.photoUrl} alt={item.donorName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-amber-600 bg-amber-50">
+                            <Gift className="w-6 h-6" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <h4 className="text-sm font-black text-slate-900 truncate">
+                            {item.donorName}
+                          </h4>
+                          <span className="text-xs font-black text-amber-800 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                            {formatBengaliCurrency(item.amount)}
+                          </span>
+                        </div>
+                        {item.address && (
+                          <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                            <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
+                            <span className="truncate">{item.address}</span>
+                          </div>
+                        )}
+                        <div className="text-xs text-slate-600 font-medium mt-1">
+                          <span className="text-slate-400">মাধ্যম: </span>
+                          <strong>{item.providerReference}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {item.description && (
+                      <p className="text-xs text-slate-600 line-clamp-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                        {item.description}
+                      </p>
+                    )}
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                      <span>{item.date}</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditContrib(item)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-700 transition cursor-pointer"
+                          title="সম্পাদনা"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteContrib(item.id)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 transition cursor-pointer"
+                          title="মুছে ফেলুন"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-2">
+              <Gift className="w-10 h-10 text-slate-300 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-700">কোনো অতিরিক্ত অনুদান পাওয়া যায়নি</h4>
+              <p className="text-xs text-slate-400">নতুন শুভাকাঙ্ক্ষী অনুদান এন্ট্রি করুন।</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Add / Edit Member Modal (Admin Exclusive) */}
       {(isAddMemberModalOpen || editingMember) && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
@@ -3370,6 +4185,558 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
             >
               বন্ধ করুন
             </button>
+          </div>
+        </div>
+      )}
+      {/* Modal 1: Add / Edit Slide Modal */}
+      {isSlideModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-emerald-700" />
+                <span>{editingSlide ? 'স্লাইডার ছবি সম্পাদনা' : 'নতুন স্লাইডার ছবি যোগ'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsSlideModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSlide} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  স্লাইডারের শিরোনাম / অনুষ্ঠানের নাম <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={slideTitle}
+                  onChange={(e) => setSlideTitle(e.target.value)}
+                  placeholder="যেমন: সিলেট মানবসেবা সংগঠনের বার্ষিক মিলনমেলা ও ত্রাণ বিতরণ"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              {/* Photo Upload or URL */}
+              <div className="space-y-2">
+                <label className="block font-bold text-slate-700">
+                  ছবি নির্বাচন (ডিভাইস থেকে আপলোড অথবা লিঙ্ক) <span className="text-rose-500">*</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  {slideImageUrl ? (
+                    <div className="relative w-24 h-16 rounded-xl overflow-hidden border border-emerald-400 shrink-0">
+                      <img src={slideImageUrl} alt="প্রিভিউ" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setSlideImageUrl('')}
+                        className="absolute top-0 right-0 p-0.5 bg-rose-600 text-white rounded-bl"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-24 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                      <ImageIcon className="w-6 h-6" />
+                    </div>
+                  )}
+                  <div className="flex-1 space-y-1.5">
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition text-xs">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>গ্যালারি থেকে ফটো আপলোড</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleSlidePhotoFile}
+                        className="hidden"
+                      />
+                    </label>
+                    <input
+                      type="url"
+                      value={slideImageUrl}
+                      onChange={(e) => setSlideImageUrl(e.target.value)}
+                      placeholder="অথবা ছবির সরাসরি ওয়েব লিঙ্ক (URL) দিন"
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">ক্যাটাগরি</label>
+                  <input
+                    type="text"
+                    value={slideCategory}
+                    onChange={(e) => setSlideCategory(e.target.value)}
+                    placeholder="যেমন: ত্রাণ বিতরণ / মিলনমেলা"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">তারিখ</label>
+                  <input
+                    type="text"
+                    value={slideDate}
+                    onChange={(e) => setSlideDate(e.target.value)}
+                    placeholder="যেমন: ২০২৬ / ১৫ মার্চ"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">স্থান / লোকেশন</label>
+                <input
+                  type="text"
+                  value={slideLocation}
+                  onChange={(e) => setSlideLocation(e.target.value)}
+                  placeholder="যেমন: পতেঙ্গা, চট্টগ্রাম"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">বিস্তারিত ক্যাপশন বা বিবরণ</label>
+                <textarea
+                  rows={2}
+                  value={slideDescription}
+                  onChange={(e) => setSlideDescription(e.target.value)}
+                  placeholder="ছবি সম্পর্কিত সংক্ষিপ্ত তথ্য..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="slideActiveCheck"
+                  checked={slideIsActive}
+                  onChange={(e) => setSlideIsActive(e.target.checked)}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                />
+                <label htmlFor="slideActiveCheck" className="font-bold text-slate-800 cursor-pointer">
+                  হোম পেজের স্লাইডারে দৃশ্যমান রাখুন
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsSlideModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer font-bold"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow transition cursor-pointer active:scale-95 flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{editingSlide ? 'আপডেট করুন' : 'স্লাইডার যুক্ত করুন'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: Add / Edit Aid Donation Record Modal */}
+      {isDonationModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Heart className="w-5 h-5 text-rose-600" />
+                <span>{editingDonation ? 'অনুদান রেকর্ড সম্পাদনা' : 'নতুন অনুদান রেকর্ড যুক্ত করুন'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsDonationModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveDonation} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  সাহায্যপ্রাপ্তের নাম <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={donationRecipientName}
+                  onChange={(e) => setDonationRecipientName(e.target.value)}
+                  placeholder="যেমন: রহিমা বেগম (অসহায় বিধবা)"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              {/* Photo Upload or URL */}
+              <div className="space-y-2">
+                <label className="block font-bold text-slate-700">সাহায্যপ্রাপ্তের ছবি (ঐচ্ছিক)</label>
+                <div className="flex items-center gap-3">
+                  {donationPhotoUrl ? (
+                    <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-emerald-400 shrink-0">
+                      <img src={donationPhotoUrl} alt="প্রিভিউ" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setDonationPhotoUrl('')}
+                        className="absolute top-0 right-0 p-0.5 bg-rose-600 text-white rounded-bl"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                      <Heart className="w-6 h-6" />
+                    </div>
+                  )}
+                  <div className="flex-1 space-y-1.5">
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition text-xs">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>গ্যালারি থেকে ছবি আপলোড</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleDonationPhotoFile}
+                        className="hidden"
+                      />
+                    </label>
+                    <input
+                      type="url"
+                      value={donationPhotoUrl}
+                      onChange={(e) => setDonationPhotoUrl(e.target.value)}
+                      placeholder="অথবা ছবির সরাসরি লিঙ্ক (URL)"
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    বিতরণকৃত টাকার পরিমাণ (৳) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={donationAmount}
+                    onChange={(e) => setDonationAmount(e.target.value)}
+                    placeholder="যেমন: 15000"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">তারিখ</label>
+                  <input
+                    type="text"
+                    value={donationDate}
+                    onChange={(e) => setDonationDate(e.target.value)}
+                    placeholder="যেমন: ১২ মার্চ ২০২৬"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  ঠিকানা <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={donationAddress}
+                  onChange={(e) => setDonationAddress(e.target.value)}
+                  placeholder="যেমন: পতেঙ্গা কাঠগড় বাজার এলাকা, চট্টগ্রাম"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  কার মাধ্যমে দেওয়া হয়েছে (দায়িত্বশীলের নাম ও পদবি) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={donationProviderRef}
+                  onChange={(e) => setDonationProviderRef(e.target.value)}
+                  placeholder="যেমন: মোঃ কামরুল হাসান (সভাপতি)"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">বিস্তারিত বিবরণ বা নোট</label>
+                <textarea
+                  rows={2}
+                  value={donationDescription}
+                  onChange={(e) => setDonationDescription(e.target.value)}
+                  placeholder="চিকিৎসা খরচ, খাদ্য সামগ্রী বা সহায়তার বিস্তারিত..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              {/* Personal Voluntary Payment Numbers */}
+              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                <div className="font-bold text-amber-900 text-xs">
+                  ব্যক্তিগত সহায়তা গ্রহণের নম্বর (ঐচ্ছিক)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">বিকাশ নম্বর</label>
+                    <input
+                      type="text"
+                      value={donationBkash}
+                      onChange={(e) => setDonationBkash(e.target.value)}
+                      placeholder="01886122678"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">নগদ নম্বর</label>
+                    <input
+                      type="text"
+                      value={donationNagad}
+                      onChange={(e) => setDonationNagad(e.target.value)}
+                      placeholder="01711000000"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">রকেট নম্বর</label>
+                    <input
+                      type="text"
+                      value={donationRocket}
+                      onChange={(e) => setDonationRocket(e.target.value)}
+                      placeholder="01886122678-5"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsDonationModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer font-bold"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow transition cursor-pointer active:scale-95 flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{editingDonation ? 'আপডেট করুন' : 'অনুদান রেকর্ড সংরক্ষণ'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Add / Edit Extra Contribution Modal */}
+      {isContribModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Gift className="w-5 h-5 text-amber-600" />
+                <span>{editingContrib ? 'অতিরিক্ত অনুদান সম্পাদনা' : 'নতুন অতিরিক্ত অনুদান যুক্ত করুন'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsContribModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveContrib} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  শুভাকাঙ্ক্ষী / দাতার নাম <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={contribDonorName}
+                  onChange={(e) => setContribDonorName(e.target.value)}
+                  placeholder="যেমন: মোঃ আব্দুল করিম (প্রবাসী রেমিট্যান্স যোদ্ধা)"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              {/* Photo Upload or URL */}
+              <div className="space-y-2">
+                <label className="block font-bold text-slate-700">দাতার ছবি / প্রোফাইল (ঐচ্ছিক)</label>
+                <div className="flex items-center gap-3">
+                  {contribPhotoUrl ? (
+                    <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-amber-400 shrink-0">
+                      <img src={contribPhotoUrl} alt="প্রিভিউ" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setContribPhotoUrl('')}
+                        className="absolute top-0 right-0 p-0.5 bg-rose-600 text-white rounded-bl"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                      <Gift className="w-6 h-6" />
+                    </div>
+                  )}
+                  <div className="flex-1 space-y-1.5">
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition text-xs">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>গ্যালারি থেকে ফটো আপলোড</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleContribPhotoFile}
+                        className="hidden"
+                      />
+                    </label>
+                    <input
+                      type="url"
+                      value={contribPhotoUrl}
+                      onChange={(e) => setContribPhotoUrl(e.target.value)}
+                      placeholder="অথবা ছবির সরাসরি লিঙ্ক (URL)"
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    অনুদানের পরিমাণ (৳) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={contribAmount}
+                    onChange={(e) => setContribAmount(e.target.value)}
+                    placeholder="যেমন: 50000"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">তারিখ</label>
+                  <input
+                    type="text"
+                    value={contribDate}
+                    onChange={(e) => setContribDate(e.target.value)}
+                    placeholder="যেমন: ১০ মার্চ ২০২৬"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">ঠিকানা / প্রবাস / এলাকা</label>
+                <input
+                  type="text"
+                  value={contribAddress}
+                  onChange={(e) => setContribAddress(e.target.value)}
+                  placeholder="যেমন: মাস্কাট, ওমান (মূল বাড়ি: সিলেট)"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  কার মাধ্যমে দেওয়া হয়েছে / মাধ্যম <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={contribProviderRef}
+                  onChange={(e) => setContribProviderRef(e.target.value)}
+                  placeholder="যেমন: ফখরুল ইসলাম চৌধুরী (প্রবাসী কল্যাণ সমন্বয়ক)"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">উদ্দেশ্য বা বিবরণ</label>
+                <textarea
+                  rows={2}
+                  value={contribDescription}
+                  onChange={(e) => setContribDescription(e.target.value)}
+                  placeholder="রমজান খাদ্য সামগ্রী বা ফান্ডের বিশেষ উন্নয়নের জন্য..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              {/* Personal voluntary numbers if any */}
+              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                <div className="font-bold text-amber-900 text-xs">
+                  যোগাযোগ বা লেনদেন নম্বর (ঐচ্ছিক)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">বিকাশ</label>
+                    <input
+                      type="text"
+                      value={contribBkash}
+                      onChange={(e) => setContribBkash(e.target.value)}
+                      placeholder="01886122678"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">নগদ</label>
+                    <input
+                      type="text"
+                      value={contribNagad}
+                      onChange={(e) => setContribNagad(e.target.value)}
+                      placeholder="01711223344"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">রকেট</label>
+                    <input
+                      type="text"
+                      value={contribRocket}
+                      onChange={(e) => setContribRocket(e.target.value)}
+                      placeholder="01886122678-5"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsContribModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer font-bold"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold shadow transition cursor-pointer active:scale-95 flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{editingContrib ? 'আপডেট করুন' : 'অনুদান সংরক্ষণ'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -140,12 +140,42 @@ export interface SupportTeamMember {
 export interface HomeSlide {
   id: string;
   title: string;
-  description: string;
-  category: string;
-  date: string;
-  location: string;
+  description?: string;
+  category?: string;
+  date?: string;
+  location?: string;
   imageUrl?: string;
-  isActive: boolean;
+  isActive?: boolean;
+}
+
+export interface AidDonationRecord {
+  id: string;
+  recipientName: string;
+  photoUrl?: string;
+  address: string;
+  providerReference: string; // কার মাধ্যমে দেওয়া হয়েছে
+  amount: number;
+  date: string;
+  description: string;
+  bkashNumber?: string;
+  nagadNumber?: string;
+  rocketNumber?: string;
+  createdAt?: string;
+}
+
+export interface ExtraContributionRecord {
+  id: string;
+  donorName: string;
+  photoUrl?: string;
+  address?: string;
+  providerReference: string; // কার মাধ্যমে দেওয়া হয়েছে / মাধ্যম
+  amount: number;
+  date: string;
+  description: string;
+  bkashNumber?: string;
+  nagadNumber?: string;
+  rocketNumber?: string;
+  createdAt?: string;
 }
 
 export interface HumanitarianActivity {

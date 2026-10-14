@@ -1,439 +1,739 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Users, 
-  Droplet, 
-  Wallet, 
-  Headphones,
-  Calendar as CalendarIcon, 
-  BellRing, 
   Heart, 
   MapPin, 
-  ArrowRight, 
+  Calendar, 
   ChevronLeft, 
   ChevronRight, 
-  PhoneCall, 
+  UserCheck, 
+  Copy, 
+  Check, 
+  Phone, 
+  Share2, 
+  Sparkles, 
   ShieldCheck, 
-  Sparkles,
-  CreditCard,
-  Building,
-  CheckCircle2,
-  Clock
+  Search, 
+  HeartHandshake, 
+  Gift, 
+  ExternalLink,
+  PlusCircle,
+  HelpCircle
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
-  Member, 
-  BloodDonor, 
-  Notice, 
-  FundRecord, 
   HomeSlide, 
-  HumanitarianActivity, 
-  OrganizationRule,
-  ActiveScreen 
+  AidDonationRecord, 
+  ExtraContributionRecord 
 } from '../types';
-import { toBengaliNumber, formatBengaliCurrency, isExecutiveCommitteeMember } from '../utils/helpers';
+import { toBengaliNumber, formatBengaliCurrency } from '../utils/helpers';
 
 interface HomeScreenProps {
   profile: OrganizationProfile;
-  members: Member[];
-  donors: BloodDonor[];
-  notices: Notice[];
-  funds: FundRecord[];
   homeSlides: HomeSlide[];
-  humanitarianActivities: HumanitarianActivity[];
-  organizationRules: OrganizationRule[];
-  manualTotalBalance: number | null;
-  onNavigate: (screen: ActiveScreen) => void;
-  openEmergencyModal: () => void;
+  aidDonations: AidDonationRecord[];
+  extraContributions: ExtraContributionRecord[];
+  isAdmin: boolean;
+  onNavigateToAdminTab?: (tab: 'slides' | 'donations' | 'contributions') => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   profile,
-  members,
-  donors,
-  notices,
-  funds,
-  homeSlides,
-  humanitarianActivities,
-  organizationRules,
-  manualTotalBalance,
-  onNavigate,
-  openEmergencyModal
+  homeSlides = [],
+  aidDonations = [],
+  extraContributions = [],
+  isAdmin,
+  onNavigateToAdminTab
 }) => {
+  // Slider State
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
 
-  // Auto rotate slides every 5 seconds
+  // Search/Filter states
+  const [donationSearch, setDonationSearch] = useState('');
+  const [contributionSearch, setContributionSearch] = useState('');
+
+  // Copy feedback state
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Filter only active slides (if isActive is defined)
+  const activeSlidesList = homeSlides.filter(s => s.isActive !== false);
+
+  // Auto rotate slides every 5 seconds (pause on hover/interaction)
   useEffect(() => {
-    if (!homeSlides || homeSlides.length <= 1) return;
+    if (activeSlidesList.length <= 1 || isPaused) return;
     const interval = setInterval(() => {
-      setCurrentSlideIndex((prev) => (prev + 1) % homeSlides.length);
+      setCurrentSlideIndex((prev) => (prev + 1) % activeSlidesList.length);
     }, 5000);
     return () => clearInterval(interval);
-  }, [homeSlides.length]);
+  }, [activeSlidesList.length, isPaused]);
 
-  const activeSlide = homeSlides[currentSlideIndex] || homeSlides[0];
+  // Keep current index in bound if list changes
+  useEffect(() => {
+    if (currentSlideIndex >= activeSlidesList.length && activeSlidesList.length > 0) {
+      setCurrentSlideIndex(0);
+    }
+  }, [activeSlidesList.length, currentSlideIndex]);
 
-  // Stats calculation
-  const totalMembersCount = members.length;
-  const executiveMembersCount = members.filter(m => isExecutiveCommitteeMember(m)).length;
-  const donorsCount = donors.length;
+  // Touch Swipe Handlers for mobile users
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
 
-  const totalIncome = funds
-    .filter(f => f.status === 'Paid')
-    .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-  const totalExpense = funds
-    .filter(f => f.status === 'Expense')
-    .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-  // Current net balance is strictly controlled manually by admin, never calculated from entries
-  const netBalance = manualTotalBalance !== null ? manualTotalBalance : 0;
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
 
-  const latestNotice = notices[0];
+  const handleTouchEnd = () => {
+    if (!touchStartX.current || !touchEndX.current) return;
+    const distance = touchStartX.current - touchEndX.current;
+    const minSwipeDistance = 50;
+
+    if (distance > minSwipeDistance) {
+      // Swiped Left -> Next slide
+      handleNextSlide();
+    } else if (distance < -minSwipeDistance) {
+      // Swiped Right -> Prev slide
+      handlePrevSlide();
+    }
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
+
+  const handleNextSlide = () => {
+    if (activeSlidesList.length <= 1) return;
+    setCurrentSlideIndex((prev) => (prev + 1) % activeSlidesList.length);
+  };
+
+  const handlePrevSlide = () => {
+    if (activeSlidesList.length <= 1) return;
+    setCurrentSlideIndex((prev) => (prev - 1 + activeSlidesList.length) % activeSlidesList.length);
+  };
+
+  // 1-Click Copy Number Helper
+  const handleCopy = (text: string, key: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => {
+      setCopiedKey(null);
+    }, 2500);
+  };
+
+  // Filtered Aid Donations
+  const filteredDonations = aidDonations.filter(item => {
+    if (!donationSearch.trim()) return true;
+    const q = donationSearch.toLowerCase();
+    return (
+      (item.recipientName || '').toLowerCase().includes(q) ||
+      (item.address || '').toLowerCase().includes(q) ||
+      (item.providerReference || '').toLowerCase().includes(q) ||
+      (item.description || '').toLowerCase().includes(q)
+    );
+  });
+
+  // Filtered Extra Contributions
+  const filteredContributions = extraContributions.filter(item => {
+    if (!contributionSearch.trim()) return true;
+    const q = contributionSearch.toLowerCase();
+    return (
+      (item.donorName || '').toLowerCase().includes(q) ||
+      (item.address || '').toLowerCase().includes(q) ||
+      (item.providerReference || '').toLowerCase().includes(q) ||
+      (item.description || '').toLowerCase().includes(q)
+    );
+  });
+
+  // Calculate totals
+  const totalAidDisbursed = aidDonations.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const totalExtraReceived = extraContributions.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+  const currentSlide = activeSlidesList[currentSlideIndex] || activeSlidesList[0];
 
   return (
-    <div className="space-y-6 pb-20 sm:pb-8">
-      {/* 1. Hero Photo Carousel */}
-      {activeSlide && (
-        <div className="space-y-2">
-          <div className="relative rounded-3xl overflow-hidden bg-slate-900 shadow-xl border border-slate-800">
-            <div className="relative h-64 sm:h-80 md:h-96 w-full overflow-hidden">
-              {activeSlide.imageUrl ? (
-                <img
-                  src={activeSlide.imageUrl}
-                  alt={activeSlide.title}
-                  className="w-full h-full object-cover transition-transform duration-700 ease-out hover:scale-102"
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 flex items-center justify-center">
-                  <Heart className="w-20 h-20 text-emerald-500/20" />
-                </div>
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent" />
-
-              {/* Slide Content Overlay */}
-              <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-8 text-white space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-md">
-                    {activeSlide.category}
-                  </span>
-                  <span className="text-xs text-slate-300 flex items-center gap-1 font-medium bg-black/40 backdrop-blur-xs px-2.5 py-0.5 rounded-full">
-                    <MapPin className="w-3.5 h-3.5 text-rose-400" />
-                    <span>{activeSlide.location}</span>
-                  </span>
-                  <span className="text-xs text-slate-300 font-medium bg-black/40 backdrop-blur-xs px-2.5 py-0.5 rounded-full">
-                    {activeSlide.date}
-                  </span>
-                </div>
-                <h2 className="text-xl sm:text-3xl font-black text-white leading-tight drop-shadow-md">
-                  {activeSlide.title}
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-200 line-clamp-2 max-w-2xl leading-relaxed">
-                  {activeSlide.description}
-                </p>
-              </div>
-
-              {/* Slider Controls */}
-              {homeSlides.length > 1 && (
-                <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-black/50 backdrop-blur-md p-1.5 rounded-2xl border border-white/10">
-                  <button
-                    onClick={() => setCurrentSlideIndex((prev) => (prev - 1 + homeSlides.length) % homeSlides.length)}
-                    className="p-1 rounded-xl text-white hover:bg-white/20 transition cursor-pointer"
-                    title="পূর্ববর্তী"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <span className="text-xs font-bold text-emerald-300 px-1.5 font-mono">
-                    {toBengaliNumber(currentSlideIndex + 1)}/{toBengaliNumber(homeSlides.length)}
-                  </span>
-                  <button
-                    onClick={() => setCurrentSlideIndex((prev) => (prev + 1) % homeSlides.length)}
-                    className="p-1 rounded-xl text-white hover:bg-white/20 transition cursor-pointer"
-                    title="পরবর্তী"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Slide Thumbnails Selector */}
-          {homeSlides.length > 1 && (
-            <div className="flex items-center gap-2 overflow-x-auto py-1 no-scrollbar">
-              {homeSlides.map((slide, idx) => (
-                <button
-                  key={slide.id}
-                  onClick={() => setCurrentSlideIndex(idx)}
-                  className={`flex-1 min-w-[90px] sm:min-w-[120px] p-2 rounded-2xl border text-left transition cursor-pointer ${
-                    currentSlideIndex === idx
-                      ? 'bg-emerald-50 border-emerald-500 shadow-sm'
-                      : 'bg-white border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="text-[10px] font-bold text-slate-500">#{toBengaliNumber(idx + 1)} {slide.category}</div>
-                  <div className="text-xs font-bold text-slate-800 truncate mt-0.5">{slide.title}</div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 2. Latest Notice Banner */}
-      {latestNotice && (
-        <div 
-          onClick={() => onNavigate('notices')}
-          className="bg-amber-50/90 border-2 border-amber-300/80 rounded-3xl p-4 sm:p-5 shadow-xs flex items-start gap-3.5 cursor-pointer hover:bg-amber-100/80 transition group"
-        >
-          <div className="p-2.5 rounded-2xl bg-amber-200 text-amber-900 shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
-            <BellRing className="w-5 h-5 text-amber-800" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">
-                সর্বশেষ নোটিশ
-              </span>
-              <span className="text-xs text-slate-500 font-medium">{latestNotice.date}</span>
-            </div>
-            <h3 className="text-sm font-bold text-slate-900 mt-1 truncate">
-              {latestNotice.title}
-            </h3>
-            <p className="text-xs text-slate-600 line-clamp-1 mt-0.5">
-              {latestNotice.content}
-            </p>
-          </div>
-          <ArrowRight className="w-5 h-5 text-amber-700 shrink-0 self-center group-hover:translate-x-1 transition-transform" />
-        </div>
-      )}
-
-      {/* 3. Four Live Statistical Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Members */}
-        <div 
-          onClick={() => onNavigate('members')}
-          className="bg-white p-4 sm:p-5 rounded-3xl border border-emerald-100 shadow-xs hover:shadow-md transition cursor-pointer group flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-              <Users className="w-6 h-6 text-emerald-700" />
-            </div>
-            <span className="text-xs text-slate-500 font-semibold">সংগঠনের মোট সদস্য</span>
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-0.5">
-              {toBengaliNumber(totalMembersCount)} জন
-            </div>
-          </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-emerald-700 font-bold">
-            <span>কার্যকরী পরিষদ: {toBengaliNumber(executiveMembersCount)} জন</span>
-            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-          </div>
-        </div>
-
-        {/* Blood Donors */}
-        <div 
-          onClick={() => onNavigate('blood')}
-          className="bg-white p-4 sm:p-5 rounded-3xl border border-rose-100 shadow-xs hover:shadow-md transition cursor-pointer group flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-800 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-              <Droplet className="w-6 h-6 text-rose-600" />
-            </div>
-            <span className="text-xs text-slate-500 font-semibold">নিবন্ধিত রক্তযোদ্ধা</span>
-            <div className="text-2xl sm:text-3xl font-black text-rose-700 mt-0.5">
-              {toBengaliNumber(donorsCount)} জন
-            </div>
-          </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-rose-700 font-bold">
-            <span>জরুরি রক্ত অনুসন্ধান</span>
-            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-          </div>
-        </div>
-
-        {/* Funds Net Balance */}
-        <div 
-          onClick={() => onNavigate('fund')}
-          className="bg-white p-4 sm:p-5 rounded-3xl border border-amber-100 shadow-xs hover:shadow-md transition cursor-pointer group flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-11 h-11 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-              <Wallet className="w-6 h-6 text-amber-600" />
-            </div>
-            <span className="text-xs text-slate-500 font-semibold">বর্তমান ফান্ড ব্যালেন্স</span>
-            <div className="text-xl sm:text-2xl font-black text-emerald-700 mt-0.5">
-              {formatBengaliCurrency(netBalance)}
-            </div>
-          </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>মোট আদায়: {formatBengaliCurrency(totalIncome)}</span>
-            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-          </div>
-        </div>
-
-        {/* Support Team Directory */}
-        <div 
-          onClick={() => onNavigate('support')}
-          className="bg-white p-4 sm:p-5 rounded-3xl border border-teal-100 shadow-xs hover:shadow-md transition cursor-pointer group flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-11 h-11 rounded-2xl bg-teal-100 text-teal-800 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
-              <Headphones className="w-6 h-6 text-teal-700" />
-            </div>
-            <span className="text-xs text-slate-500 font-semibold">কাস্টমার কেয়ার ও হেল্পডেস্ক</span>
-            <div className="text-xl sm:text-2xl font-black text-teal-800 mt-0.5">
-              সাপোর্ট টিম
-            </div>
-          </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-teal-700 font-bold">
-            <span>সরাসরি প্রতিনিধি যোগাযোগ</span>
-            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-          </div>
-        </div>
-      </div>
-
-      {/* 4. Quick Action Shortcuts Box */}
-      <div className="bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-900 rounded-3xl p-5 sm:p-6 text-white shadow-lg space-y-4">
-        <div className="flex justify-between items-center flex-wrap gap-2">
-          <div>
-            <h3 className="text-lg sm:text-xl font-bold flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-amber-300" />
-              <span>জরুরি সেবা ও ফান্ডিং মাধ্যম</span>
-            </h3>
-            <p className="text-xs text-emerald-100 mt-0.5">
-              মানবতার সেবায় দ্রুত যেকোনো কার্যক্রমে অংশগ্রহণ করুন
-            </p>
-          </div>
-          <button
-            onClick={openEmergencyModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow transition cursor-pointer active:scale-95"
+    <div className="space-y-8 pb-24 sm:pb-12">
+      {/* =========================================================================
+          SECTION 1: Dynamic Image Slider / Carousel (Top Section)
+          ========================================================================= */}
+      <section className="relative">
+        {activeSlidesList.length > 0 && currentSlide ? (
+          <div 
+            className="space-y-3"
+            onMouseEnter={() => setIsPaused(true)}
+            onMouseLeave={() => setIsPaused(false)}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
-            <PhoneCall className="w-4 h-4" />
-            <span>জরুরি হেল্পলাইন</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <button
-            onClick={() => onNavigate('blood')}
-            className="p-3.5 rounded-2xl bg-white/10 hover:bg-white/20 transition text-left backdrop-blur-sm border border-white/10 cursor-pointer active:scale-95"
-          >
-            <Droplet className="w-5 h-5 text-rose-300 mb-1.5" />
-            <div className="text-xs font-bold text-white">রক্ত অনুসন্ধান</div>
-            <div className="text-[10px] text-emerald-100 mt-0.5">যেকোনো গ্রুপের ডোনার</div>
-          </button>
-
-          <button
-            onClick={() => onNavigate('fund')}
-            className="p-3.5 rounded-2xl bg-white/10 hover:bg-white/20 transition text-left backdrop-blur-sm border border-white/10 cursor-pointer active:scale-95"
-          >
-            <Wallet className="w-5 h-5 text-amber-300 mb-1.5" />
-            <div className="text-xs font-bold text-white">চাঁদা ও অনুদান</div>
-            <div className="text-[10px] text-emerald-100 mt-0.5">বিকাশ / নগদ / রকেট</div>
-          </button>
-
-          <button
-            onClick={() => onNavigate('members')}
-            className="p-3.5 rounded-2xl bg-white/10 hover:bg-white/20 transition text-left backdrop-blur-sm border border-white/10 cursor-pointer active:scale-95"
-          >
-            <Users className="w-5 h-5 text-emerald-300 mb-1.5" />
-            <div className="text-xs font-bold text-white">সদস্য ডিরেক্টরি</div>
-            <div className="text-[10px] text-emerald-100 mt-0.5">সকল দায়িত্বশীলদের তালিকা</div>
-          </button>
-
-          <button
-            onClick={() => onNavigate('support')}
-            className="p-3.5 rounded-2xl bg-white/10 hover:bg-white/20 transition text-left backdrop-blur-sm border border-white/10 cursor-pointer active:scale-95"
-          >
-            <Heart className="w-5 h-5 text-pink-300 mb-1.5" />
-            <div className="text-xs font-bold text-white">সাহায্যের আবেদন</div>
-            <div className="text-[10px] text-emerald-100 mt-0.5">চিকিৎসা ও খাদ্য সাহায্য</div>
-          </button>
-        </div>
-      </div>
-
-      {/* 5. Humanitarian Activities Showcase */}
-      {humanitarianActivities.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Heart className="w-5 h-5 text-rose-500" />
-              <span>মানবসেবামূলক কার্যক্রম ও অনুদান</span>
-            </h3>
-            <button
-              onClick={() => onNavigate('fund')}
-              className="text-xs text-emerald-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <span>সকল ফান্ড বিবরণী</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            {humanitarianActivities.map((act) => (
-              <div
-                key={act.id}
-                className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-3"
-              >
-                <div>
-                  <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
-                    <span className="flex items-center gap-1 text-emerald-700 font-semibold">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                      {act.location}
-                    </span>
-                    <span className="font-mono text-slate-400">{act.date}</span>
+            {/* Main Carousel Frame */}
+            <div className="relative rounded-3xl overflow-hidden bg-slate-950 shadow-xl border border-slate-800 select-none">
+              <div className="relative h-64 sm:h-80 md:h-[400px] lg:h-[460px] w-full overflow-hidden">
+                {currentSlide.imageUrl ? (
+                  <img
+                    src={currentSlide.imageUrl}
+                    alt={currentSlide.title || 'সংগঠনের ছবি'}
+                    className="w-full h-full object-cover transition-all duration-700 ease-out"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-tr from-emerald-950 via-slate-900 to-teal-950 flex flex-col items-center justify-center p-6 text-center">
+                    <HeartHandshake className="w-20 h-20 text-emerald-500/40 mb-3" />
+                    <h3 className="text-xl font-bold text-white max-w-md">{currentSlide.title}</h3>
                   </div>
-                  <h4 className="text-sm font-bold text-slate-900 leading-snug">
-                    {act.title}
-                  </h4>
-                  <p className="text-xs text-slate-600 mt-1 line-clamp-2 leading-relaxed">
-                    {act.description}
-                  </p>
+                )}
+
+                {/* Gradient Shadows for readability */}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-black/20 pointer-events-none" />
+
+                {/* Top Badge Overlay */}
+                <div className="absolute top-4 left-4 right-4 flex items-center justify-between gap-2 z-10">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {currentSlide.category && (
+                      <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-600 text-white shadow-md backdrop-blur-md">
+                        {currentSlide.category}
+                      </span>
+                    )}
+                    {currentSlide.location && (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-black/60 text-slate-200 backdrop-blur-md flex items-center gap-1 border border-white/10">
+                        <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
+                        <span>{currentSlide.location}</span>
+                      </span>
+                    )}
+                    {currentSlide.date && (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-black/60 text-slate-200 backdrop-blur-md flex items-center gap-1 border border-white/10">
+                        <Calendar className="w-3 h-3 text-amber-400 shrink-0" />
+                        <span>{currentSlide.date}</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Counter & Admin edit shortcut */}
+                  <div className="flex items-center gap-2">
+                    {isAdmin && onNavigateToAdminTab && (
+                      <button
+                        onClick={() => onNavigateToAdminTab('slides')}
+                        className="px-2.5 py-1 rounded-xl bg-amber-400/90 hover:bg-amber-400 text-amber-950 text-xs font-black shadow-md transition cursor-pointer flex items-center gap-1"
+                        title="স্লাইডার পরিচালনা করুন"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">স্লাইডার এডিট</span>
+                      </button>
+                    )}
+                    {activeSlidesList.length > 1 && (
+                      <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-black/60 text-emerald-300 font-mono backdrop-blur-md border border-white/10">
+                        {toBengaliNumber(currentSlideIndex + 1)} / {toBengaliNumber(activeSlidesList.length)}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs text-slate-500">বিতরণকৃত অনুদান:</span>
-                  <span className="text-sm font-black text-rose-600">
-                    {formatBengaliCurrency(act.amount)}
-                  </span>
+
+                {/* Bottom Content Overlay */}
+                <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-7 md:p-8 text-white z-10 space-y-2">
+                  <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white leading-tight drop-shadow-md">
+                    {currentSlide.title}
+                  </h2>
+                  {currentSlide.description && (
+                    <p className="text-xs sm:text-sm text-slate-200 line-clamp-2 md:line-clamp-3 max-w-3xl leading-relaxed drop-shadow-sm font-medium">
+                      {currentSlide.description}
+                    </p>
+                  )}
                 </div>
+
+                {/* Previous & Next Desktop Buttons */}
+                {activeSlidesList.length > 1 && (
+                  <>
+                    <button
+                      onClick={handlePrevSlide}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 p-2 sm:p-2.5 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md transition cursor-pointer border border-white/10 shadow-lg active:scale-95 z-20"
+                      aria-label="পূর্ববর্তী ছবি"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={handleNextSlide}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-2 sm:p-2.5 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md transition cursor-pointer border border-white/10 shadow-lg active:scale-95 z-20"
+                      aria-label="পরবর্তী ছবি"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 6. Organization Rules & Constitution */}
-      {organizationRules.length > 0 && (
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-6 h-6 text-emerald-700" />
             </div>
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                সংগঠনের নীতিমালা ও গঠনতান্ত্রিক আদর্শ
-              </h3>
-              <p className="text-xs text-slate-500">সকল সদস্য ও শুভাকাঙ্ক্ষীদের জন্য অনুসরণীয় বিধানাবলী</p>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {organizationRules.map((rule) => (
-              <div 
-                key={rule.id}
-                className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/80"
+            {/* Slide Dots / Indicators */}
+            {activeSlidesList.length > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-1">
+                {activeSlidesList.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentSlideIndex(idx)}
+                    className={`h-2 rounded-full transition-all cursor-pointer ${
+                      currentSlideIndex === idx
+                        ? 'w-8 bg-emerald-600 shadow-sm'
+                        : 'w-2 bg-slate-300 hover:bg-slate-400'
+                    }`}
+                    aria-label={`স্লাইড ${idx + 1}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Empty Slider State - Only when admin removes all slides */
+          <div className="rounded-3xl bg-gradient-to-br from-emerald-900 via-slate-900 to-teal-950 p-6 sm:p-10 text-white text-center shadow-lg border border-emerald-800/50 space-y-4">
+            <div className="w-16 h-16 mx-auto rounded-3xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center">
+              <HeartHandshake className="w-8 h-8 text-emerald-300" />
+            </div>
+            <div className="max-w-xl mx-auto space-y-1">
+              <h2 className="text-xl sm:text-2xl font-black text-white">{profile.name}</h2>
+              <p className="text-xs sm:text-sm text-emerald-200 font-medium">{profile.tagline}</p>
+              <p className="text-xs text-amber-300 font-bold">{profile.address}</p>
+            </div>
+            {isAdmin && onNavigateToAdminTab && (
+              <button
+                onClick={() => onNavigateToAdminTab('slides')}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black shadow transition cursor-pointer"
               >
-                <div className="w-7 h-7 rounded-xl bg-emerald-700 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
-                  {toBengaliNumber(rule.pointNumber)}
+                <PlusCircle className="w-4 h-4" />
+                <span>স্লাইডারে নতুন ছবি যোগ করুন</span>
+              </button>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* =========================================================================
+          SECTION 2: Donation & Aid Recipient Directory (Multiple Records Support)
+          ========================================================================= */}
+      <section className="space-y-4">
+        {/* Section Header */}
+        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="p-2 rounded-2xl bg-emerald-100 text-emerald-800">
+                <Heart className="w-5 h-5 text-emerald-700" />
+              </div>
+              <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                অনুদান ও সাহায্য প্রাপ্তদের তালিকা
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800">
+                {toBengaliNumber(aidDonations.length)}টি রেকর্ড
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              সংগঠন কর্তৃক বিতরণকৃত জরুরি মানবিক সহায়তা, অনুদান এবং সাহায্যপ্রাপ্তদের বিস্তারিত তথ্য
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap w-full sm:w-auto justify-start sm:justify-end">
+            <div className="bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-2xl text-xs">
+              <span className="text-slate-600 font-medium">মোট অনুদান: </span>
+              <strong className="text-emerald-700 font-black">{formatBengaliCurrency(totalAidDisbursed)}</strong>
+            </div>
+
+            {isAdmin && onNavigateToAdminTab && (
+              <button
+                onClick={() => onNavigateToAdminTab('donations')}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>নতুন এন্ট্রি যোগ করুন</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Search Bar for Aid Recipients */}
+        {aidDonations.length > 3 && (
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={donationSearch}
+              onChange={(e) => setDonationSearch(e.target.value)}
+              placeholder="নাম, ঠিকানা বা দায়িত্বশীলের রেফারেন্স দিয়ে খুঁজুন..."
+              className="w-full pl-9 pr-4 py-2 text-xs rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+            />
+          </div>
+        )}
+
+        {/* Multiple Records Cards Grid */}
+        {filteredDonations.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredDonations.map((item) => (
+              <div
+                key={item.id}
+                className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-4"
+              >
+                {/* Card Top: Photo & Basic Details */}
+                <div className="flex items-start gap-4">
+                  {/* Photo with rounded framing */}
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-2xs">
+                    {item.photoUrl ? (
+                      <img
+                        src={item.photoUrl}
+                        alt={item.recipientName}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-emerald-50 text-emerald-700 p-2 text-center">
+                        <Heart className="w-7 h-7 text-emerald-500 mb-1" />
+                        <span className="text-[9px] font-bold text-slate-400">সাহায্যপ্রাপ্ত</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Recipient Identity & Amount */}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 uppercase tracking-wider">
+                        সহায়তাপ্রাপ্ত
+                      </span>
+                      <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-slate-400" />
+                        <span>{item.date}</span>
+                      </span>
+                    </div>
+
+                    <h4 className="text-base font-black text-slate-900 leading-snug">
+                      {item.recipientName}
+                    </h4>
+
+                    {/* Amount badge */}
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-300/80 text-emerald-900 text-sm font-black">
+                      <span className="text-xs text-emerald-700 font-bold">বিতরণকৃত অনুদান:</span>
+                      <span>{formatBengaliCurrency(item.amount)}</span>
+                    </div>
+
+                    {/* Address */}
+                    <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium pt-0.5">
+                      <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                      <span className="truncate">{item.address}</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 inline-block mb-1">
-                    {rule.category}
-                  </span>
-                  <p className="text-xs text-slate-700 leading-relaxed font-medium">
-                    {rule.ruleText}
-                  </p>
+
+                {/* Donor / Provider Reference */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <div className="truncate">
+                    <span className="text-slate-500 font-medium">কার মাধ্যমে দেওয়া হয়েছে: </span>
+                    <strong className="text-slate-800 font-bold">{item.providerReference}</strong>
+                  </div>
                 </div>
+
+                {/* Detailed Description */}
+                {item.description && (
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-bold text-slate-400">বিস্তারিত বিবরণ:</span>
+                    <p className="text-xs text-slate-700 leading-relaxed font-normal bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
+                      {item.description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Optional Personal Payment Numbers */}
+                {(item.bkashNumber || item.nagadNumber || item.rocketNumber) && (
+                  <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                    <div className="flex items-center gap-1.5 text-amber-900 text-[11px] font-black">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                      <span>ব্যক্তিগত আর্থিক সহায়তা পাঠানোর নম্বর (ঐচ্ছিক):</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                      {item.bkashNumber && (
+                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-pink-200 shadow-2xs">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 text-[10px] font-black">বিকাশ</span>
+                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.bkashNumber}</span>
+                          </div>
+                          <button
+                            onClick={() => handleCopy(item.bkashNumber!, `aid-b-${item.id}`)}
+                            className="p-1 text-slate-400 hover:text-emerald-700 transition cursor-pointer"
+                            title="নম্বর কপি করুন"
+                          >
+                            {copiedKey === `aid-b-${item.id}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {item.nagadNumber && (
+                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-orange-200 shadow-2xs">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 text-[10px] font-black">নগদ</span>
+                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.nagadNumber}</span>
+                          </div>
+                          <button
+                            onClick={() => handleCopy(item.nagadNumber!, `aid-n-${item.id}`)}
+                            className="p-1 text-slate-400 hover:text-emerald-700 transition cursor-pointer"
+                            title="নম্বর কপি করুন"
+                          >
+                            {copiedKey === `aid-n-${item.id}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {item.rocketNumber && (
+                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-purple-200 shadow-2xs col-span-full">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px] font-black">রকেট</span>
+                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.rocketNumber}</span>
+                          </div>
+                          <button
+                            onClick={() => handleCopy(item.rocketNumber!, `aid-r-${item.id}`)}
+                            className="p-1 text-slate-400 hover:text-emerald-700 transition cursor-pointer"
+                            title="নম্বর কপি করুন"
+                          >
+                            {copiedKey === `aid-r-${item.id}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
+        ) : (
+          <div className="p-8 rounded-3xl bg-white border border-slate-200 text-center space-y-2">
+            <Heart className="w-10 h-10 text-slate-300 mx-auto" />
+            <h4 className="text-sm font-bold text-slate-700">কোনো অনুদান রেকর্ড পাওয়া যায়নি</h4>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              {donationSearch ? 'আপনার অনুসন্ধান অনুযায়ী কোনো রেকর্ড নেই।' : 'অ্যাডমিন প্যানেল থেকে নতুন অনুদান ও সাহায্যপ্রাপ্তদের তথ্য যুক্ত করুন।'}
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* =========================================================================
+          SECTION 3: Extra Contribution / Additional Fund Section
+          ========================================================================= */}
+      <section className="space-y-4">
+        {/* Section Header */}
+        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="p-2 rounded-2xl bg-amber-100 text-amber-800">
+                <Gift className="w-5 h-5 text-amber-700" />
+              </div>
+              <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                অতিরিক্ত অনুদান ও শুভাকাঙ্ক্ষী তহবিল
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100 text-amber-800">
+                {toBengaliNumber(extraContributions.length)}টি অবদান
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              সংগঠনের সাধারণ ও বিশেষ তহবিলে শুভাকাঙ্ক্ষী, প্রবাসী ভাই ও দাতাদের পক্ষ থেকে প্রাপ্ত অতিরিক্ত অনুদান
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap w-full sm:w-auto justify-start sm:justify-end">
+            <div className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-2xl text-xs">
+              <span className="text-slate-600 font-medium">অতিরিক্ত মোট জমা: </span>
+              <strong className="text-amber-800 font-black">{formatBengaliCurrency(totalExtraReceived)}</strong>
+            </div>
+
+            {isAdmin && onNavigateToAdminTab && (
+              <button
+                onClick={() => onNavigateToAdminTab('contributions')}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>নতুন অবদান এন্ট্রি</span>
+              </button>
+            )}
+          </div>
         </div>
-      )}
+
+        {/* Search Bar for Extra Contributions */}
+        {extraContributions.length > 3 && (
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={contributionSearch}
+              onChange={(e) => setContributionSearch(e.target.value)}
+              placeholder="দাতার নাম, এলাকা বা রেফারেন্স দিয়ে খুঁজুন..."
+              className="w-full pl-9 pr-4 py-2 text-xs rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+            />
+          </div>
+        )}
+
+        {/* Multiple Contribution Cards Grid (Structured similarly to main donation cards) */}
+        {filteredContributions.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredContributions.map((item) => (
+              <div
+                key={item.id}
+                className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-4"
+              >
+                {/* Card Top: Photo & Basic Details */}
+                <div className="flex items-start gap-4">
+                  {/* Photo with rounded framing */}
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-2xs">
+                    {item.photoUrl ? (
+                      <img
+                        src={item.photoUrl}
+                        alt={item.donorName}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-amber-50 text-amber-700 p-2 text-center">
+                        <Gift className="w-7 h-7 text-amber-500 mb-1" />
+                        <span className="text-[9px] font-bold text-slate-400">শুভাকাঙ্ক্ষী</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Donor Identity & Contributed Amount */}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 uppercase tracking-wider">
+                        বিশেষ অনুদান
+                      </span>
+                      <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-slate-400" />
+                        <span>{item.date}</span>
+                      </span>
+                    </div>
+
+                    <h4 className="text-base font-black text-slate-900 leading-snug">
+                      {item.donorName}
+                    </h4>
+
+                    {/* Amount badge */}
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-300/80 text-amber-950 text-sm font-black">
+                      <span className="text-xs text-amber-700 font-bold">প্রাপ্ত অনুদান:</span>
+                      <span>{formatBengaliCurrency(item.amount)}</span>
+                    </div>
+
+                    {/* Address / Location */}
+                    {item.address && (
+                      <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium pt-0.5">
+                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        <span className="truncate">{item.address}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Donor / Provider Reference */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-amber-700 shrink-0" />
+                  <div className="truncate">
+                    <span className="text-slate-500 font-medium">কার মাধ্যমে প্রাপ্ত / মাধ্যম: </span>
+                    <strong className="text-slate-800 font-bold">{item.providerReference}</strong>
+                  </div>
+                </div>
+
+                {/* Detailed Description */}
+                {item.description && (
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-bold text-slate-400">উদ্দেশ্য / বিবরণ:</span>
+                    <p className="text-xs text-slate-700 leading-relaxed font-normal bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
+                      {item.description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Optional Personal Payment Numbers */}
+                {(item.bkashNumber || item.nagadNumber || item.rocketNumber) && (
+                  <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                    <div className="flex items-center gap-1.5 text-amber-900 text-[11px] font-black">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                      <span>যোগাযোগ ও লেনদেন নম্বর (ঐচ্ছিক):</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                      {item.bkashNumber && (
+                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-pink-200 shadow-2xs">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 text-[10px] font-black">বিকাশ</span>
+                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.bkashNumber}</span>
+                          </div>
+                          <button
+                            onClick={() => handleCopy(item.bkashNumber!, `ext-b-${item.id}`)}
+                            className="p-1 text-slate-400 hover:text-amber-700 transition cursor-pointer"
+                            title="নম্বর কপি করুন"
+                          >
+                            {copiedKey === `ext-b-${item.id}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {item.nagadNumber && (
+                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-orange-200 shadow-2xs">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 text-[10px] font-black">নগদ</span>
+                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.nagadNumber}</span>
+                          </div>
+                          <button
+                            onClick={() => handleCopy(item.nagadNumber!, `ext-n-${item.id}`)}
+                            className="p-1 text-slate-400 hover:text-amber-700 transition cursor-pointer"
+                            title="নম্বর কপি করুন"
+                          >
+                            {copiedKey === `ext-n-${item.id}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {item.rocketNumber && (
+                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-purple-200 shadow-2xs col-span-full">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px] font-black">রকেট</span>
+                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.rocketNumber}</span>
+                          </div>
+                          <button
+                            onClick={() => handleCopy(item.rocketNumber!, `ext-r-${item.id}`)}
+                            className="p-1 text-slate-400 hover:text-amber-700 transition cursor-pointer"
+                            title="নম্বর কপি করুন"
+                          >
+                            {copiedKey === `ext-r-${item.id}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 rounded-3xl bg-white border border-slate-200 text-center space-y-2">
+            <Gift className="w-10 h-10 text-slate-300 mx-auto" />
+            <h4 className="text-sm font-bold text-slate-700">কোনো অতিরিক্ত অনুদান রেকর্ড পাওয়া যায়নি</h4>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              {contributionSearch ? 'আপনার অনুসন্ধান অনুযায়ী কোনো রেকর্ড নেই।' : 'শুভাকাঙ্ক্ষী ও শুভানুধ্যায়ীদের প্রদত্ত অনুদান তথ্য অ্যাডমিন প্যানেল থেকে যোগ করুন।'}
+            </p>
+          </div>
+        )}
+      </section>
     </div>
   );
 };
