@@ -231,7 +231,7 @@ export function loadHomeSlides(): HomeSlide[] {
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_HOME_SLIDES;
+  return INITIAL_HOME_SLIDES.filter(s => !isIdPermanentlyDeleted(s.id));
 }
 
 export function saveHomeSlides(slides: HomeSlide[]) {
@@ -257,7 +257,7 @@ export function loadAidDonations(): AidDonationRecord[] {
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_AID_DONATIONS;
+  return INITIAL_AID_DONATIONS.filter(d => !isIdPermanentlyDeleted(d.id));
 }
 
 export function saveAidDonations(records: AidDonationRecord[]) {
@@ -283,7 +283,7 @@ export function loadExtraContributions(): ExtraContributionRecord[] {
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_EXTRA_CONTRIBUTIONS;
+  return INITIAL_EXTRA_CONTRIBUTIONS.filter(c => !isIdPermanentlyDeleted(c.id));
 }
 
 export function saveExtraContributions(records: ExtraContributionRecord[]) {
@@ -380,14 +380,14 @@ export function loadSupportMembers(): SupportTeamMember[] {
     const raw = localStorage.getItem(STORAGE_KEYS.SUPPORT_MEMBERS);
     if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed.filter(s => !isIdPermanentlyDeleted(s.id));
       }
     }
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_SUPPORT_MEMBERS;
+  return INITIAL_SUPPORT_MEMBERS.filter(s => !isIdPermanentlyDeleted(s.id));
 }
 
 export function saveSupportMembers(members: SupportTeamMember[]) {

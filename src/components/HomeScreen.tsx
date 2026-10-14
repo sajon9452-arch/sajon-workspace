@@ -8,16 +8,14 @@ import {
   UserCheck, 
   Copy, 
   Check, 
-  Phone, 
-  Share2, 
   Sparkles, 
   ShieldCheck, 
   Search, 
   HeartHandshake, 
   Gift, 
-  ExternalLink,
   PlusCircle,
-  HelpCircle
+  X,
+  Maximize2
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
@@ -57,6 +55,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   // Copy feedback state
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // Lightbox / Image Zoom Modal
+  const [zoomedImage, setZoomedImage] = useState<{ url: string; title: string; subtitle?: string } | null>(null);
+
   // Filter only active slides (if isActive is defined)
   const activeSlidesList = homeSlides.filter(s => s.isActive !== false);
 
@@ -91,10 +92,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     const minSwipeDistance = 50;
 
     if (distance > minSwipeDistance) {
-      // Swiped Left -> Next slide
       handleNextSlide();
     } else if (distance < -minSwipeDistance) {
-      // Swiped Right -> Prev slide
       handlePrevSlide();
     }
     touchStartX.current = null;
@@ -154,7 +153,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   return (
     <div className="space-y-8 pb-24 sm:pb-12">
       {/* =========================================================================
-          SECTION 1: Dynamic Image Slider / Carousel (Top Section)
+          SECTION 1: Clean Image Slider (Organization Group Photos Only)
+          - No text overlay, titles, descriptions, location tags, or badges on top of photos
+          - Full, clean view of organization group photos & banners
           ========================================================================= */}
       <section className="relative">
         {activeSlidesList.length > 0 && currentSlide ? (
@@ -166,137 +167,118 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
           >
-            {/* Main Carousel Frame */}
-            <div className="relative rounded-3xl overflow-hidden bg-slate-950 shadow-xl border border-slate-800 select-none">
-              <div className="relative h-64 sm:h-80 md:h-[400px] lg:h-[460px] w-full overflow-hidden">
+            {/* Main Carousel Frame - Clean, large, strictly without text overlays */}
+            <div className="relative rounded-3xl overflow-hidden bg-slate-900 shadow-xl border border-slate-200/80 group select-none">
+              <div 
+                className="relative h-64 sm:h-80 md:h-[420px] lg:h-[480px] w-full overflow-hidden cursor-pointer"
+                onClick={() => currentSlide.imageUrl && setZoomedImage({ 
+                  url: currentSlide.imageUrl, 
+                  title: 'সংগঠনের ফটো গ্যালারি', 
+                  subtitle: currentSlide.title 
+                })}
+                title="ছবি বড় করে দেখতে ক্লিক করুন"
+              >
                 {currentSlide.imageUrl ? (
                   <img
                     src={currentSlide.imageUrl}
-                    alt={currentSlide.title || 'সংগঠনের ছবি'}
-                    className="w-full h-full object-cover transition-all duration-700 ease-out"
+                    alt="সিলেট মানবসেবা সংগঠন"
+                    className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.02]"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-tr from-emerald-950 via-slate-900 to-teal-950 flex flex-col items-center justify-center p-6 text-center">
-                    <HeartHandshake className="w-20 h-20 text-emerald-500/40 mb-3" />
-                    <h3 className="text-xl font-bold text-white max-w-md">{currentSlide.title}</h3>
+                  <div className="w-full h-full bg-gradient-to-tr from-emerald-900 via-slate-900 to-teal-900 flex flex-col items-center justify-center p-6 text-center">
+                    <HeartHandshake className="w-20 h-20 text-emerald-400/50 mb-2" />
+                    <span className="text-sm font-bold text-emerald-200">সিলেট মানবসেবা সংগঠন</span>
                   </div>
                 )}
 
-                {/* Gradient Shadows for readability */}
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-black/20 pointer-events-none" />
-
-                {/* Top Badge Overlay */}
-                <div className="absolute top-4 left-4 right-4 flex items-center justify-between gap-2 z-10">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {currentSlide.category && (
-                      <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-600 text-white shadow-md backdrop-blur-md">
-                        {currentSlide.category}
-                      </span>
-                    )}
-                    {currentSlide.location && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-black/60 text-slate-200 backdrop-blur-md flex items-center gap-1 border border-white/10">
-                        <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
-                        <span>{currentSlide.location}</span>
-                      </span>
-                    )}
-                    {currentSlide.date && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-black/60 text-slate-200 backdrop-blur-md flex items-center gap-1 border border-white/10">
-                        <Calendar className="w-3 h-3 text-amber-400 shrink-0" />
-                        <span>{currentSlide.date}</span>
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Counter & Admin edit shortcut */}
-                  <div className="flex items-center gap-2">
-                    {isAdmin && onNavigateToAdminTab && (
-                      <button
-                        onClick={() => onNavigateToAdminTab('slides')}
-                        className="px-2.5 py-1 rounded-xl bg-amber-400/90 hover:bg-amber-400 text-amber-950 text-xs font-black shadow-md transition cursor-pointer flex items-center gap-1"
-                        title="স্লাইডার পরিচালনা করুন"
-                      >
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">স্লাইডার এডিট</span>
-                      </button>
-                    )}
-                    {activeSlidesList.length > 1 && (
-                      <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-black/60 text-emerald-300 font-mono backdrop-blur-md border border-white/10">
-                        {toBengaliNumber(currentSlideIndex + 1)} / {toBengaliNumber(activeSlidesList.length)}
-                      </span>
-                    )}
-                  </div>
+                {/* Subtle zoom hint on hover */}
+                <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-xl flex items-center gap-1 border border-white/20 pointer-events-none">
+                  <Maximize2 className="w-3.5 h-3.5" />
+                  <span>বড় করে দেখুন</span>
                 </div>
 
-                {/* Bottom Content Overlay */}
-                <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-7 md:p-8 text-white z-10 space-y-2">
-                  <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white leading-tight drop-shadow-md">
-                    {currentSlide.title}
-                  </h2>
-                  {currentSlide.description && (
-                    <p className="text-xs sm:text-sm text-slate-200 line-clamp-2 md:line-clamp-3 max-w-3xl leading-relaxed drop-shadow-sm font-medium">
-                      {currentSlide.description}
-                    </p>
-                  )}
-                </div>
-
-                {/* Previous & Next Desktop Buttons */}
+                {/* Previous & Next Desktop/Tablet Navigation Buttons */}
                 {activeSlidesList.length > 1 && (
                   <>
                     <button
-                      onClick={handlePrevSlide}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 p-2 sm:p-2.5 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md transition cursor-pointer border border-white/10 shadow-lg active:scale-95 z-20"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePrevSlide();
+                      }}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 sm:p-3 rounded-full bg-black/40 hover:bg-black/75 text-white backdrop-blur-md transition-all cursor-pointer border border-white/20 shadow-lg active:scale-90 z-20"
                       aria-label="পূর্ববর্তী ছবি"
                     >
-                      <ChevronLeft className="w-5 h-5" />
+                      <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
                     </button>
                     <button
-                      onClick={handleNextSlide}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-2 sm:p-2.5 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md transition cursor-pointer border border-white/10 shadow-lg active:scale-95 z-20"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNextSlide();
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 sm:p-3 rounded-full bg-black/40 hover:bg-black/75 text-white backdrop-blur-md transition-all cursor-pointer border border-white/20 shadow-lg active:scale-90 z-20"
                       aria-label="পরবর্তী ছবি"
                     >
-                      <ChevronRight className="w-5 h-5" />
+                      <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
                     </button>
                   </>
                 )}
               </div>
             </div>
 
-            {/* Slide Dots / Indicators */}
-            {activeSlidesList.length > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-1">
-                {activeSlidesList.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentSlideIndex(idx)}
-                    className={`h-2 rounded-full transition-all cursor-pointer ${
-                      currentSlideIndex === idx
-                        ? 'w-8 bg-emerald-600 shadow-sm'
-                        : 'w-2 bg-slate-300 hover:bg-slate-400'
-                    }`}
-                    aria-label={`স্লাইড ${idx + 1}`}
-                  />
-                ))}
+            {/* Slide Navigation Controls & Admin Shortcut Below Photo */}
+            <div className="flex items-center justify-between px-2 pt-1 flex-wrap gap-2">
+              {/* Slide Counter / Indicators */}
+              <div className="flex items-center gap-2">
+                {activeSlidesList.length > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    {activeSlidesList.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCurrentSlideIndex(idx)}
+                        className={`h-2 rounded-full transition-all cursor-pointer ${
+                          currentSlideIndex === idx
+                            ? 'w-8 bg-emerald-600 shadow-sm'
+                            : 'w-2 bg-slate-300 hover:bg-slate-400'
+                        }`}
+                        aria-label={`স্লাইড ${idx + 1}`}
+                      />
+                    ))}
+                  </div>
+                )}
+                <span className="text-[11px] font-bold text-slate-500 font-mono ml-1">
+                  ({toBengaliNumber(currentSlideIndex + 1)}/{toBengaliNumber(activeSlidesList.length)})
+                </span>
               </div>
-            )}
+
+              {/* Admin Manage Slides Quick Action */}
+              {isAdmin && onNavigateToAdminTab && (
+                <button
+                  onClick={() => onNavigateToAdminTab('slides')}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold transition border border-amber-300 shadow-2xs cursor-pointer"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-800" />
+                  <span>স্লাইডার ফটো পরিচালনা</span>
+                </button>
+              )}
+            </div>
           </div>
         ) : (
-          /* Empty Slider State - Only when admin removes all slides */
-          <div className="rounded-3xl bg-gradient-to-br from-emerald-900 via-slate-900 to-teal-950 p-6 sm:p-10 text-white text-center shadow-lg border border-emerald-800/50 space-y-4">
-            <div className="w-16 h-16 mx-auto rounded-3xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center">
-              <HeartHandshake className="w-8 h-8 text-emerald-300" />
-            </div>
-            <div className="max-w-xl mx-auto space-y-1">
-              <h2 className="text-xl sm:text-2xl font-black text-white">{profile.name}</h2>
-              <p className="text-xs sm:text-sm text-emerald-200 font-medium">{profile.tagline}</p>
-              <p className="text-xs text-amber-300 font-bold">{profile.address}</p>
-            </div>
+          /* Empty Slider State - Displayed only if admin permanently deleted all slides */
+          <div className="rounded-3xl bg-slate-100 p-8 sm:p-12 text-center border-2 border-dashed border-slate-300 space-y-3">
+            <HeartHandshake className="w-12 h-12 text-slate-400 mx-auto" />
+            <h3 className="text-base font-bold text-slate-700">বর্তমানে কোনো স্লাইডার ফটো যুক্ত করা নেই</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              অ্যাডমিন প্যানেল থেকে সংগঠনের গ্রুপ ফটো বা ব্যানার যুক্ত করলে এখানে সুন্দরভাবে প্রদর্শিত হবে।
+            </p>
             {isAdmin && onNavigateToAdminTab && (
               <button
                 onClick={() => onNavigateToAdminTab('slides')}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black shadow transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow transition cursor-pointer"
               >
                 <PlusCircle className="w-4 h-4" />
-                <span>স্লাইডারে নতুন ছবি যোগ করুন</span>
+                <span>নতুন ফটো আপলোড করুন</span>
               </button>
             )}
           </div>
@@ -304,14 +286,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </section>
 
       {/* =========================================================================
-          SECTION 2: Donation & Aid Recipient Directory (Multiple Records Support)
+          SECTION 2: Donation & Aid Recipient Directory (Refined Layout)
+          - Significantly larger recipient photo at the top
+          - All details strictly underneath the photo
+          - Dynamic multiple records support
           ========================================================================= */}
-      <section className="space-y-4">
+      <section className="space-y-5">
         {/* Section Header */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="p-2 rounded-2xl bg-emerald-100 text-emerald-800">
+              <div className="p-2.5 rounded-2xl bg-emerald-100 text-emerald-800">
                 <Heart className="w-5 h-5 text-emerald-700" />
               </div>
               <h3 className="text-lg sm:text-xl font-black text-slate-900">
@@ -327,7 +312,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap w-full sm:w-auto justify-start sm:justify-end">
-            <div className="bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-2xl text-xs">
+            <div className="bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-2xl text-xs">
               <span className="text-slate-600 font-medium">মোট অনুদান: </span>
               <strong className="text-emerald-700 font-black">{formatBengaliCurrency(totalAidDisbursed)}</strong>
             </div>
@@ -345,165 +330,210 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
 
         {/* Search Bar for Aid Recipients */}
-        {aidDonations.length > 3 && (
+        {aidDonations.length > 2 && (
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={donationSearch}
               onChange={(e) => setDonationSearch(e.target.value)}
-              placeholder="নাম, ঠিকানা বা দায়িত্বশীলের রেফারেন্স দিয়ে খুঁজুন..."
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              placeholder="নাম, ঠিকানা বা রেফারেন্স দিয়ে সাহায্যপ্রাপ্তদের খুঁজুন..."
+              className="w-full pl-9 pr-4 py-2.5 text-xs sm:text-sm rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-2xs"
             />
           </div>
         )}
 
-        {/* Multiple Records Cards Grid */}
+        {/* Multiple Records Cards Grid - Refined Card Layout */}
         {filteredDonations.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5 sm:gap-6">
             {filteredDonations.map((item) => (
               <div
                 key={item.id}
-                className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-4"
+                className="bg-white rounded-3xl overflow-hidden border border-slate-200/90 shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col justify-between group"
               >
-                {/* Card Top: Photo & Basic Details */}
-                <div className="flex items-start gap-4">
-                  {/* Photo with rounded framing */}
-                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-2xs">
-                    {item.photoUrl ? (
-                      <img
-                        src={item.photoUrl}
-                        alt={item.recipientName}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-emerald-50 text-emerald-700 p-2 text-center">
-                        <Heart className="w-7 h-7 text-emerald-500 mb-1" />
-                        <span className="text-[9px] font-bold text-slate-400">সাহায্যপ্রাপ্ত</span>
+                {/* 1. Large Recipient Photo at Top */}
+                <div 
+                  className="relative w-full h-56 sm:h-64 md:h-72 bg-slate-100 overflow-hidden cursor-pointer"
+                  onClick={() => item.photoUrl && setZoomedImage({
+                    url: item.photoUrl,
+                    title: item.recipientName,
+                    subtitle: `ঠিকানা: ${item.address} • অনুদান: ${formatBengaliCurrency(item.amount)}`
+                  })}
+                  title="ছবি বড় করে দেখতে ক্লিক করুন"
+                >
+                  {item.photoUrl ? (
+                    <img
+                      src={item.photoUrl}
+                      alt={item.recipientName}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-tr from-emerald-50 to-teal-100/70 text-emerald-800 p-4">
+                      <Heart className="w-14 h-14 text-emerald-500 mb-2" />
+                      <span className="text-xs font-bold text-emerald-900">সাহায্যপ্রাপ্তের ছবি নেই</span>
+                    </div>
+                  )}
+
+                  {/* Badges on Top Corners */}
+                  <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                    <span className="px-3 py-1 rounded-xl text-[11px] font-black bg-emerald-700/90 backdrop-blur-md text-white shadow-md">
+                      সহায়তাপ্রাপ্ত
+                    </span>
+                  </div>
+
+                  <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-md text-white px-2.5 py-1 rounded-xl text-[11px] font-semibold border border-white/10 shadow-md">
+                    <Calendar className="w-3 h-3 text-amber-300" />
+                    <span>{item.date}</span>
+                  </div>
+
+                  {item.photoUrl && (
+                    <div className="absolute bottom-2.5 right-2.5 bg-black/50 hover:bg-black/75 backdrop-blur-md text-white p-1.5 rounded-xl border border-white/20 transition opacity-80 group-hover:opacity-100">
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. All Relevant Details Strictly Underneath the Large Photo */}
+                <div className="p-5 sm:p-6 space-y-4 flex-1 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    {/* Name & Amount Row */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 block">সাহায্যপ্রাপ্তের নাম</span>
+                        <h4 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                          {item.recipientName}
+                        </h4>
+                      </div>
+
+                      {/* Donated Amount Highlight */}
+                      <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-950 font-black text-base shrink-0 self-start sm:self-auto">
+                        <span className="text-[11px] text-emerald-700 font-bold">বিতরণকৃত অনুদান:</span>
+                        <span>{formatBengaliCurrency(item.amount)}</span>
+                      </div>
+                    </div>
+
+                    {/* Address (ঠিকানা) */}
+                    <div className="flex items-start gap-2 text-xs sm:text-sm text-slate-700 bg-slate-50 p-2.5 rounded-2xl border border-slate-200/70">
+                      <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 block">ঠিকানা</span>
+                        <span className="font-semibold text-slate-800">{item.address}</span>
+                      </div>
+                    </div>
+
+                    {/* Donor / Provider Reference (কার মাধ্যমে দেওয়া হয়েছে) */}
+                    <div className="flex items-start gap-2 text-xs sm:text-sm text-slate-700 bg-emerald-50/60 p-2.5 rounded-2xl border border-emerald-200/80">
+                      <UserCheck className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-[10px] font-bold text-emerald-700 block">কার মাধ্যমে দেওয়া হয়েছে</span>
+                        <span className="font-bold text-emerald-950">{item.providerReference}</span>
+                      </div>
+                    </div>
+
+                    {/* Detailed Description / Notes (বিস্তারিত বিবরণ) */}
+                    {item.description && (
+                      <div className="space-y-1">
+                        <span className="text-[11px] font-bold text-slate-500">বিস্তারিত বিবরণ:</span>
+                        <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-normal bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+                          {item.description}
+                        </p>
                       </div>
                     )}
                   </div>
 
-                  {/* Recipient Identity & Amount */}
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 uppercase tracking-wider">
-                        সহায়তাপ্রাপ্ত
-                      </span>
-                      <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
-                        <Calendar className="w-3 h-3 text-slate-400" />
-                        <span>{item.date}</span>
-                      </span>
-                    </div>
+                  {/* Optional Personal Payment Numbers (বিকাশ / নগদ / রকেট) */}
+                  {(item.bkashNumber || item.nagadNumber || item.rocketNumber) && (
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center gap-1.5 text-amber-900 text-xs font-black">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>ব্যক্তিগত সাহায্য পাঠানোর নম্বর (ঐচ্ছিক সরাসরি অনুদান):</span>
+                      </div>
 
-                    <h4 className="text-base font-black text-slate-900 leading-snug">
-                      {item.recipientName}
-                    </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {item.bkashNumber && (
+                          <div className="flex items-center justify-between bg-pink-50/60 px-3 py-2 rounded-2xl border border-pink-200 shadow-2xs">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="px-2 py-0.5 rounded-lg bg-pink-600 text-white text-[10px] font-black">বিকাশ</span>
+                              <span className="font-mono text-slate-900 font-bold text-xs truncate">{item.bkashNumber}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(item.bkashNumber!, `aid-b-${item.id}`)}
+                              className="p-1 rounded-lg text-pink-700 hover:bg-pink-100 transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold"
+                              title="বিকাশ নম্বর কপি করুন"
+                            >
+                              {copiedKey === `aid-b-${item.id}` ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-emerald-700">কপি হয়েছে</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>কপি</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
 
-                    {/* Amount badge */}
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-300/80 text-emerald-900 text-sm font-black">
-                      <span className="text-xs text-emerald-700 font-bold">বিতরণকৃত অনুদান:</span>
-                      <span>{formatBengaliCurrency(item.amount)}</span>
-                    </div>
+                        {item.nagadNumber && (
+                          <div className="flex items-center justify-between bg-orange-50/60 px-3 py-2 rounded-2xl border border-orange-200 shadow-2xs">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="px-2 py-0.5 rounded-lg bg-orange-600 text-white text-[10px] font-black">নগদ</span>
+                              <span className="font-mono text-slate-900 font-bold text-xs truncate">{item.nagadNumber}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(item.nagadNumber!, `aid-n-${item.id}`)}
+                              className="p-1 rounded-lg text-orange-700 hover:bg-orange-100 transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold"
+                              title="নগদ নম্বর কপি করুন"
+                            >
+                              {copiedKey === `aid-n-${item.id}` ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-emerald-700">কপি হয়েছে</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>কপি</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
 
-                    {/* Address */}
-                    <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium pt-0.5">
-                      <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                      <span className="truncate">{item.address}</span>
+                        {item.rocketNumber && (
+                          <div className="flex items-center justify-between bg-purple-50/60 px-3 py-2 rounded-2xl border border-purple-200 shadow-2xs col-span-full">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="px-2 py-0.5 rounded-lg bg-purple-600 text-white text-[10px] font-black">রকেট</span>
+                              <span className="font-mono text-slate-900 font-bold text-xs truncate">{item.rocketNumber}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(item.rocketNumber!, `aid-r-${item.id}`)}
+                              className="p-1 rounded-lg text-purple-700 hover:bg-purple-100 transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold"
+                              title="রকেট নম্বর কপি করুন"
+                            >
+                              {copiedKey === `aid-r-${item.id}` ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-emerald-700">কপি হয়েছে</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>কপি</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
-
-                {/* Donor / Provider Reference */}
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-                  <div className="truncate">
-                    <span className="text-slate-500 font-medium">কার মাধ্যমে দেওয়া হয়েছে: </span>
-                    <strong className="text-slate-800 font-bold">{item.providerReference}</strong>
-                  </div>
-                </div>
-
-                {/* Detailed Description */}
-                {item.description && (
-                  <div className="space-y-1">
-                    <span className="text-[11px] font-bold text-slate-400">বিস্তারিত বিবরণ:</span>
-                    <p className="text-xs text-slate-700 leading-relaxed font-normal bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
-                      {item.description}
-                    </p>
-                  </div>
-                )}
-
-                {/* Optional Personal Payment Numbers */}
-                {(item.bkashNumber || item.nagadNumber || item.rocketNumber) && (
-                  <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
-                    <div className="flex items-center gap-1.5 text-amber-900 text-[11px] font-black">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                      <span>ব্যক্তিগত আর্থিক সহায়তা পাঠানোর নম্বর (ঐচ্ছিক):</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
-                      {item.bkashNumber && (
-                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-pink-200 shadow-2xs">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 text-[10px] font-black">বিকাশ</span>
-                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.bkashNumber}</span>
-                          </div>
-                          <button
-                            onClick={() => handleCopy(item.bkashNumber!, `aid-b-${item.id}`)}
-                            className="p-1 text-slate-400 hover:text-emerald-700 transition cursor-pointer"
-                            title="নম্বর কপি করুন"
-                          >
-                            {copiedKey === `aid-b-${item.id}` ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      )}
-
-                      {item.nagadNumber && (
-                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-orange-200 shadow-2xs">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 text-[10px] font-black">নগদ</span>
-                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.nagadNumber}</span>
-                          </div>
-                          <button
-                            onClick={() => handleCopy(item.nagadNumber!, `aid-n-${item.id}`)}
-                            className="p-1 text-slate-400 hover:text-emerald-700 transition cursor-pointer"
-                            title="নম্বর কপি করুন"
-                          >
-                            {copiedKey === `aid-n-${item.id}` ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      )}
-
-                      {item.rocketNumber && (
-                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-purple-200 shadow-2xs col-span-full">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px] font-black">রকেট</span>
-                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.rocketNumber}</span>
-                          </div>
-                          <button
-                            onClick={() => handleCopy(item.rocketNumber!, `aid-r-${item.id}`)}
-                            className="p-1 text-slate-400 hover:text-emerald-700 transition cursor-pointer"
-                            title="নম্বর কপি করুন"
-                          >
-                            {copiedKey === `aid-r-${item.id}` ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -520,13 +550,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
       {/* =========================================================================
           SECTION 3: Extra Contribution / Additional Fund Section
+          - Refined Card Layout strictly matching Section 2:
+            • Large photo at top
+            • All details strictly underneath the photo
+            • Multiple records dynamically supported
           ========================================================================= */}
-      <section className="space-y-4">
+      <section className="space-y-5">
         {/* Section Header */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="p-2 rounded-2xl bg-amber-100 text-amber-800">
+              <div className="p-2.5 rounded-2xl bg-amber-100 text-amber-800">
                 <Gift className="w-5 h-5 text-amber-700" />
               </div>
               <h3 className="text-lg sm:text-xl font-black text-slate-900">
@@ -542,7 +576,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap w-full sm:w-auto justify-start sm:justify-end">
-            <div className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-2xl text-xs">
+            <div className="bg-amber-50 border border-amber-200 px-3.5 py-1.5 rounded-2xl text-xs">
               <span className="text-slate-600 font-medium">অতিরিক্ত মোট জমা: </span>
               <strong className="text-amber-800 font-black">{formatBengaliCurrency(totalExtraReceived)}</strong>
             </div>
@@ -560,7 +594,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
 
         {/* Search Bar for Extra Contributions */}
-        {extraContributions.length > 3 && (
+        {extraContributions.length > 2 && (
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -568,159 +602,204 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               value={contributionSearch}
               onChange={(e) => setContributionSearch(e.target.value)}
               placeholder="দাতার নাম, এলাকা বা রেফারেন্স দিয়ে খুঁজুন..."
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              className="w-full pl-9 pr-4 py-2.5 text-xs sm:text-sm rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
             />
           </div>
         )}
 
-        {/* Multiple Contribution Cards Grid (Structured similarly to main donation cards) */}
+        {/* Multiple Contribution Cards Grid - Exactly Same Refined Structure */}
         {filteredContributions.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5 sm:gap-6">
             {filteredContributions.map((item) => (
               <div
                 key={item.id}
-                className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-4"
+                className="bg-white rounded-3xl overflow-hidden border border-slate-200/90 shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col justify-between group"
               >
-                {/* Card Top: Photo & Basic Details */}
-                <div className="flex items-start gap-4">
-                  {/* Photo with rounded framing */}
-                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-2xs">
-                    {item.photoUrl ? (
-                      <img
-                        src={item.photoUrl}
-                        alt={item.donorName}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-amber-50 text-amber-700 p-2 text-center">
-                        <Gift className="w-7 h-7 text-amber-500 mb-1" />
-                        <span className="text-[9px] font-bold text-slate-400">শুভাকাঙ্ক্ষী</span>
-                      </div>
-                    )}
+                {/* 1. Large Contributor / Event Photo at Top */}
+                <div 
+                  className="relative w-full h-56 sm:h-64 md:h-72 bg-slate-100 overflow-hidden cursor-pointer"
+                  onClick={() => item.photoUrl && setZoomedImage({
+                    url: item.photoUrl,
+                    title: item.donorName,
+                    subtitle: `ঠিকানা: ${item.address || 'উপলব্ধ নয়'} • অতিরিক্ত অনুদান: ${formatBengaliCurrency(item.amount)}`
+                  })}
+                  title="ছবি বড় করে দেখতে ক্লিক করুন"
+                >
+                  {item.photoUrl ? (
+                    <img
+                      src={item.photoUrl}
+                      alt={item.donorName}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-tr from-amber-50 to-orange-100/70 text-amber-800 p-4">
+                      <Gift className="w-14 h-14 text-amber-500 mb-2" />
+                      <span className="text-xs font-bold text-amber-900">শুভাকাঙ্ক্ষীর ছবি</span>
+                    </div>
+                  )}
+
+                  {/* Badges on Top Corners */}
+                  <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                    <span className="px-3 py-1 rounded-xl text-[11px] font-black bg-amber-600/90 backdrop-blur-md text-white shadow-md">
+                      বিশেষ অনুদান
+                    </span>
                   </div>
 
-                  {/* Donor Identity & Contributed Amount */}
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 uppercase tracking-wider">
-                        বিশেষ অনুদান
-                      </span>
-                      <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
-                        <Calendar className="w-3 h-3 text-slate-400" />
-                        <span>{item.date}</span>
-                      </span>
+                  <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-md text-white px-2.5 py-1 rounded-xl text-[11px] font-semibold border border-white/10 shadow-md">
+                    <Calendar className="w-3 h-3 text-amber-300" />
+                    <span>{item.date}</span>
+                  </div>
+
+                  {item.photoUrl && (
+                    <div className="absolute bottom-2.5 right-2.5 bg-black/50 hover:bg-black/75 backdrop-blur-md text-white p-1.5 rounded-xl border border-white/20 transition opacity-80 group-hover:opacity-100">
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. All Relevant Details Strictly Underneath the Large Photo */}
+                <div className="p-5 sm:p-6 space-y-4 flex-1 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    {/* Name & Amount Row */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 block">শুভাকাঙ্ক্ষী / দাতার নাম</span>
+                        <h4 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                          {item.donorName}
+                        </h4>
+                      </div>
+
+                      {/* Contributed Amount Highlight */}
+                      <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 font-black text-base shrink-0 self-start sm:self-auto">
+                        <span className="text-[11px] text-amber-700 font-bold">প্রাপ্ত অনুদান:</span>
+                        <span>{formatBengaliCurrency(item.amount)}</span>
+                      </div>
                     </div>
 
-                    <h4 className="text-base font-black text-slate-900 leading-snug">
-                      {item.donorName}
-                    </h4>
-
-                    {/* Amount badge */}
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-300/80 text-amber-950 text-sm font-black">
-                      <span className="text-xs text-amber-700 font-bold">প্রাপ্ত অনুদান:</span>
-                      <span>{formatBengaliCurrency(item.amount)}</span>
-                    </div>
-
-                    {/* Address / Location */}
+                    {/* Address (ঠিকানা / এলাকা) */}
                     {item.address && (
-                      <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium pt-0.5">
-                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                        <span className="truncate">{item.address}</span>
+                      <div className="flex items-start gap-2 text-xs sm:text-sm text-slate-700 bg-slate-50 p-2.5 rounded-2xl border border-slate-200/70">
+                        <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 block">ঠিকানা / এলাকা</span>
+                          <span className="font-semibold text-slate-800">{item.address}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Provider / Reference (কার মাধ্যমে প্রাপ্ত / মাধ্যম) */}
+                    <div className="flex items-start gap-2 text-xs sm:text-sm text-slate-700 bg-amber-50/60 p-2.5 rounded-2xl border border-amber-200/80">
+                      <UserCheck className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-[10px] font-bold text-amber-700 block">কার মাধ্যমে প্রাপ্ত / মাধ্যম</span>
+                        <span className="font-bold text-amber-950">{item.providerReference}</span>
+                      </div>
+                    </div>
+
+                    {/* Detailed Description / Purpose (উদ্দেশ্য ও বিস্তারিত বিবরণ) */}
+                    {item.description && (
+                      <div className="space-y-1">
+                        <span className="text-[11px] font-bold text-slate-500">উদ্দেশ্য / বিস্তারিত বিবরণ:</span>
+                        <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-normal bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+                          {item.description}
+                        </p>
                       </div>
                     )}
                   </div>
-                </div>
 
-                {/* Donor / Provider Reference */}
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-amber-700 shrink-0" />
-                  <div className="truncate">
-                    <span className="text-slate-500 font-medium">কার মাধ্যমে প্রাপ্ত / মাধ্যম: </span>
-                    <strong className="text-slate-800 font-bold">{item.providerReference}</strong>
-                  </div>
-                </div>
+                  {/* Optional Personal Payment Numbers (বিকাশ / নগদ / রকেট) */}
+                  {(item.bkashNumber || item.nagadNumber || item.rocketNumber) && (
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center gap-1.5 text-amber-900 text-xs font-black">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>যোগাযোগ ও আর্থিক লেনদেন নম্বর (ঐচ্ছিক):</span>
+                      </div>
 
-                {/* Detailed Description */}
-                {item.description && (
-                  <div className="space-y-1">
-                    <span className="text-[11px] font-bold text-slate-400">উদ্দেশ্য / বিবরণ:</span>
-                    <p className="text-xs text-slate-700 leading-relaxed font-normal bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
-                      {item.description}
-                    </p>
-                  </div>
-                )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {item.bkashNumber && (
+                          <div className="flex items-center justify-between bg-pink-50/60 px-3 py-2 rounded-2xl border border-pink-200 shadow-2xs">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="px-2 py-0.5 rounded-lg bg-pink-600 text-white text-[10px] font-black">বিকাশ</span>
+                              <span className="font-mono text-slate-900 font-bold text-xs truncate">{item.bkashNumber}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(item.bkashNumber!, `ext-b-${item.id}`)}
+                              className="p-1 rounded-lg text-pink-700 hover:bg-pink-100 transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold"
+                              title="বিকাশ নম্বর কপি করুন"
+                            >
+                              {copiedKey === `ext-b-${item.id}` ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-emerald-700">কপি হয়েছে</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>কপি</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
 
-                {/* Optional Personal Payment Numbers */}
-                {(item.bkashNumber || item.nagadNumber || item.rocketNumber) && (
-                  <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
-                    <div className="flex items-center gap-1.5 text-amber-900 text-[11px] font-black">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                      <span>যোগাযোগ ও লেনদেন নম্বর (ঐচ্ছিক):</span>
+                        {item.nagadNumber && (
+                          <div className="flex items-center justify-between bg-orange-50/60 px-3 py-2 rounded-2xl border border-orange-200 shadow-2xs">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="px-2 py-0.5 rounded-lg bg-orange-600 text-white text-[10px] font-black">নগদ</span>
+                              <span className="font-mono text-slate-900 font-bold text-xs truncate">{item.nagadNumber}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(item.nagadNumber!, `ext-n-${item.id}`)}
+                              className="p-1 rounded-lg text-orange-700 hover:bg-orange-100 transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold"
+                              title="নগদ নম্বর কপি করুন"
+                            >
+                              {copiedKey === `ext-n-${item.id}` ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-emerald-700">কপি হয়েছে</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>কপি</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+
+                        {item.rocketNumber && (
+                          <div className="flex items-center justify-between bg-purple-50/60 px-3 py-2 rounded-2xl border border-purple-200 shadow-2xs col-span-full">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="px-2 py-0.5 rounded-lg bg-purple-600 text-white text-[10px] font-black">রকেট</span>
+                              <span className="font-mono text-slate-900 font-bold text-xs truncate">{item.rocketNumber}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(item.rocketNumber!, `ext-r-${item.id}`)}
+                              className="p-1 rounded-lg text-purple-700 hover:bg-purple-100 transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold"
+                              title="রকেট নম্বর কপি করুন"
+                            >
+                              {copiedKey === `ext-r-${item.id}` ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-emerald-700">কপি হয়েছে</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>কপি</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
-                      {item.bkashNumber && (
-                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-pink-200 shadow-2xs">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 text-[10px] font-black">বিকাশ</span>
-                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.bkashNumber}</span>
-                          </div>
-                          <button
-                            onClick={() => handleCopy(item.bkashNumber!, `ext-b-${item.id}`)}
-                            className="p-1 text-slate-400 hover:text-amber-700 transition cursor-pointer"
-                            title="নম্বর কপি করুন"
-                          >
-                            {copiedKey === `ext-b-${item.id}` ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      )}
-
-                      {item.nagadNumber && (
-                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-orange-200 shadow-2xs">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 text-[10px] font-black">নগদ</span>
-                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.nagadNumber}</span>
-                          </div>
-                          <button
-                            onClick={() => handleCopy(item.nagadNumber!, `ext-n-${item.id}`)}
-                            className="p-1 text-slate-400 hover:text-amber-700 transition cursor-pointer"
-                            title="নম্বর কপি করুন"
-                          >
-                            {copiedKey === `ext-n-${item.id}` ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      )}
-
-                      {item.rocketNumber && (
-                        <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-purple-200 shadow-2xs col-span-full">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px] font-black">রকেট</span>
-                            <span className="font-mono text-slate-800 font-bold text-xs truncate">{item.rocketNumber}</span>
-                          </div>
-                          <button
-                            onClick={() => handleCopy(item.rocketNumber!, `ext-r-${item.id}`)}
-                            className="p-1 text-slate-400 hover:text-amber-700 transition cursor-pointer"
-                            title="নম্বর কপি করুন"
-                          >
-                            {copiedKey === `ext-r-${item.id}` ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -734,6 +813,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         )}
       </section>
+
+      {/* Lightbox / Zoom Modal */}
+      {zoomedImage && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setZoomedImage(null)}
+        >
+          <div 
+            className="relative max-w-4xl w-full bg-slate-950 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 flex items-center justify-between border-b border-slate-800 text-white">
+              <div>
+                <h4 className="text-sm sm:text-base font-bold">{zoomedImage.title}</h4>
+                {zoomedImage.subtitle && (
+                  <p className="text-xs text-slate-400 mt-0.5">{zoomedImage.subtitle}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setZoomedImage(null)}
+                className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="max-h-[75vh] overflow-auto flex items-center justify-center bg-black p-2">
+              <img
+                src={zoomedImage.url}
+                alt={zoomedImage.title}
+                className="max-h-[70vh] w-auto max-w-full object-contain rounded-xl"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
