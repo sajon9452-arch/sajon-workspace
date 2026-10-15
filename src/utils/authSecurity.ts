@@ -148,6 +148,25 @@ export function createSecurityAlert(
   return alert;
 }
 
+// Generate guaranteed-unique username starting with S5389
+export function generateS5389Username(
+  phone?: string, 
+  existingAccounts?: UserAccount[], 
+  excludeAccountId?: string
+): string {
+  const accounts = existingAccounts || loadUserAccounts();
+  const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+  const last4 = cleanPhone.slice(-4) || Math.floor(1000 + Math.random() * 9000).toString();
+  let candidate = `S5389_${last4}`;
+
+  let counter = 1;
+  while (accounts.some(a => a.id !== excludeAccountId && a.username && a.username.toLowerCase() === candidate.toLowerCase())) {
+    candidate = `S5389_${last4}_${counter}`;
+    counter++;
+  }
+  return candidate;
+}
+
 // Member Registration submission
 export async function submitMemberRegistration(
   data: {
@@ -183,9 +202,8 @@ export async function submitMemberRegistration(
     };
   }
 
-  // Temporary identifier until admin assigns unique username
-  const cleanPhone = data.phone.replace(/[^0-9]/g, '');
-  const tempUsername = `user_${cleanPhone.slice(-4) || Math.floor(1000 + Math.random() * 9000)}`;
+  // Generate unique username strictly starting with S5389
+  const defaultUsername = generateS5389Username(data.phone, accounts);
 
   const newAccount: UserAccount = {
     id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -195,7 +213,7 @@ export async function submitMemberRegistration(
     designation: (data.designation || 'সাধারণ সদস্য').trim(),
     email: data.email?.trim() || undefined,
     bloodGroup: data.bloodGroup || undefined,
-    username: tempUsername,
+    username: defaultUsername,
     password: data.password,
     photoUrl: data.photoUrl,
     livenessVerified: data.livenessVerified,
@@ -203,6 +221,9 @@ export async function submitMemberRegistration(
     registeredAt: new Date().toISOString(),
     registeredIp: tracking.ip,
     registeredDevice: tracking.deviceString,
+    boundDeviceId: undefined,
+    boundIp: undefined,
+    isDeviceLocked: false,
     isSuspicious: false
   };
 
@@ -278,13 +299,15 @@ export function authenticateMember(
     };
   }
 
-  // Requirement 5: Strict Single-Device & IP Binding Policy
-  // Upon first successful login (or after admin device reset), user's mobile device and IP are permanently bound/fixed
-  const isFirstLoginOrReset = !user.registeredDevice;
+  // Requirement 4: Strict Single-Device & IP Lock Security
+  // When an approved user logs in for the very first time, permanently lock/bind their device ID & IP.
+  // If attempting to log in from a different device/ID, block access.
+  const currentDeviceId = tracking.deviceId || 'DEV-CLIENT';
+  const isFirstLoginOrReset = !user.isDeviceLocked || !user.boundDeviceId;
 
   if (!isFirstLoginOrReset) {
-    const deviceMismatch = !normalizeDeviceCompare(user.registeredDevice, tracking.deviceString);
-    if (deviceMismatch) {
+    const isDeviceMatch = user.boundDeviceId === currentDeviceId;
+    if (!isDeviceMatch) {
       // Immediate High-Priority Security Alert in Admin Panel
       createSecurityAlert({
         userId: user.id,
@@ -292,7 +315,7 @@ export function authenticateMember(
         memberName: user.name,
         phone: user.phone,
         type: 'concurrent_attempt',
-        message: `নিরাপত্তা লঙ্ঘন: সদস্য '${user.name}' (@${user.username}) ভিন্ন অপরিচিত ডিভাইস থেকে লগইন করার চেষ্টা করেছেন! অনুমোদিত ডিভাইস: ${user.registeredDevice}, বর্তমান ডিভাইস: ${tracking.deviceString}`,
+        message: `অননুমোদিত ভিন্ন ডিভাইস থেকে লগইন প্রচেষ্টা: সদস্য '${user.name}' (@${user.username})। অনুমোদিত ডিভাইস আইডি: ${user.boundDeviceId}, বর্তমান ডিভাইস আইডি: ${currentDeviceId} (${tracking.deviceString})`,
         ip: tracking.ip,
         device: tracking.deviceString
       });
@@ -301,25 +324,28 @@ export function authenticateMember(
       const updatedUser: UserAccount = {
         ...user,
         isSuspicious: true,
-        suspiciousReason: `অননুমোদিত ভিন্ন ডিভাইস থেকে লগইন প্রচেষ্টা: ${tracking.deviceString}`
+        suspiciousReason: `অননুমোদিত ভিন্ন ডিভাইস থেকে লগইন প্রচেষ্টা: ${tracking.deviceString} (${currentDeviceId})`
       };
       saveUserAccounts(accounts.map(a => a.id === user.id ? updatedUser : a));
 
       return {
         success: false,
-        error: 'একক ডিভাইস ও আইপি নীতি (Single-Device Policy) লঙ্ঘন: এই অ্যাকাউন্টটি ইতিমধ্যে অন্য একটি ডিভাইসের সাথে স্থায়ীভাবে আবদ্ধ। ভিন্ন বা অননুমোদিত ডিভাইস থেকে লগইন নিষিদ্ধ। অনুগ্রহ করে আপনার পূর্বের নিবন্ধিত ডিভাইস ব্যবহার করুন অথবা অ্যাডমিনের মাধ্যমে ডিভাইস রিসেট করুন।'
+        error: 'একক ডিভাইস ও আইপি নীতি (Single-Device Lock) লঙ্ঘন: আপনার অ্যাকাউন্টটি ইতোমধ্যেই অন্য একটি নির্দিষ্ট ডিভাইসের সাথে স্থায়ীভাবে আবদ্ধ। ভিন্ন বা অননুমোদিত ডিভাইস থেকে লগইন সম্পূর্ণ নিষিদ্ধ। নতুন ডিভাইসে লগইন করতে চাইলে অ্যাডমিনের সাথে যোগাযোগ করে আপনার অ্যাকাউন্টের "ডিভাইস রিসেট" সম্পন্ন করান।'
       };
     }
   }
 
-  // Device is matched or this is first binding. Check IP network shift if already bound
+  // Device is matched or this is first binding.
+  const boundDeviceId = isFirstLoginOrReset ? currentDeviceId : user.boundDeviceId;
+  const boundIp = isFirstLoginOrReset ? tracking.ip : (user.boundIp || user.registeredIp || tracking.ip);
+  const boundDeviceString = isFirstLoginOrReset ? tracking.deviceString : (user.registeredDevice || tracking.deviceString);
+
+  // Check IP network shift if already bound
   let isSuspicious = false;
   let suspiciousReason = '';
-  const ipMismatch = !isFirstLoginOrReset && user.registeredIp && user.registeredIp !== tracking.ip;
-
-  if (ipMismatch) {
+  if (!isFirstLoginOrReset && boundIp && boundIp !== tracking.ip) {
     isSuspicious = true;
-    suspiciousReason = `ভিন্ন নেটওয়ার্ক/আইপি থেকে লগইন: বর্তমান আইপি (${tracking.ip}), অনুমোদিত আইপি (${user.registeredIp})`;
+    suspiciousReason = `ভিন্ন নেটওয়ার্ক/আইপি থেকে লগইন: বর্তমান আইপি (${tracking.ip}), অনুমোদিত আইপি (${boundIp})`;
 
     createSecurityAlert({
       userId: user.id,
@@ -334,13 +360,12 @@ export function authenticateMember(
   }
 
   // Permanently bind device on first login or keep existing binding
-  const boundDevice = isFirstLoginOrReset ? tracking.deviceString : user.registeredDevice;
-  const boundIp = isFirstLoginOrReset ? tracking.ip : (user.registeredIp || tracking.ip);
-
-  // Update user with last login and binding tracking
   const updatedUser: UserAccount = {
     ...user,
-    registeredDevice: boundDevice,
+    boundDeviceId: boundDeviceId,
+    boundIp: boundIp,
+    isDeviceLocked: true,
+    registeredDevice: boundDeviceString,
     registeredIp: boundIp,
     lastLoginAt: new Date().toISOString(),
     lastLoginIp: tracking.ip,
@@ -359,7 +384,7 @@ export function authenticateMember(
   };
 }
 
-// Requirement 6: Admin Action - Device Reset (Removes previous IP/Device binding for new phone login)
+// Requirement 4: Admin Action - Device Reset (Removes previous IP/Device binding for new phone login)
 export function resetMemberDeviceBinding(userId: string): boolean {
   const accounts = loadUserAccounts();
   const user = accounts.find(a => a.id === userId);
@@ -367,8 +392,11 @@ export function resetMemberDeviceBinding(userId: string): boolean {
 
   const updated: UserAccount = {
     ...user,
+    boundDeviceId: undefined,
+    boundIp: undefined,
     registeredDevice: '', // cleared so next successful login permanently binds new phone
     registeredIp: '',
+    isDeviceLocked: false,
     isSuspicious: false,
     suspiciousReason: undefined
   };

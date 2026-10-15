@@ -78,7 +78,8 @@ import {
   loadSecurityAlerts, 
   saveSecurityAlerts,
   resetMemberDeviceBinding,
-  updateMemberCredentials
+  updateMemberCredentials,
+  generateS5389Username
 } from '../utils/authSecurity';
 import { checkSupabaseConnection, SUPABASE_URL } from '../utils/supabaseClient';
 import { compressImageFile } from '../utils/imageCompressor';
@@ -191,64 +192,131 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const approvedAccounts = useMemo(() => userAccounts.filter(a => a.status === 'approved' || a.status === 'blocked'), [userAccounts]);
   const unresolvedAlerts = useMemo(() => securityAlerts.filter(a => !a.resolved), [securityAlerts]);
 
-  // Handle Approve Member Registration & Assign Unique Username
+  // Handle Approve Member Registration & Assign Unique S5389 Username
   const handleApproveRegistration = async (account: UserAccount) => {
-    const customUsername = (assignedUsernames[account.id] || account.username || '').trim().toLowerCase();
-    const cleanUsername = customUsername || `member_${account.phone.slice(-4)}`;
+    // 1. Determine clean unique username starting strictly with S5389
+    let candidateUsername = (assignedUsernames[account.id] || '').trim();
+    if (!candidateUsername) {
+      if (account.username && account.username.toLowerCase().startsWith('s5389')) {
+        candidateUsername = account.username;
+      } else {
+        candidateUsername = generateS5389Username(account.phone, userAccounts, account.id);
+      }
+    } else if (!candidateUsername.toLowerCase().startsWith('s5389')) {
+      // Ensure prefix starts strictly with S5389
+      const suffix = candidateUsername.replace(/^s5389_?/i, '');
+      candidateUsername = `S5389_${suffix || account.phone.slice(-4)}`;
+    }
 
-    // Verify username uniqueness
+    // Standardize prefix to exact uppercase 'S5389'
+    if (candidateUsername.toLowerCase().startsWith('s5389')) {
+      candidateUsername = 'S5389' + candidateUsername.slice(5);
+    }
+
+    // Verify username uniqueness across other approved accounts
     const usernameTaken = userAccounts.some(
-      a => a.id !== account.id && a.username.toLowerCase() === cleanUsername.toLowerCase()
+      a => a.id !== account.id && a.status === 'approved' && a.username.toLowerCase() === candidateUsername.toLowerCase()
     );
     if (usernameTaken) {
-      setErrorMsg(`'${cleanUsername}' ইউজারনেমটি ইতোমধ্যে বরাদ্দ রয়েছে। অন্য ইউজারনেম প্রদান করুন।`);
-      setTimeout(() => setErrorMsg(''), 4000);
-      return;
+      // Auto-generate a guaranteed unique S5389 username so approval never fails
+      candidateUsername = generateS5389Username(account.phone, userAccounts, account.id);
     }
 
     setIsProcessingApproval(account.id);
+    setErrorMsg('');
+
     try {
-      // 1. Calculate next sequential serial
-      let maxSerial = 0;
-      members.forEach(m => {
-        if (typeof m.serial === 'number' && !isNaN(m.serial) && m.serial > maxSerial) {
-          maxSerial = m.serial;
+      // 2. Check if a member with this phone or ID already exists in the active member list
+      let targetMemberId = account.memberId || '';
+      const existingMember = members.find(m => 
+        (account.memberId && m.id === account.memberId) ||
+        (m.phone && account.phone && sanitizePhone(m.phone) === sanitizePhone(account.phone))
+      );
+
+      if (existingMember) {
+        targetMemberId = existingMember.id;
+        // Ensure existing member is active and update photo if available
+        if (onEditMember) {
+          try {
+            await onEditMember({
+              ...existingMember,
+              photoUrl: account.photoUrl || existingMember.photoUrl,
+              status: 'সক্রিয়'
+            });
+          } catch (editErr) {
+            console.warn('onEditMember warning during approval:', editErr);
+          }
         }
-      });
-      const nextSerial = Math.max(maxSerial, members.length) + 1;
+      } else {
+        // Calculate next sequential serial
+        let maxSerial = 0;
+        members.forEach(m => {
+          if (typeof m.serial === 'number' && !isNaN(m.serial) && m.serial > maxSerial) {
+            maxSerial = m.serial;
+          }
+        });
+        const nextSerial = Math.max(maxSerial, members.length) + 1;
 
-      // 2. Add to Member list (sequentially appended to bottom and auto-synced to funds)
-      const newMemberData: Omit<Member, 'id'> = {
-        name: account.name,
-        designation: account.designation || 'সাধারণ সদস্য',
-        phone: account.phone,
-        area: account.area,
-        bloodGroup: account.bloodGroup,
-        photoUrl: account.photoUrl,
-        status: 'সক্রিয়',
-        joinDate: new Date().toISOString().split('T')[0],
-        serial: nextSerial,
-        createdAt: new Date().toISOString()
-      };
+        // Add to Member list (sequentially appended to bottom and auto-synced to funds)
+        const newMemberData: Omit<Member, 'id'> = {
+          name: account.name.trim(),
+          designation: (account.designation || 'সাধারণ সদস্য').trim(),
+          phone: account.phone.trim(),
+          area: account.area.trim(),
+          bloodGroup: account.bloodGroup,
+          photoUrl: account.photoUrl,
+          status: 'সক্রিয়',
+          joinDate: new Date().toISOString().split('T')[0],
+          serial: nextSerial,
+          createdAt: new Date().toISOString()
+        };
 
-      const createdMember = await onAddMember(newMemberData);
+        if (onAddMember) {
+          try {
+            const createdMember = await onAddMember(newMemberData);
+            if (createdMember && createdMember.id) {
+              targetMemberId = createdMember.id;
+            }
+          } catch (addErr) {
+            console.warn('onAddMember warning during approval, applying fallback ID:', addErr);
+          }
+        }
 
-      // 3. Update account to approved with assigned unique username
+        if (!targetMemberId) {
+          targetMemberId = `m-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        }
+      }
+
+      // 3. Update account to approved with assigned unique S5389 username, memberId and preserved password
       const updatedAccount: UserAccount = {
         ...account,
         status: 'approved',
-        username: cleanUsername,
-        memberId: createdMember.id
+        username: candidateUsername,
+        memberId: targetMemberId,
+        password: account.password || 'sms2022' // Ensure user password is saved safely
       };
 
-      const updatedList = userAccounts.map(a => a.id === account.id ? updatedAccount : a);
-      setUserAccounts(updatedList);
-      saveUserAccounts(updatedList);
+      const freshAccounts = loadUserAccounts();
+      const updatedList = freshAccounts.map(a => a.id === account.id ? updatedAccount : a);
+      if (!updatedList.some(a => a.id === account.id)) {
+        updatedList.unshift(updatedAccount);
+      }
 
-      setNoticeMsg(`সদস্য "${account.name}" এর আবেদন অনুমোদিত হয়েছে এবং ইউজারনেম "@${cleanUsername}" বরাদ্দ দেওয়া হয়েছে।`);
-      setTimeout(() => setNoticeMsg(''), 4000);
-    } catch {
-      setErrorMsg('সদস্য অনুমোদন প্রক্রিয়ায় সমস্যা হয়েছে');
+      saveUserAccounts(updatedList);
+      setUserAccounts(updatedList);
+
+      // Clean up temporary assignedUsernames entry
+      setAssignedUsernames(prev => {
+        const next = { ...prev };
+        delete next[account.id];
+        return next;
+      });
+
+      setNoticeMsg(`সদস্য "${account.name}" এর আবেদন সফলভাবে অনুমোদিত হয়েছে এবং ইউনিক ইউজারনেম "@${candidateUsername}" বরাদ্দ দেওয়া হয়েছে।`);
+      setTimeout(() => setNoticeMsg(''), 4500);
+    } catch (err) {
+      console.error('Member approval error:', err);
+      setErrorMsg('সদস্য অনুমোদন প্রক্রিয়ায় সমস্যা হয়েছে। পুনরায় চেষ্টা করুন।');
       setTimeout(() => setErrorMsg(''), 4000);
     } finally {
       setIsProcessingApproval(null);
@@ -1719,9 +1787,13 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               ) : (
                 <div className="space-y-4">
                   {pendingAccounts.map((account) => {
+                    const defaultGeneratedUsername = (account.username && account.username.toLowerCase().startsWith('s5389'))
+                      ? account.username
+                      : generateS5389Username(account.phone, userAccounts, account.id);
+
                     const currentUsername = assignedUsernames[account.id] !== undefined 
                       ? assignedUsernames[account.id] 
-                      : account.username;
+                      : defaultGeneratedUsername;
 
                     return (
                       <div 
@@ -1774,10 +1846,18 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                                   <span>ছবি আপলোড ভেরিফাইড</span>
                                 </span>
                               </div>
-                              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-3 flex-wrap">
-                                <span>মোবাইল: <strong className="font-mono text-slate-700">{account.phone}</strong></span>
-                                <span>•</span>
+                              <p className="text-xs text-slate-600 mt-1 flex items-center gap-2.5 flex-wrap">
+                                <span>মোবাইল: <strong className="font-mono text-slate-900 font-bold">{account.phone}</strong></span>
+                                <span className="text-slate-300">•</span>
                                 <span>ঠিকানা: {account.area}</span>
+                                <span className="text-slate-300">•</span>
+                                <span className="inline-flex items-center gap-1.5 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-300 text-amber-900 font-medium">
+                                  <KeyRound className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                  <span>পাসওয়ার্ড:</span>
+                                  <strong className="font-mono font-black text-amber-950 text-xs bg-white px-1.5 py-0.2 rounded border border-amber-300 select-all">
+                                    {account.password || 'sms2022'}
+                                  </strong>
+                                </span>
                               </p>
                             </div>
                           </div>
@@ -1788,23 +1868,31 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                           </div>
                         </div>
 
-                        {/* Device & IP Security Tracking Snapshot Box */}
-                        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-1.5">
+                        {/* Device & IP Security Tracking Snapshot Box including User Password */}
+                        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2">
                           <div className="flex items-center justify-between font-bold text-slate-700 text-[11px]">
                             <span className="flex items-center gap-1.5 text-slate-800">
                               <Globe className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>নিবন্ধিত আইপি ও ডিভাইস ট্র্যাকিং ডেটা:</span>
+                              <span>নিবন্ধন ক্রেডেনশিয়াল, আইপি ও ডিভাইস ট্র্যাকিং ডেটা:</span>
                             </span>
                             <span className="text-emerald-700 font-mono text-[11px]">নিরাপদ ট্র্যাকিং রেকর্ড</span>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600 text-[11px]">
-                            <div className="flex items-center gap-1.5 truncate">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-600 text-[11px]">
+                            <div className="flex items-center gap-1.5 bg-amber-50/90 p-2 rounded-xl border border-amber-300">
+                              <KeyRound className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                              <span className="text-amber-900 font-bold shrink-0">নিবন্ধন পাসওয়ার্ড:</span>
+                              <span className="font-mono font-black text-amber-950 bg-white px-2 py-0.5 rounded-md border border-amber-300 select-all shadow-2xs">
+                                {account.password || 'sms2022'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 truncate p-2 bg-white rounded-xl border border-slate-200">
+                              <Globe className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                               <span className="text-slate-400 font-medium">আইপি ঠিকানা:</span>
-                              <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                              <span className="font-mono font-bold text-slate-900">
                                 {account.registeredIp || '103.145.24.82'}
                               </span>
                             </div>
-                            <div className="flex items-center gap-1.5 truncate">
+                            <div className="flex items-center gap-1.5 truncate p-2 bg-white rounded-xl border border-slate-200">
                               <Smartphone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                               <span className="text-slate-400 font-medium shrink-0">ডিভাইস ও ব্রাউজার:</span>
                               <span className="font-medium text-slate-800 truncate" title={account.registeredDevice}>
@@ -1814,27 +1902,40 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                           </div>
                         </div>
 
-                        {/* Admin Action: Assign Username & Approve */}
+                        {/* Admin Action: Assign Unique S5389 Username & Approve */}
                         <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                           <div className="w-full sm:w-auto flex-1">
                             <label className="block text-xs font-bold text-emerald-950 mb-1">
-                              ইউনিক ইউজারনেম বরাদ্দ করুন (Assign Unique Username):
+                              ইউনিক ইউজারনেম বরাদ্দ করুন (Assign Unique Username - S5389):
                             </label>
-                            <div className="relative max-w-xs">
-                              <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">@</span>
-                              <input
-                                type="text"
-                                value={currentUsername}
-                                onChange={(e) => {
-                                  const val = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
-                                  setAssignedUsernames(prev => ({ ...prev, [account.id]: val }));
+                            <div className="flex items-center gap-2 max-w-sm">
+                              <div className="relative flex-1">
+                                <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">@</span>
+                                <input
+                                  type="text"
+                                  value={currentUsername}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
+                                    setAssignedUsernames(prev => ({ ...prev, [account.id]: val }));
+                                  }}
+                                  placeholder="যেমন: S5389_1234"
+                                  className="w-full pl-7 pr-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const fresh = generateS5389Username(account.phone, userAccounts, account.id);
+                                  setAssignedUsernames(prev => ({ ...prev, [account.id]: fresh }));
                                 }}
-                                placeholder="যেমন: sylhet_member_1"
-                                className="w-full pl-7 pr-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                              />
+                                className="px-2.5 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 text-[11px] font-bold shrink-0 transition cursor-pointer"
+                                title="নতুন S5389 ইউনিক ইউজারনেম তৈরি করুন"
+                              >
+                                অটো S5389
+                              </button>
                             </div>
                             <span className="text-[10px] text-emerald-800 mt-1 block">
-                              অনুমোদনের পর এই ইউজারনেম এবং নিবন্ধনে দেওয়া পাসওয়ার্ড দিয়ে সদস্য লগইন করতে পারবেন।
+                              অনুমোদনের পর এই <strong>@{currentUsername}</strong> ইউজারনেম এবং নিবন্ধনে দেওয়া পাসওয়ার্ড (<strong className="font-mono text-amber-900">{account.password || 'sms2022'}</strong>) দিয়ে সদস্য লগইন করতে পারবেন।
                             </span>
                           </div>
 
@@ -1975,32 +2076,45 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-xs text-slate-500 mt-0.5">
-                                  মোবাইল: <strong className="font-mono text-slate-700">{acc.phone}</strong> • {acc.designation || 'সাধারণ সদস্য'} • {acc.area}
+                                <p className="text-xs text-slate-600 mt-1 flex items-center gap-2.5 flex-wrap">
+                                  <span>মোবাইল: <strong className="font-mono text-slate-800">{acc.phone}</strong></span>
+                                  <span className="text-slate-300">•</span>
+                                  <span>{acc.designation || 'সাধারণ সদস্য'}</span>
+                                  <span className="text-slate-300">•</span>
+                                  <span>{acc.area}</span>
+                                  <span className="text-slate-300">•</span>
+                                  <span className="inline-flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-300 text-amber-900 font-medium">
+                                    <KeyRound className="w-3 h-3 text-amber-600 shrink-0" />
+                                    <span>পাসওয়ার্ড:</span>
+                                    <strong className="font-mono font-bold text-amber-950 text-xs bg-white px-1.5 py-0.2 rounded border border-amber-300 select-all">
+                                      {acc.password || 'sms2022'}
+                                    </strong>
+                                  </span>
                                 </p>
                               </div>
                             </div>
 
                             <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
-                              {/* Requirement 6: Device Reset */}
+                              {/* Requirement 4: Device Reset */}
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (confirm(`সদস্য '${acc.name}' এর বর্তমান ডিভাইস বাইন্ডিং মুছে ফেলতে চান? এতে করে তিনি তার নতুন ফোন/ডিভাইস থেকে লগইন করতে পারবেন।`)) {
+                                  if (confirm(`সদস্য '${acc.name}' এর বর্তমান ডিভাইস বাইন্ডিং ও আইপি লক মুছে ফেলতে চান? এতে করে তিনি তার নতুন ফোন/ডিভাইস থেকে লগইন করতে পারবেন।`)) {
                                     resetMemberDeviceBinding(acc.id);
                                     const fresh = loadUserAccounts();
                                     setUserAccounts(fresh);
-                                    setNoticeMsg(`সদস্য '${acc.name}' এর ডিভাইস বাইন্ডিং সফলভাবে রিসেট করা হয়েছে`);
-                                    setTimeout(() => setNoticeMsg(''), 3500);
+                                    setNoticeMsg(`সদস্য '${acc.name}' এর ডিভাইস বাইন্ডিং সফলভাবে রিসেট করা হয়েছে। নতুন ডিভাইসে লগইন উন্মুক্ত।`);
+                                    setTimeout(() => setNoticeMsg(''), 4000);
                                   }
                                 }}
-                                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition cursor-pointer"
-                                title="নতুন ডিভাইসে লগইন করতে দিতে ডিভাইস বাইন্ডিং রিসেট করুন"
+                                className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                title="নতুন ডিভাইসে লগইন করতে দিতে ডিভাইস বাইন্ডিং ও আইপি লক রিসেট করুন"
                               >
-                                ডিভাইস রিসেট
+                                <Smartphone className="w-3.5 h-3.5 text-amber-600" />
+                                <span>ডিভাইস রিসেট</span>
                               </button>
 
-                              {/* Requirement 6: Credential Recovery */}
+                              {/* Credential Recovery */}
                               <button
                                 type="button"
                                 onClick={() => handleOpenCredentialModal(acc)}
@@ -2034,8 +2148,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                             </div>
                           </div>
 
-                          {/* Tracking Details Grid */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] text-slate-600">
+                          {/* Tracking & Single-Device Binding Details Grid */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] text-slate-600">
                             <div>
                               <span className="text-slate-400 font-medium">🌐 নিবন্ধিত আইপি: </span>
                               <span className="font-mono font-bold text-slate-800">{acc.registeredIp || 'রেকর্ড করা হয়নি'}</span>
@@ -2043,6 +2157,25 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                                 ডিভাইস: {acc.registeredDevice || 'স্মার্টফোন'}
                               </span>
                             </div>
+
+                            <div>
+                              <span className="text-slate-400 font-medium">🔒 ডিভাইস বাইন্ডিং: </span>
+                              {acc.isDeviceLocked && acc.boundDeviceId ? (
+                                <span className="inline-block font-mono font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  লকড ({acc.boundDeviceId})
+                                </span>
+                              ) : (
+                                <span className="inline-block font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                  আনলকড (লগইনে লক হবে)
+                                </span>
+                              )}
+                              {acc.boundIp && (
+                                <span className="block text-[10px] font-mono text-slate-500 mt-0.5">
+                                  লকড আইপি: <strong>{acc.boundIp}</strong>
+                                </span>
+                              )}
+                            </div>
+
                             <div>
                               <span className="text-slate-400 font-medium">🕒 সর্বশেষ লগইন: </span>
                               <span className="font-medium text-slate-800">

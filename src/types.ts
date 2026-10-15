@@ -223,6 +223,9 @@ export interface UserAccount {
   registeredAt: string;
   registeredIp: string;
   registeredDevice: string;
+  boundDeviceId?: string; // Permanent Unique Device UUID bound on first approved login
+  boundIp?: string; // Locked IP address bound on first approved login
+  isDeviceLocked?: boolean; // True once permanently locked to a single device
   lastLoginAt?: string;
   lastLoginIp?: string;
   lastLoginDevice?: string;

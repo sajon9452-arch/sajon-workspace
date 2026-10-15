@@ -1,10 +1,29 @@
 export interface DeviceDetails {
   ip: string;
+  deviceId: string;
   deviceString: string;
   os: string;
   browser: string;
   screen: string;
   isMobile: boolean;
+}
+
+const DEVICE_ID_KEY = 'pms_device_uuid_v2';
+
+export function getOrCreateDeviceId(): string {
+  if (typeof window === 'undefined') return 'server_device';
+  try {
+    let devId = localStorage.getItem(DEVICE_ID_KEY);
+    if (!devId) {
+      const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const time = Date.now().toString(36).toUpperCase();
+      devId = `DEV-${rand}-${time}`;
+      localStorage.setItem(DEVICE_ID_KEY, devId);
+    }
+    return devId;
+  } catch {
+    return 'DEV-FALLBACK-CLIENT';
+  }
 }
 
 // Cached IP to avoid repeated remote fetches in rapid succession
@@ -65,8 +84,10 @@ export async function detectClientIp(): Promise<string> {
 }
 
 export function detectDeviceDetails(): Omit<DeviceDetails, 'ip'> {
+  const deviceId = getOrCreateDeviceId();
   if (typeof window === 'undefined') {
     return {
+      deviceId,
       deviceString: 'Unknown Device',
       os: 'Unknown',
       browser: 'Unknown',
@@ -119,6 +140,7 @@ export function detectDeviceDetails(): Omit<DeviceDetails, 'ip'> {
   const deviceString = `${type} • ${os} (${browser}) [${screen}]`;
 
   return {
+    deviceId,
     deviceString,
     os,
     browser,
