@@ -122,6 +122,7 @@ export function getLocalSyncSnapshot(): Record<string, any> {
 
 /**
  * Applies remote synchronized data from server into local storage and fires PMS_SYNC_EVENT.
+ * Protects existing records so a blank server or partial response never wipes local user data.
  */
 export function applyRemoteSyncSnapshot(remoteData: Record<string, any>, remoteVersion?: number) {
   if (!remoteData || typeof remoteData !== 'object' || typeof window === 'undefined') return;
@@ -134,6 +135,7 @@ export function applyRemoteSyncSnapshot(remoteData: Record<string, any>, remoteV
     for (const [apiKey, storageKey] of Object.entries(KEY_TO_STORAGE_MAP)) {
       if (remoteData[apiKey] !== undefined) {
         let valueToSave = remoteData[apiKey];
+        const existingRaw = localStorage.getItem(storageKey);
 
         // Filter out permanently deleted IDs for array collections
         if (Array.isArray(valueToSave)) {
@@ -141,19 +143,34 @@ export function applyRemoteSyncSnapshot(remoteData: Record<string, any>, remoteV
             if (item && item.id && deletedIds.has(item.id)) return false;
             return true;
           });
+
+          // Protection: If incoming remote array is empty, but local storage already has valid items not in deletedIds,
+          // do NOT overwrite local storage with an empty array unless remote payload explicitly flags allowEmpty.
+          if (valueToSave.length === 0 && existingRaw) {
+            try {
+              const parsedExisting = JSON.parse(existingRaw);
+              if (Array.isArray(parsedExisting)) {
+                const nonDeletedExisting = parsedExisting.filter((item: any) => item && item.id && !deletedIds.has(item.id));
+                if (nonDeletedExisting.length > 0 && !remoteData._allowEmpty) {
+                  valueToSave = nonDeletedExisting;
+                }
+              }
+            } catch {
+              // ignore parse error
+            }
+          }
         }
 
         const serialized = JSON.stringify(valueToSave);
-        const existing = localStorage.getItem(storageKey);
 
-        if (existing !== serialized) {
+        if (existingRaw !== serialized) {
           localStorage.setItem(storageKey, serialized);
           changed = true;
         }
       }
     }
 
-    if (typeof remoteVersion === 'number' && remoteVersion > currentLocalVersion) {
+    if (typeof remoteVersion === 'number') {
       currentLocalVersion = remoteVersion;
     }
 
@@ -169,6 +186,27 @@ export function applyRemoteSyncSnapshot(remoteData: Record<string, any>, remoteV
     setTimeout(() => {
       isApplyingRemoteUpdate = false;
     }, 100);
+  }
+}
+
+/**
+ * Explicitly notifies the backend server to permanently delete a record.
+ * Data is only removed if the admin explicitly performs a manual delete action.
+ */
+export async function pushRecordDeletion(id: string, collection?: string): Promise<boolean> {
+  if (!id || typeof window === 'undefined') return false;
+  try {
+    const res = await fetchNoCache('/api/sync/delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ id, collection })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Record deletion push error:', err);
+    return false;
   }
 }
 

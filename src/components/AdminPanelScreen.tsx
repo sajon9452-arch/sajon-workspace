@@ -79,7 +79,9 @@ import {
   saveSecurityAlerts,
   resetMemberDeviceBinding,
   updateMemberCredentials,
-  generateS5389Username
+  generateS5389Username,
+  generateS5DigitUsername,
+  isValidS5DigitUsername
 } from '../utils/authSecurity';
 import { checkSupabaseConnection, SUPABASE_URL } from '../utils/supabaseClient';
 import { compressImageFile } from '../utils/imageCompressor';
@@ -192,25 +194,16 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const approvedAccounts = useMemo(() => userAccounts.filter(a => a.status === 'approved' || a.status === 'blocked'), [userAccounts]);
   const unresolvedAlerts = useMemo(() => securityAlerts.filter(a => !a.resolved), [securityAlerts]);
 
-  // Handle Approve Member Registration & Assign Unique S5389 Username
+  // Handle Approve Member Registration & Assign Unique S + 5 Digits Username (e.g. s54776)
   const handleApproveRegistration = async (account: UserAccount) => {
-    // 1. Determine clean unique username starting strictly with S5389
-    let candidateUsername = (assignedUsernames[account.id] || '').trim();
-    if (!candidateUsername) {
-      if (account.username && account.username.toLowerCase().startsWith('s5389')) {
-        candidateUsername = account.username;
+    // 1. Determine clean unique username strictly following: 's' + 5 digits (no underscores or symbols)
+    let candidateUsername = (assignedUsernames[account.id] || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!isValidS5DigitUsername(candidateUsername)) {
+      if (account.username && isValidS5DigitUsername(account.username)) {
+        candidateUsername = account.username.toLowerCase();
       } else {
-        candidateUsername = generateS5389Username(account.phone, userAccounts, account.id);
+        candidateUsername = generateS5DigitUsername(account.phone, userAccounts, account.id);
       }
-    } else if (!candidateUsername.toLowerCase().startsWith('s5389')) {
-      // Ensure prefix starts strictly with S5389
-      const suffix = candidateUsername.replace(/^s5389_?/i, '');
-      candidateUsername = `S5389_${suffix || account.phone.slice(-4)}`;
-    }
-
-    // Standardize prefix to exact uppercase 'S5389'
-    if (candidateUsername.toLowerCase().startsWith('s5389')) {
-      candidateUsername = 'S5389' + candidateUsername.slice(5);
     }
 
     // Verify username uniqueness across other approved accounts
@@ -218,8 +211,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       a => a.id !== account.id && a.status === 'approved' && a.username.toLowerCase() === candidateUsername.toLowerCase()
     );
     if (usernameTaken) {
-      // Auto-generate a guaranteed unique S5389 username so approval never fails
-      candidateUsername = generateS5389Username(account.phone, userAccounts, account.id);
+      // Auto-generate a guaranteed unique S + 5 digits username so approval never fails
+      candidateUsername = generateS5DigitUsername(account.phone, userAccounts, account.id);
     }
 
     setIsProcessingApproval(account.id);
@@ -374,7 +367,11 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
   const handleOpenCredentialModal = (acc: UserAccount) => {
     setCredentialModalAccount(acc);
-    setCredNewUsername(acc.username);
+    if (acc.username && isValidS5DigitUsername(acc.username)) {
+      setCredNewUsername(acc.username.toLowerCase());
+    } else {
+      setCredNewUsername(generateS5DigitUsername(acc.phone, userAccounts, acc.id));
+    }
     setCredNewPassword('');
     setCredError('');
   };
@@ -382,14 +379,26 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const handleSaveCredentialRecovery = (e: React.FormEvent) => {
     e.preventDefault();
     if (!credentialModalAccount) return;
-    const res = updateMemberCredentials(credentialModalAccount.id, credNewUsername, credNewPassword);
+
+    let cleanUsername = credNewUsername.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!cleanUsername.startsWith('s')) {
+      cleanUsername = 's' + cleanUsername.replace(/\D/g, '');
+    }
+    cleanUsername = cleanUsername.slice(0, 6);
+
+    if (!isValidS5DigitUsername(cleanUsername)) {
+      setCredError('ইউজারনেম ফরম্যাট ভুল! ইউজারনেম অবশ্যই "s" এবং ঠিক ৫টি সংখ্যার হতে হবে, কোনো চিহ্ন বা আন্ডারস্কোর ছাড়া (যেমন: s54776)।');
+      return;
+    }
+
+    const res = updateMemberCredentials(credentialModalAccount.id, cleanUsername, credNewPassword);
     if (!res.success) {
       setCredError(res.error || 'ক্রেডেনশিয়াল আপডেট ব্যর্থ হয়েছে');
       return;
     }
     const fresh = loadUserAccounts();
     setUserAccounts(fresh);
-    setNoticeMsg(`সদস্য "${credentialModalAccount.name}" এর ইউজারনেম ও পাসওয়ার্ড সফলভাবে আপডেট করা হয়েছে।`);
+    setNoticeMsg(`সদস্য "${credentialModalAccount.name}" এর ইউজারনেম (@${cleanUsername}) ও ক্রেডেনশিয়াল সফলভাবে আপডেট করা হয়েছে।`);
     setCredentialModalAccount(null);
     setTimeout(() => setNoticeMsg(''), 4000);
   };
@@ -1787,9 +1796,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               ) : (
                 <div className="space-y-4">
                   {pendingAccounts.map((account) => {
-                    const defaultGeneratedUsername = (account.username && account.username.toLowerCase().startsWith('s5389'))
-                      ? account.username
-                      : generateS5389Username(account.phone, userAccounts, account.id);
+                    const defaultGeneratedUsername = (account.username && isValidS5DigitUsername(account.username))
+                      ? account.username.toLowerCase()
+                      : generateS5DigitUsername(account.phone, userAccounts, account.id);
 
                     const currentUsername = assignedUsernames[account.id] !== undefined 
                       ? assignedUsernames[account.id] 
@@ -1902,11 +1911,11 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                           </div>
                         </div>
 
-                        {/* Admin Action: Assign Unique S5389 Username & Approve */}
+                        {/* Admin Action: Assign Unique Username (Strict S + 5 Digits, e.g., s54776) & Approve */}
                         <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                           <div className="w-full sm:w-auto flex-1">
                             <label className="block text-xs font-bold text-emerald-950 mb-1">
-                              ইউনিক ইউজারনেম বরাদ্দ করুন (Assign Unique Username - S5389):
+                              ইউনিক ইউজারনেম বরাদ্দ করুন (Strict S + ৫ ডিজিট, যেমন: s54776):
                             </label>
                             <div className="flex items-center gap-2 max-w-sm">
                               <div className="relative flex-1">
@@ -1914,24 +1923,29 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                                 <input
                                   type="text"
                                   value={currentUsername}
+                                  maxLength={6}
                                   onChange={(e) => {
-                                    const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
+                                    let val = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                    if (val && !val.startsWith('s')) {
+                                      val = 's' + val.replace(/\D/g, '');
+                                    }
+                                    val = val.slice(0, 6);
                                     setAssignedUsernames(prev => ({ ...prev, [account.id]: val }));
                                   }}
-                                  placeholder="যেমন: S5389_1234"
+                                  placeholder="যেমন: s54776"
                                   className="w-full pl-7 pr-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                 />
                               </div>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const fresh = generateS5389Username(account.phone, userAccounts, account.id);
+                                  const fresh = generateS5DigitUsername(account.phone, userAccounts, account.id);
                                   setAssignedUsernames(prev => ({ ...prev, [account.id]: fresh }));
                                 }}
                                 className="px-2.5 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 text-[11px] font-bold shrink-0 transition cursor-pointer"
-                                title="নতুন S5389 ইউনিক ইউজারনেম তৈরি করুন"
+                                title="নতুন ইউনিক S+৫ ডিজিট ইউজারনেম তৈরি করুন"
                               >
-                                অটো S5389
+                                অটো s+৫ ডিজিট
                               </button>
                             </div>
                             <span className="text-[10px] text-emerald-800 mt-1 block">
@@ -4479,25 +4493,45 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
             <form onSubmit={handleSaveCredentialRecovery} className="space-y-3.5 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  ইউনিক ইউজারনেম (Username) <span className="text-rose-500">*</span>
+                  ইউনিক ইউজারনেম (S + ৫ ডিজিট, যেমন: s54776) <span className="text-rose-500">*</span>
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 font-bold text-slate-400 font-mono">@</span>
-                  <input
-                    type="text"
-                    required
-                    value={credNewUsername}
-                    onChange={(e) => {
-                      const clean = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
-                      setCredNewUsername(clean);
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-2.5 font-bold text-slate-400 font-mono">@</span>
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      value={credNewUsername}
+                      onChange={(e) => {
+                        let clean = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        if (clean && !clean.startsWith('s')) {
+                          clean = 's' + clean.replace(/\D/g, '');
+                        }
+                        clean = clean.slice(0, 6);
+                        setCredNewUsername(clean);
+                        setCredError('');
+                      }}
+                      placeholder="যেমন: s54776"
+                      className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!credentialModalAccount) return;
+                      const fresh = generateS5DigitUsername(credentialModalAccount.phone, userAccounts, credentialModalAccount.id);
+                      setCredNewUsername(fresh);
                       setCredError('');
                     }}
-                    placeholder="সদস্যের নতুন ইউজারনেম"
-                    className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
+                    className="px-3 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 text-xs font-bold shrink-0 transition cursor-pointer"
+                    title="নতুন ইউনিক S+৫ ডিজিট ইউজারনেম জেনারেট করুন"
+                  >
+                    অটো s+৫ ডিজিট
+                  </button>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  শুধুমাত্র ছোট হাতের ইংরেজি অক্ষর, সংখ্যা ও আন্ডারস্কোর (_) ব্যবহার করা যাবে।
+                <p className="text-[10px] text-slate-500 mt-1">
+                  ফরম্যাট: অবশ্যই ইংরেজি 's' এবং ঠিক ৫টি সংখ্যা (মোট ৬ অক্ষর, যেমন: s54776)। কোনো চিহ্ন বা আন্ডারস্কোর গ্রহণযোগ্য নয়।
                 </p>
               </div>
 

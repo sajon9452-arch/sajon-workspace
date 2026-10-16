@@ -85,7 +85,7 @@ export function getPermanentlyDeletedIds(): string[] {
   return [];
 }
 
-export function markIdAsPermanentlyDeleted(id: string) {
+export function markIdAsPermanentlyDeleted(id: string, collection?: string) {
   if (!id) return;
   try {
     const current = getPermanentlyDeletedIds();
@@ -93,6 +93,10 @@ export function markIdAsPermanentlyDeleted(id: string) {
       current.push(id);
       localStorage.setItem(STORAGE_KEYS.PERMANENTLY_DELETED, JSON.stringify(current));
     }
+    // Also broadcast to server explicit deletion endpoint
+    import('./liveSync').then(({ pushRecordDeletion }) => {
+      pushRecordDeletion(id, collection);
+    }).catch(() => {});
   } catch (e) {
     console.error(e);
   }

@@ -277,37 +277,45 @@ export default function App() {
     const loadFromSupabase = async () => {
       try {
         const cloudMembers = await fetchSupabaseData<Member>('members');
-        if (cloudMembers && Array.isArray(cloudMembers)) {
+        if (cloudMembers && Array.isArray(cloudMembers) && cloudMembers.length > 0) {
           const liveMembers = sortMembersOldestFirst(
             cloudMembers.filter(m => m && m.id && !isIdPermanentlyDeleted(m.id))
           );
-          setMembers(liveMembers);
-          saveMembers(liveMembers);
+          if (liveMembers.length > 0) {
+            setMembers(liveMembers);
+            saveMembers(liveMembers);
+          }
         }
 
         const cloudFunds = await fetchSupabaseData<FundRecord>('funds');
-        if (cloudFunds && Array.isArray(cloudFunds)) {
+        if (cloudFunds && Array.isArray(cloudFunds) && cloudFunds.length > 0) {
           const liveFunds = cloudFunds.filter(f => f && f.id && !isIdPermanentlyDeleted(f.id));
-          setFunds(liveFunds);
-          saveFunds(liveFunds);
+          if (liveFunds.length > 0) {
+            setFunds(liveFunds);
+            saveFunds(liveFunds);
+          }
         }
 
         const cloudDonors = await fetchSupabaseData<BloodDonor>('donors');
-        if (cloudDonors && Array.isArray(cloudDonors)) {
+        if (cloudDonors && Array.isArray(cloudDonors) && cloudDonors.length > 0) {
           const liveDonors = cloudDonors.filter(d => d && d.id && !isIdPermanentlyDeleted(d.id));
-          setDonors(liveDonors);
-          saveDonors(liveDonors);
+          if (liveDonors.length > 0) {
+            setDonors(liveDonors);
+            saveDonors(liveDonors);
+          }
         }
 
         const cloudNotices = await fetchSupabaseData<Notice>('notices');
-        if (cloudNotices && Array.isArray(cloudNotices)) {
+        if (cloudNotices && Array.isArray(cloudNotices) && cloudNotices.length > 0) {
           const liveNotices = cloudNotices.filter(n => n && n.id && !isIdPermanentlyDeleted(n.id));
-          setNotices(liveNotices);
-          saveNotices(liveNotices);
+          if (liveNotices.length > 0) {
+            setNotices(liveNotices);
+            saveNotices(liveNotices);
+          }
         }
 
         const cloudNetBalance = await fetchNetBalanceFromSupabase();
-        if (cloudNetBalance !== null && !isNaN(cloudNetBalance)) {
+        if (cloudNetBalance !== null && !isNaN(cloudNetBalance) && cloudNetBalance > 0) {
           setManualTotalBalance(cloudNetBalance);
           saveManualTotalBalance(cloudNetBalance);
         }

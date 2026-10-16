@@ -148,24 +148,52 @@ export function createSecurityAlert(
   return alert;
 }
 
-// Generate guaranteed-unique username starting with S5389
-export function generateS5389Username(
+// Validation helper: strictly starting with 's' or 'S' followed by exactly 5 digits (e.g. s54776)
+export function isValidS5DigitUsername(username: string): boolean {
+  if (!username) return false;
+  return /^[sS]\d{5}$/.test(username.trim());
+}
+
+// Normalizer: strips symbols, underscores, and ensures leading 's' with up to 5 digits
+export function normalizeS5DigitUsername(raw: string): string {
+  if (!raw) return '';
+  let cleaned = raw.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (cleaned.startsWith('user_')) {
+    cleaned = cleaned.replace('user_', '');
+  }
+  if (!cleaned.startsWith('s')) {
+    cleaned = 's' + cleaned.replace(/[^0-9]/g, '');
+  }
+  return cleaned.slice(0, 6);
+}
+
+// Generate guaranteed-unique username: strictly starting with 's' followed by exactly 5 digits (e.g., s54776)
+export function generateS5DigitUsername(
   phone?: string, 
   existingAccounts?: UserAccount[], 
   excludeAccountId?: string
 ): string {
   const accounts = existingAccounts || loadUserAccounts();
   const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
-  const last4 = cleanPhone.slice(-4) || Math.floor(1000 + Math.random() * 9000).toString();
-  let candidate = `S5389_${last4}`;
+  let candidateDigits = cleanPhone.length >= 5 ? cleanPhone.slice(-5) : '';
 
-  let counter = 1;
-  while (accounts.some(a => a.id !== excludeAccountId && a.username && a.username.toLowerCase() === candidate.toLowerCase())) {
-    candidate = `S5389_${last4}_${counter}`;
-    counter++;
+  if (!candidateDigits || candidateDigits.length !== 5) {
+    candidateDigits = Math.floor(10000 + Math.random() * 90000).toString();
+  }
+
+  let candidate = `s${candidateDigits}`;
+
+  let attempts = 0;
+  while (attempts < 500 && accounts.some(a => a.id !== excludeAccountId && a.username && a.username.toLowerCase() === candidate.toLowerCase())) {
+    const random5 = Math.floor(10000 + Math.random() * 90000).toString();
+    candidate = `s${random5}`;
+    attempts++;
   }
   return candidate;
 }
+
+// Backward-compatible alias
+export const generateS5389Username = generateS5DigitUsername;
 
 // Member Registration submission
 export async function submitMemberRegistration(
@@ -202,8 +230,8 @@ export async function submitMemberRegistration(
     };
   }
 
-  // Generate unique username strictly starting with S5389
-  const defaultUsername = generateS5389Username(data.phone, accounts);
+  // Generate unique username strictly starting with S followed by 5 digits (e.g. s54776)
+  const defaultUsername = generateS5DigitUsername(data.phone, accounts);
 
   const newAccount: UserAccount = {
     id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -250,10 +278,10 @@ export function authenticateMember(
   isPending?: boolean;
 } {
   const accounts = loadUserAccounts();
-  const search = usernameOrPhone.trim().toLowerCase();
+  const search = usernameOrPhone.trim().toLowerCase().replace(/^@/, '');
 
   const user = accounts.find(
-    a => a.username.toLowerCase() === search || a.phone.replace(/[^0-9]/g, '') === search.replace(/[^0-9]/g, '')
+    a => a.username.toLowerCase().replace(/^@/, '') === search || a.phone.replace(/[^0-9]/g, '') === search.replace(/[^0-9]/g, '')
   );
 
   if (!user) {
@@ -417,9 +445,12 @@ export function updateMemberCredentials(
     return { success: false, error: 'ব্যবহারকারী অ্যাকাউন্ট খুঁজে পাওয়া যায়নি।' };
   }
 
-  const cleanUsername = newUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
-  if (!cleanUsername || cleanUsername.length < 3) {
-    return { success: false, error: 'ইউজারনেম ন্যূনতম ৩ অক্ষরের হতে হবে (শুধুমাত্র ছোট হাতের ইংরেজি অক্ষর, সংখ্যা ও আন্ডারস্কোর)।' };
+  const cleanUsername = newUsername.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!isValidS5DigitUsername(cleanUsername)) {
+    return { 
+      success: false, 
+      error: 'ইউজারনেম ফরম্যাট ভুল! ইউজারনেম অবশ্যই "s" এবং ঠিক ৫টি সংখ্যার হতে হবে, কোনো চিহ্ন বা আন্ডারস্কোর ছাড়া (যেমন: s54776)।' 
+    };
   }
 
   // Check if username is already taken by another account
