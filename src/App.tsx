@@ -70,6 +70,7 @@ import {
   syncNetBalanceToSupabase,
   fetchNetBalanceFromSupabase
 } from './utils/supabaseClient';
+import { initRealTimeDataSync } from './utils/liveSync';
 
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -242,25 +243,37 @@ export default function App() {
     }
   }, [isAdmin, activeScreen]);
 
-  // Sync state across local tabs/windows safely
+  // Real-Time Multi-Device Synchronization & AppCreator24 WebView Sync Listener
   useEffect(() => {
-    const handleSync = (e: any) => {
-      const key = e.detail?.key;
-      if (!key) {
-        setProfile(loadOrgProfile());
-        setMembers(sortMembersOldestFirst(loadMembers()));
-        setDonors(loadDonors());
-        setNotices(loadNotices());
-        setFunds(loadFunds());
-        setManualTotalBalance(loadManualTotalBalance());
-        setMonthlyExpense(loadMonthlyExpense());
-        setExtraMoney(loadExtraMoney());
-        setSupportMembers(loadSupportMembers());
-      }
-    };
-    window.addEventListener(PMS_SYNC_EVENT, handleSync);
+    // 1. Initialize SSE real-time push stream & WebView auto-polling loop
+    const cleanupLiveSync = initRealTimeDataSync();
 
-    // Safely check and load any cloud data from Supabase, strictly filtering out any permanently deleted items
+    // 2. Comprehensive reload helper: Updates all screens immediately without manual refresh
+    const reloadAllStateFromStorage = () => {
+      setProfile(loadOrgProfile());
+      setMembers(sortMembersOldestFirst(loadMembers()));
+      setDonors(loadDonors());
+      setNotices(loadNotices());
+      setFunds(loadFunds());
+      setManualTotalBalance(loadManualTotalBalance());
+      setMonthlyExpense(loadMonthlyExpense());
+      setExtraMoney(loadExtraMoney());
+      setSupportMembers(loadSupportMembers());
+      setHomeSlides(loadHomeSlides());
+      setAidDonations(loadAidDonations());
+      setExtraContributions(loadExtraContributions());
+      setOrganizationRules(loadOrganizationRules());
+      setPaymentConfig(loadPaymentSettings());
+    };
+
+    const handleSync = (_e: any) => {
+      reloadAllStateFromStorage();
+    };
+
+    window.addEventListener(PMS_SYNC_EVENT, handleSync);
+    window.addEventListener('storage', handleSync);
+
+    // Initial check from cloud / fallback
     const loadFromSupabase = async () => {
       try {
         const cloudMembers = await fetchSupabaseData<Member>('members');
@@ -299,12 +312,16 @@ export default function App() {
           saveManualTotalBalance(cloudNetBalance);
         }
       } catch (err) {
-        console.warn('Supabase initial fetch skipped:', err);
+        // Fallback to local and server sync
       }
     };
     loadFromSupabase();
 
-    return () => window.removeEventListener(PMS_SYNC_EVENT, handleSync);
+    return () => {
+      cleanupLiveSync();
+      window.removeEventListener(PMS_SYNC_EVENT, handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, []);
 
   // 1. Member Handlers

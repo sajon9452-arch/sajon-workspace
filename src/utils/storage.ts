@@ -60,6 +60,15 @@ export function notifyStorageChange(key: string, data?: any) {
   } catch (e) {
     // ignore
   }
+
+  // Push to server so changes are instantly reflected across all connected member devices
+  try {
+    import('./liveSync').then(({ pushLiveUpdate }) => {
+      pushLiveUpdate(key, data);
+    }).catch(() => {});
+  } catch {
+    // fallback
+  }
 }
 
 // Permanent Deletion Registry: Guarantees deleted items can NEVER be revived under any circumstance
