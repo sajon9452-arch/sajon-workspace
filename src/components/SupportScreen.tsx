@@ -7,18 +7,13 @@ import {
   Check, 
   Search, 
   X, 
-  ShieldCheck, 
   PlusCircle, 
   Edit3, 
   Trash2, 
   Clock, 
   AlertCircle, 
   CheckCircle2, 
-  HeartHandshake, 
-  ArrowLeft,
-  Sparkles,
-  UserCheck,
-  Send
+  ArrowLeft
 } from 'lucide-react';
 import { SupportTeamMember, SupportReportItem, OrganizationProfile } from '../types';
 import { sanitizePhone, toBengaliNumber } from '../utils/helpers';
@@ -33,6 +28,7 @@ interface SupportScreenProps {
   profile: OrganizationProfile;
   onAddReport?: (report: Omit<SupportReportItem, 'id'>) => Promise<SupportReportItem>;
   isAdmin?: boolean;
+  openAdminModal?: () => void;
   onBack?: () => void;
 }
 
@@ -41,13 +37,11 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
   onAddSupportMember,
   onEditSupportMember,
   onDeleteSupportMember,
-  profile,
-  onAddReport,
   isAdmin = false,
+  openAdminModal,
   onBack
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   // Interactive feedback
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
@@ -68,16 +62,6 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // User Ticket / Help Request Modal
-  const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
-  const [ticketName, setTicketName] = useState('');
-  const [ticketPhone, setTicketPhone] = useState('');
-  const [ticketSubject, setTicketSubject] = useState('');
-  const [ticketDescription, setTicketDescription] = useState('');
-  const [ticketType, setTicketType] = useState('চিকিৎসা সহায়তা');
-  const [ticketError, setTicketError] = useState('');
-  const [isTicketSubmitting, setIsTicketSubmitting] = useState(false);
-
   // Copy phone handler
   const handleCopyPhone = (phone: string) => {
     navigator.clipboard.writeText(phone);
@@ -97,23 +81,11 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
     return `https://wa.me/${intl}?text=${msg}`;
   };
 
-  // Categories list derived from representatives
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    supportMembers.forEach(m => {
-      if (m.category) set.add(m.category);
-    });
-    return Array.from(set);
-  }, [supportMembers]);
-
-  // Filtered representatives
+  // Filtered representatives (Strictly dynamic admin-added data with search capability, zero dummy data)
   const filteredRepresentatives = useMemo(() => {
+    if (!searchTerm.trim()) return supportMembers;
+    const q = searchTerm.trim().toLowerCase();
     return supportMembers.filter(m => {
-      const matchCategory = selectedCategory === 'all' || m.category === selectedCategory;
-      if (!matchCategory) return false;
-
-      if (!searchTerm.trim()) return true;
-      const q = searchTerm.trim().toLowerCase();
       return (
         m.name.toLowerCase().includes(q) ||
         (m.phone || '').includes(q) ||
@@ -122,7 +94,7 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
         (m.description || '').toLowerCase().includes(q)
       );
     });
-  }, [supportMembers, selectedCategory, searchTerm]);
+  }, [supportMembers, searchTerm]);
 
   // Photo compressor handler
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -242,44 +214,6 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
     }
   };
 
-  // Submit help ticket
-  const handleTicketSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!ticketName.trim() || !ticketPhone.trim() || !ticketDescription.trim()) {
-      setTicketError('আপনার নাম, ফোন নম্বর ও বিস্তারিত কারণ লিখুন');
-      return;
-    }
-
-    setIsTicketSubmitting(true);
-    setTicketError('');
-
-    try {
-      if (onAddReport) {
-        await onAddReport({
-          name: ticketName.trim(),
-          phone: ticketPhone.trim(),
-          subject: ticketSubject.trim() || ticketType,
-          description: ticketDescription.trim(),
-          designation: 'আবেদনকারী',
-          type: ticketType,
-          status: 'pending',
-          createdAt: new Date().toISOString().split('T')[0]
-        });
-      }
-      setIsTicketModalOpen(false);
-      setToastMsg('আপনার সহায়তার আবেদনটি সফলভাবে জমা হয়েছে। আমাদের টিম শীঘ্রই যোগাযোগ করবে।');
-      setTicketName('');
-      setTicketPhone('');
-      setTicketSubject('');
-      setTicketDescription('');
-      setTimeout(() => setToastMsg(null), 4000);
-    } catch {
-      setTicketError('আবেদন জমা দিতে সমস্যা হয়েছে');
-    } finally {
-      setIsTicketSubmitting(false);
-    }
-  };
-
   return (
     <div className="space-y-6 pb-20 sm:pb-8 animate-in fade-in">
       {/* Toast Notification */}
@@ -290,14 +224,14 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
         </div>
       )}
 
-      {/* 1. Header Banner */}
+      {/* 1. Directory Header: Strictly clean, only features "নতুন প্রতিনিধি যোগ করুন" */}
       <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-emerald-950 rounded-3xl p-5 sm:p-7 text-white shadow-xl border border-emerald-700/40 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
           <div>
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 text-emerald-300">
+              <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 text-emerald-300 shrink-0">
                 <Headphones className="w-5 h-5 text-emerald-300" />
               </div>
               <div>
@@ -314,89 +248,44 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {profile.hotline && (
-              <a
-                href={`tel:${sanitizePhone(profile.hotline)}`}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-emerald-100 text-xs font-bold transition border border-white/20 shadow-xs"
-              >
-                <Phone className="w-3.5 h-3.5 text-emerald-300" />
-                <span>হটলাইন: {profile.hotline}</span>
-              </a>
-            )}
-
+          <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => setIsTicketModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-black transition cursor-pointer shadow-sm active:scale-95"
+              onClick={() => {
+                if (isAdmin) {
+                  handleOpenAddModal();
+                } else if (openAdminModal) {
+                  openAdminModal();
+                } else {
+                  alert('নতুন প্রতিনিধি যোগ করার জন্য অনুগ্রহ করে অ্যাডমিন প্যানেলে লগইন করুন।');
+                }
+              }}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs sm:text-sm font-black transition cursor-pointer shadow-md active:scale-95 shrink-0"
             >
-              <Send className="w-3.5 h-3.5 text-slate-950" />
-              <span>সহায়তার বার্তা পাঠান</span>
+              <PlusCircle className="w-4 h-4 text-slate-950 shrink-0" />
+              <span>নতুন প্রতিনিধি যোগ করুন</span>
             </button>
-
-            {isAdmin && (
-              <button
-                onClick={handleOpenAddModal}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black transition cursor-pointer shadow-md active:scale-95"
-              >
-                <PlusCircle className="w-4 h-4 text-slate-950" />
-                <span>নতুন প্রতিনিধি যোগ করুন</span>
-              </button>
-            )}
           </div>
         </div>
       </div>
 
-      {/* 2. Search & Category Filters (Styled similarly to Member List) */}
-      <div className="space-y-3">
-        <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200 shadow-xs flex items-center gap-2">
-          <Search className="w-5 h-5 text-slate-400 shrink-0 ml-1" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="প্রতিনিধির নাম, পদবি, সহায়তার বিষয় বা মোবাইল নম্বর দিয়ে খুঁজুন..."
-            className="w-full text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none bg-transparent"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm('')}
-              className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {/* Category Filter Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+      {/* 2. Search Bar (Clean - Zero Category Filter Tabs) */}
+      <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200 shadow-xs flex items-center gap-2">
+        <Search className="w-5 h-5 text-slate-400 shrink-0 ml-1" />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="প্রতিনিধির নাম, পদবি, সহায়তার বিষয় বা মোবাইল নম্বর দিয়ে খুঁজুন..."
+          className="w-full text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none bg-transparent"
+        />
+        {searchTerm && (
           <button
-            onClick={() => setSelectedCategory('all')}
-            className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-              selectedCategory === 'all'
-                ? 'bg-emerald-700 text-white shadow-xs'
-                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
+            onClick={() => setSearchTerm('')}
+            className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition cursor-pointer"
           >
-            সকল প্রতিনিধি ({toBengaliNumber(supportMembers.length)})
+            <X className="w-4 h-4" />
           </button>
-          {categories.map((cat) => {
-            const count = supportMembers.filter(m => m.category === cat).length;
-            return (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-                  selectedCategory === cat
-                    ? 'bg-emerald-700 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                <span>{cat}</span>
-                <span className="ml-1 opacity-80">({toBengaliNumber(count)})</span>
-              </button>
-            );
-          })}
-        </div>
+        )}
       </div>
 
       {/* 3. Support Team Representatives Directory Cards (Strictly Card View Styled like Member List) */}
@@ -564,26 +453,50 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
         })}
       </div>
 
-      {filteredRepresentatives.length === 0 && (
+      {supportMembers.length === 0 ? (
+        <div className="bg-white rounded-3xl p-8 sm:p-12 text-center border border-slate-200 shadow-xs space-y-4">
+          <div className="w-16 h-16 rounded-3xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-200">
+            <Headphones className="w-8 h-8 text-emerald-600" />
+          </div>
+          <div>
+            <h3 className="text-base sm:text-lg font-black text-slate-800">কোনো প্রতিনিধি তালিকাভুক্ত নেই</h3>
+            <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
+              সাপোর্ট টিম ডিরেক্টরিতে বর্তমানে কোনো প্রতিনিধি যুক্ত নেই। শুধুমাত্র অ্যাডমিন কর্তৃক যোগ করা প্রতিনিধিরাই এখানে স্থায়ীভাবে প্রদর্শিত হবে।
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              if (isAdmin) {
+                handleOpenAddModal();
+              } else if (openAdminModal) {
+                openAdminModal();
+              } else {
+                alert('নতুন প্রতিনিধি যোগ করার জন্য অনুগ্রহ করে অ্যাডমিন প্যানেলে লগইন করুন।');
+              }
+            }}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-bold shadow-md transition active:scale-95 cursor-pointer"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>নতুন প্রতিনিধি যোগ করুন</span>
+          </button>
+        </div>
+      ) : filteredRepresentatives.length === 0 ? (
         <div className="bg-white rounded-3xl p-8 sm:p-12 text-center border border-slate-200 shadow-xs space-y-3">
           <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
             <Search className="w-7 h-7" />
           </div>
           <h3 className="text-base font-bold text-slate-800">কোনো প্রতিনিধি পাওয়া যায়নি</h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            আপনার অনুসন্ধানের সাথে মিল রেখে কোনো সাপোর্ট প্রতিনিধির রেকর্ড মেলেনি। অন্য শব্দ বা ফিল্টার ব্যবহার করুন।
+            আপনার অনুসন্ধানের সাথে মিল রেখে কোনো প্রতিনিধির রেকর্ড মেলেনি।
           </p>
           <button
-            onClick={() => {
-              setSearchTerm('');
-              setSelectedCategory('all');
-            }}
+            onClick={() => setSearchTerm('')}
             className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold cursor-pointer"
           >
             সকল প্রতিনিধি দেখুন
           </button>
         </div>
-      )}
+      ) : null}
 
       {/* 4. Zoomed Photo Lightbox Modal */}
       {zoomedPhoto && (
@@ -785,120 +698,6 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
         </div>
       )}
 
-      {/* 6. Help Request / Ticket Modal */}
-      {isTicketModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <HeartHandshake className="w-5 h-5 text-emerald-700" />
-                <span>সাহায্য বা সহায়তার আবেদন</span>
-              </h3>
-              <button 
-                onClick={() => setIsTicketModalOpen(false)} 
-                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {ticketError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{ticketError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleTicketSubmit} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  আপনার নাম <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={ticketName}
-                  onChange={(e) => setTicketName(e.target.value)}
-                  placeholder="আপনার পুরো নাম"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    মোবাইল নম্বর <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={ticketPhone}
-                    onChange={(e) => setTicketPhone(e.target.value)}
-                    placeholder="01711000000"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">সহায়তার ধরন</label>
-                  <select
-                    value={ticketType}
-                    onChange={(e) => setTicketType(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
-                  >
-                    <option value="চিকিৎসা সহায়তা">চিকিৎসা সহায়তা</option>
-                    <option value="ত্রাণ ও খাদ্য সহায়তা">ত্রাণ ও খাদ্য সহায়তা</option>
-                    <option value="রক্তদান বিষয়ক">রক্তদান বিষয়ক</option>
-                    <option value="সদস্য অন্তর্ভুক্তি">সদস্য অন্তর্ভুক্তি</option>
-                    <option value="অন্যান্য">অন্যান্য</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">বিষয় / সমস্যার শিরোনাম</label>
-                <input
-                  type="text"
-                  value={ticketSubject}
-                  onChange={(e) => setTicketSubject(e.target.value)}
-                  placeholder="যেমন: রোগীর জরুরি ঔষধ সহায়তার আবেদন"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  বিস্তারিত বিবরণ ও ঠিকানা <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  required
-                  rows={4}
-                  value={ticketDescription}
-                  onChange={(e) => setTicketDescription(e.target.value)}
-                  placeholder="সমস্যার পূর্ণ বিবরণ ও আপনার সঠিক বর্তমান ঠিকানা লিখুন..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsTicketModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 cursor-pointer font-bold"
-                >
-                  বাতিল
-                </button>
-                <button
-                  type="submit"
-                  disabled={isTicketSubmitting}
-                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow-md cursor-pointer"
-                >
-                  {isTicketSubmitting ? 'জমা হচ্ছে...' : 'আবেদন জমা দিন'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

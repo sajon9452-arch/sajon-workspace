@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Users, Droplet, Wallet, Headphones, ShieldCheck, KeyRound, User } from 'lucide-react';
+import { Home, Users, Droplet, Wallet, Headphones, ShieldCheck } from 'lucide-react';
 import { ActiveScreen, UserAccount } from '../types';
 
 interface BottomNavProps {
@@ -75,8 +75,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <span className="text-[10px]">সাপোর্ট টিম</span>
         </button>
 
-        {/* Isolated Action: Admin only if isAdmin in admin view; otherwise Login / Member status */}
-        {isAdmin && adminViewMode !== 'user' ? (
+        {/* Admin tab only if isAdmin in admin view */}
+        {isAdmin && adminViewMode !== 'user' && (
           <button
             onClick={() => setActiveScreen('admin')}
             className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition cursor-pointer ${
@@ -85,23 +85,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           >
             <ShieldCheck className="w-5 h-5 text-amber-500" />
             <span className="text-[10px]">অ্যাডমিন</span>
-          </button>
-        ) : loggedInUser ? (
-          <button
-            onClick={() => setActiveScreen('members')}
-            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl text-emerald-700 font-bold transition cursor-pointer"
-            title={loggedInUser.name}
-          >
-            <User className="w-5 h-5 text-emerald-600" />
-            <span className="text-[10px] max-w-[50px] truncate">{loggedInUser.name}</span>
-          </button>
-        ) : (
-          <button
-            onClick={() => openAuthModal('login')}
-            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl text-slate-600 hover:text-emerald-700 transition cursor-pointer"
-          >
-            <KeyRound className="w-5 h-5 text-emerald-600" />
-            <span className="text-[10px]">লগইন</span>
           </button>
         )}
       </div>

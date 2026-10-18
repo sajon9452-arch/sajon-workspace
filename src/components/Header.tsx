@@ -137,48 +137,70 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           {isAdmin ? (
-            <div className="flex items-center gap-2 flex-wrap justify-end">
-              {/* Requirement 2: Dual-View Switcher UI on Header/Top Bar */}
-              <div className="flex items-center bg-emerald-950/95 border border-emerald-400/60 p-1 rounded-2xl shadow-md gap-1">
-                <button
-                  type="button"
-                  onClick={() => onSelectViewMode && onSelectViewMode('user')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                    adminViewMode === 'user'
-                      ? 'bg-emerald-400 text-emerald-950 shadow-sm ring-2 ring-white/60'
-                      : 'text-emerald-200 hover:text-white hover:bg-emerald-900/60'
-                  }`}
-                  title="ইউজার ভিউ: সাধারণ সদস্য ও ব্যবহারকারীরা যেভাবে দেখেন সেই ইন্টারফেস দেখুন"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>ইউজার ভিউ</span>
-                </button>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Requirement 2: Circular/Round Admin View Switcher UI with labels above */}
+              <div className="flex items-center gap-1.5 sm:gap-2 bg-emerald-950/90 border border-emerald-400/50 px-2 py-1 rounded-2xl shadow-md">
+                {/* 1. User View circular button with label above */}
+                <div className="flex flex-col items-center">
+                  <span className={`text-[8.5px] sm:text-[9.5px] font-bold leading-none mb-1 tracking-tight select-none whitespace-nowrap ${
+                    adminViewMode === 'user' ? 'text-emerald-300 font-black' : 'text-emerald-200/70'
+                  }`}>
+                    ইউজার ভিউ
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onSelectViewMode && onSelectViewMode('user')}
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-90 ${
+                      adminViewMode === 'user'
+                        ? 'bg-emerald-400 text-emerald-950 ring-2 ring-white shadow-emerald-400/60 font-black'
+                        : 'bg-emerald-900/80 text-emerald-200 hover:text-white hover:bg-emerald-800 border border-emerald-600/40'
+                    }`}
+                    title="ইউজার ভিউ: সাধারণ সদস্য ও ব্যবহারকারীদের ইন্টারফেস দেখুন"
+                  >
+                    <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  </button>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => onSelectViewMode && onSelectViewMode('admin')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                    adminViewMode === 'admin'
-                      ? 'bg-amber-400 text-amber-950 shadow-sm ring-2 ring-white/60'
-                      : 'text-emerald-200 hover:text-white hover:bg-emerald-900/60'
-                  }`}
-                  title="অ্যাডমিন প্যানেল ভিউ: সকল প্রশাসনিক ড্যাশবোর্ড ও নিয়ন্ত্রণ প্যানেল"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-amber-950" />
-                  <span>অ্যাডমিন প্যানেল ভিউ</span>
-                </button>
+                <div className="w-[1px] h-6 bg-emerald-700/60 self-end mb-1" />
+
+                {/* 2. Admin Panel View circular button with label above */}
+                <div className="flex flex-col items-center">
+                  <span className={`text-[8.5px] sm:text-[9.5px] font-bold leading-none mb-1 tracking-tight select-none whitespace-nowrap ${
+                    adminViewMode === 'admin' ? 'text-amber-300 font-black' : 'text-emerald-200/70'
+                  }`}>
+                    অ্যাডমিন ভিউ
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onSelectViewMode && onSelectViewMode('admin')}
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-90 ${
+                      adminViewMode === 'admin'
+                        ? 'bg-amber-400 text-amber-950 ring-2 ring-white shadow-amber-400/60 font-black'
+                        : 'bg-emerald-900/80 text-amber-300/80 hover:text-amber-200 hover:bg-emerald-800 border border-emerald-600/40'
+                    }`}
+                    title="অ্যাডমিন প্যানেল ভিউ: সকল প্রশাসনিক ড্যাশবোর্ড ও নিয়ন্ত্রণ প্যানেল"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  </button>
+                </div>
+
+                <div className="w-[1px] h-6 bg-emerald-700/60 self-end mb-1" />
+
+                {/* 3. Logout circular button with label above */}
+                <div className="flex flex-col items-center">
+                  <span className="text-[8.5px] sm:text-[9.5px] font-bold leading-none mb-1 tracking-tight text-rose-300 select-none whitespace-nowrap">
+                    লগআউট
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-rose-950/80 text-rose-300 hover:text-white hover:bg-rose-900 border border-rose-600/60 transition-all cursor-pointer shadow-sm active:scale-90"
+                    title="অ্যাডমিন সেশন থেকে লগআউট"
+                  >
+                    <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  </button>
+                </div>
               </div>
-
-              {/* Admin Logout Button */}
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs text-rose-200 hover:text-white bg-rose-950/70 hover:bg-rose-900 border border-rose-600/50 font-bold cursor-pointer transition shadow-xs"
-                title="অ্যাডমিন সেশন থেকে লগআউট"
-              >
-                <LogOut className="w-3.5 h-3.5 text-rose-300" />
-                <span className="hidden sm:inline">লগআউট</span>
-              </button>
             </div>
           ) : loggedInUser ? (
             <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/40 p-1 rounded-2xl shadow-sm">

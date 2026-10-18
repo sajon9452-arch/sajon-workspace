@@ -85,7 +85,6 @@ import { AdminPanelScreen } from './components/AdminPanelScreen';
 import { AuthModal } from './components/AuthModal';
 import { AuthGateScreen } from './components/AuthGateScreen';
 import { EmergencyHelplineModal } from './components/EmergencyHelplineModal';
-import { Eye, ShieldCheck } from 'lucide-react';
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>('home');
@@ -764,27 +763,6 @@ export default function App() {
         openEmergencyModal={() => setIsEmergencyModalOpen(true)}
       />
 
-      {/* Requirement 3: Real-Time Preview Banner for Super Admin in User View */}
-      {isAdmin && adminViewMode === 'user' && (
-        <div className="bg-emerald-950 text-white px-4 py-2 text-xs font-semibold flex items-center justify-between gap-3 shadow-md sticky top-[57px] z-30 border-b border-emerald-600/50 animate-in slide-in-from-top">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
-            <Eye className="w-4 h-4 text-emerald-300 shrink-0" />
-            <span className="text-emerald-100">
-              <strong className="text-white">ইউজার ভিউ (প্রিভিউ মোড):</strong> আপনি সাধারণ সদস্যদের দৃষ্টিকোণ থেকে ইন্টারফেস দেখছেন।
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => handleSelectViewMode('admin')}
-            className="flex items-center gap-1.5 px-3 py-1 bg-amber-400 hover:bg-amber-300 text-emerald-950 rounded-xl text-xs font-black transition cursor-pointer shadow-xs shrink-0"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>অ্যাডমিন প্যানেল ভিউ-এ যান</span>
-          </button>
-        </div>
-      )}
-
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
         {activeScreen === 'home' && (
           <HomeScreen
@@ -862,6 +840,7 @@ export default function App() {
             profile={profile}
             onAddReport={handleAddReport}
             isAdmin={effectiveIsAdminForScreens}
+            openAdminModal={() => handleOpenAuthModal('login')}
             onBack={() => setActiveScreen('home')}
           />
         )}

@@ -400,7 +400,7 @@ export function loadSupportMembers(): SupportTeamMember[] {
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_SUPPORT_MEMBERS.filter(s => !isIdPermanentlyDeleted(s.id));
+  return [];
 }
 
 export function saveSupportMembers(members: SupportTeamMember[]) {
