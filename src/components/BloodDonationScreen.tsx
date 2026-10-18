@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { 
   Droplet, 
   Search, 
-  UserPlus, 
   Phone, 
   MapPin, 
   Clock, 
@@ -11,9 +10,9 @@ import {
   AlertCircle, 
   X, 
   Copy, 
-  Check,
-  Edit,
-  Trash2
+  Check, 
+  Edit, 
+  Trash2 
 } from 'lucide-react';
 import { BloodDonor, BloodGroup } from '../types';
 import { toBengaliNumber, sanitizePhone } from '../utils/helpers';
@@ -31,7 +30,6 @@ const BLOOD_GROUPS: BloodGroup[] = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 
 
 export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
   donors,
-  onAddDonor,
   onEditDonor,
   onDeleteDonor,
   isAdmin,
@@ -39,11 +37,10 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingDonor, setEditingDonor] = useState<BloodDonor | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
 
-  // Form states
+  // Form states (Admin edit only)
   const [formName, setFormName] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formGroup, setFormGroup] = useState<BloodGroup>('O+');
@@ -86,18 +83,6 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
     setTimeout(() => setCopiedPhone(null), 2000);
   };
 
-  const handleOpenAddModal = () => {
-    setFormName('');
-    setFormPhone('');
-    setFormGroup('O+');
-    setFormArea('পতেঙ্গা, চট্টগ্রাম');
-    setFormLastDate('');
-    setFormTotal(1);
-    setFormIsAvailable(true);
-    setFormError('');
-    setIsAddModalOpen(true);
-  };
-
   const handleOpenEditModal = (d: BloodDonor) => {
     setEditingDonor(d);
     setFormName(d.name);
@@ -117,36 +102,25 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
       return;
     }
 
+    if (!editingDonor) return;
+
     setIsSubmitting(true);
     setFormError('');
 
     try {
-      if (editingDonor) {
-        await onEditDonor({
-          ...editingDonor,
-          name: formName.trim(),
-          phone: formPhone.trim(),
-          bloodGroup: formGroup,
-          area: formArea.trim(),
-          lastDonationDate: formLastDate || undefined,
-          totalDonations: formTotal === '' ? 1 : Number(formTotal),
-          isAvailable: formIsAvailable
-        });
-        setEditingDonor(null);
-      } else {
-        await onAddDonor({
-          name: formName.trim(),
-          phone: formPhone.trim(),
-          bloodGroup: formGroup,
-          area: formArea.trim(),
-          lastDonationDate: formLastDate || undefined,
-          totalDonations: formTotal === '' ? 1 : Number(formTotal),
-          isAvailable: formIsAvailable
-        });
-        setIsAddModalOpen(false);
-      }
+      await onEditDonor({
+        ...editingDonor,
+        name: formName.trim(),
+        phone: formPhone.trim(),
+        bloodGroup: formGroup,
+        area: formArea.trim(),
+        lastDonationDate: formLastDate || undefined,
+        totalDonations: formTotal === '' ? 1 : Number(formTotal),
+        isAvailable: formIsAvailable
+      });
+      setEditingDonor(null);
     } catch {
-      setFormError('রক্তদাতা সংরক্ষণে সমস্যা হয়েছে');
+      setFormError('রক্তদাতার তথ্য সংরক্ষণে সমস্যা হয়েছে');
     } finally {
       setIsSubmitting(false);
     }
@@ -168,14 +142,6 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
               "এক ব্যাগ রক্ত, বাঁচায় একটি প্রাণ"—পতেঙ্গা ও সিলেটের যেকোনো মুমূর্ষু রোগীর প্রয়োজনে সরাসরি রক্তদাতার সাথে যোগাযোগ করুন
             </p>
           </div>
-
-          <button
-            onClick={handleOpenAddModal}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white text-rose-900 font-bold text-xs shadow-md hover:bg-rose-50 transition cursor-pointer active:scale-95"
-          >
-            <UserPlus className="w-4 h-4 text-rose-700" />
-            <span>রক্তদাতা হিসেবে নিবন্ধন করুন</span>
-          </button>
         </div>
       </div>
 
@@ -353,21 +319,18 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
         </div>
       )}
 
-      {/* Add / Edit Donor Modal */}
-      {(isAddModalOpen || editingDonor) && (
+      {/* Edit Donor Modal (Admin Only) */}
+      {editingDonor && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Droplet className="w-5 h-5 text-rose-600" />
-                <span>{editingDonor ? 'রক্তদাতার তথ্য পরিবর্তন' : 'নতুন রক্তদাতা নিবন্ধন'}</span>
+                <span>রক্তদাতার তথ্য পরিবর্তন</span>
               </h3>
               <button
-                onClick={() => {
-                  setIsAddModalOpen(false);
-                  setEditingDonor(null);
-                }}
-                className="p-1 rounded-full text-slate-400"
+                onClick={() => setEditingDonor(null)}
+                className="p-1 rounded-full text-slate-400 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -459,11 +422,8 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsAddModalOpen(false);
-                    setEditingDonor(null);
-                  }}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 cursor-pointer"
+                  onClick={() => setEditingDonor(null)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 cursor-pointer font-bold"
                 >
                   বাতিল
                 </button>

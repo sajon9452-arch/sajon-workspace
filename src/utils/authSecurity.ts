@@ -230,9 +230,7 @@ export async function submitMemberRegistration(
     };
   }
 
-  // Generate unique username strictly starting with S followed by 5 digits (e.g. s54776)
-  const defaultUsername = generateS5DigitUsername(data.phone, accounts);
-
+  // Pending registration: Username is strictly left empty until Admin manually assigns a custom S + 5 digits username
   const newAccount: UserAccount = {
     id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     name: data.name.trim(),
@@ -241,7 +239,7 @@ export async function submitMemberRegistration(
     designation: (data.designation || 'সাধারণ সদস্য').trim(),
     email: data.email?.trim() || undefined,
     bloodGroup: data.bloodGroup || undefined,
-    username: defaultUsername,
+    username: '',
     password: data.password,
     photoUrl: data.photoUrl,
     livenessVerified: data.livenessVerified,
