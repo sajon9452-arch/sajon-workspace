@@ -197,22 +197,26 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   // Handle Approve Member Registration & Assign Unique S + 5 Digits Username (e.g. s54776)
   const handleApproveRegistration = async (account: UserAccount) => {
     // 1. Determine clean unique username strictly following: 's' + 5 digits (no underscores or symbols)
-    let candidateUsername = (assignedUsernames[account.id] || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    let candidateUsername = (assignedUsernames[account.id] || account.username || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!candidateUsername.startsWith('s')) {
+      candidateUsername = 's' + candidateUsername.replace(/\D/g, '');
+    }
+    candidateUsername = candidateUsername.slice(0, 6);
+
     if (!isValidS5DigitUsername(candidateUsername)) {
-      if (account.username && isValidS5DigitUsername(account.username)) {
-        candidateUsername = account.username.toLowerCase();
-      } else {
-        candidateUsername = generateS5DigitUsername(account.phone, userAccounts, account.id);
-      }
+      setErrorMsg('অনুমোদনের পূর্বে অনুগ্রহ করে S + ঠিক ৫টি সংখ্যার ইউনিক ইউজারনেম ইনপুট দিন (যেমন: s54776)।');
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
     }
 
     // Verify username uniqueness across other approved accounts
     const usernameTaken = userAccounts.some(
-      a => a.id !== account.id && a.status === 'approved' && a.username.toLowerCase() === candidateUsername.toLowerCase()
+      a => a.id !== account.id && a.status === 'approved' && a.username && a.username.toLowerCase() === candidateUsername.toLowerCase()
     );
     if (usernameTaken) {
-      // Auto-generate a guaranteed unique S + 5 digits username so approval never fails
-      candidateUsername = generateS5DigitUsername(account.phone, userAccounts, account.id);
+      setErrorMsg(`ইউজারনেম @${candidateUsername} ইতোমধ্যে ব্যবহৃত হয়েছে। অনুগ্রহ করে ভিন্ন একটি ইউনিক ইউজারনেম দিন।`);
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
     }
 
     setIsProcessingApproval(account.id);
@@ -370,7 +374,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     if (acc.username && isValidS5DigitUsername(acc.username)) {
       setCredNewUsername(acc.username.toLowerCase());
     } else {
-      setCredNewUsername(generateS5DigitUsername(acc.phone, userAccounts, acc.id));
+      setCredNewUsername(generateS5DigitUsername(undefined, userAccounts, acc.id));
     }
     setCredNewPassword('');
     setCredError('');
@@ -758,26 +762,22 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
   const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!memName.trim()) {
-      setMemFormError('সদস্যের নাম প্রদান করুন');
-      return;
-    }
-    if (!memPhone.trim()) {
-      setMemFormError('সঠিক মোবাইল নম্বর প্রদান করুন');
-      return;
-    }
-
     setIsSavingMember(true);
     setMemFormError('');
+
+    const finalName = memName.trim() || 'নতুন সদস্য';
+    const finalPhone = memPhone.trim() || '';
+    const finalDesignation = memDesignation.trim() || 'সাধারণ সদস্য';
+    const finalArea = memArea.trim() || 'পতেঙ্গা, চট্টগ্রাম';
 
     try {
       if (editingMember) {
         const updated: Member = {
           ...editingMember,
-          name: memName.trim(),
-          designation: memDesignation.trim(),
-          phone: memPhone.trim(),
-          area: memArea.trim(),
+          name: finalName,
+          designation: finalDesignation,
+          phone: finalPhone,
+          area: finalArea,
           isExecutive: memIsExecutive,
           isExpatriate: memIsExpatriate,
           countryStatus: memIsExpatriate ? (memCountry.trim() || 'প্রবাসী') : undefined,
@@ -798,10 +798,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         const nextSerial = Math.max(maxSerial, members.length) + 1;
 
         const newMem: Omit<Member, 'id'> = {
-          name: memName.trim(),
-          designation: memDesignation.trim(),
-          phone: memPhone.trim(),
-          area: memArea.trim(),
+          name: finalName,
+          designation: finalDesignation,
+          phone: finalPhone,
+          area: finalArea,
           status: 'সক্রিয়',
           joinDate: new Date().toISOString().split('T')[0],
           serial: nextSerial,
@@ -965,25 +965,22 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
   const handleSaveSlide = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slideImageUrl.trim()) {
-      setErrorMsg('স্লাইডারের ছবি নির্বাচন বা আপলোড করা আবশ্যক');
-      setTimeout(() => setErrorMsg(''), 3000);
-      return;
-    }
+    const finalImageUrl = slideImageUrl.trim() || 'https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=1200&q=80';
+    const finalTitle = slideTitle.trim() || 'সংগঠনের গ্রুপ ফটো';
 
     try {
       if (editingSlide && onEditHomeSlide) {
         await onEditHomeSlide({
           ...editingSlide,
-          title: 'সংগঠনের গ্রুপ ফটো',
-          imageUrl: slideImageUrl.trim(),
+          title: finalTitle,
+          imageUrl: finalImageUrl,
           isActive: slideIsActive
         });
         setNoticeMsg('স্লাইডার ছবি সফলভাবে আপডেট করা হয়েছে');
       } else if (onAddHomeSlide) {
         await onAddHomeSlide({
-          title: 'সংগঠনের গ্রুপ ফটো',
-          imageUrl: slideImageUrl.trim(),
+          title: finalTitle,
+          imageUrl: finalImageUrl,
           isActive: slideIsActive
         });
         setNoticeMsg('স্লাইডারে নতুন ছবি সফলভাবে যুক্ত হয়েছে');
@@ -1076,25 +1073,23 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
   const handleSaveDonation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!donationRecipientName.trim() || !donationAmount || !donationProviderRef.trim()) {
-      setErrorMsg('সাহায্যপ্রাপ্তের নাম, টাকার পরিমাণ এবং দায়িত্বশীলের রেফারেন্স আবশ্যক');
-      setTimeout(() => setErrorMsg(''), 3000);
-      return;
-    }
-
+    const finalRecipient = donationRecipientName.trim() || 'অনুল্লেখিত সাহায্যপ্রাপ্ত';
     const parsedAmt = parseFloat(donationAmount);
     const amt = isNaN(parsedAmt) ? 0 : parsedAmt;
+    const finalProviderRef = donationProviderRef.trim() || 'দায়িত্বশীল রেফারেন্স';
+    const finalAddress = donationAddress.trim() || 'পতেঙ্গা, চট্টগ্রাম';
+    const finalDate = donationDate.trim() || new Date().toLocaleDateString('bn-BD');
 
     try {
       if (editingDonation && onEditAidDonation) {
         await onEditAidDonation({
           ...editingDonation,
-          recipientName: donationRecipientName.trim(),
+          recipientName: finalRecipient,
           photoUrl: donationPhotoUrl.trim(),
-          address: donationAddress.trim(),
-          providerReference: donationProviderRef.trim(),
+          address: finalAddress,
+          providerReference: finalProviderRef,
           amount: amt,
-          date: donationDate.trim(),
+          date: finalDate,
           description: donationDescription.trim(),
           bkashNumber: donationBkash.trim() || undefined,
           nagadNumber: donationNagad.trim() || undefined,
@@ -1103,12 +1098,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         setNoticeMsg('অনুদান ও সাহায্য রেকর্ড সফলভাবে আপডেট করা হয়েছে');
       } else if (onAddAidDonation) {
         await onAddAidDonation({
-          recipientName: donationRecipientName.trim(),
+          recipientName: finalRecipient,
           photoUrl: donationPhotoUrl.trim(),
-          address: donationAddress.trim(),
-          providerReference: donationProviderRef.trim(),
+          address: finalAddress,
+          providerReference: finalProviderRef,
           amount: amt,
-          date: donationDate.trim(),
+          date: finalDate,
           description: donationDescription.trim(),
           bkashNumber: donationBkash.trim() || undefined,
           nagadNumber: donationNagad.trim() || undefined,
@@ -1193,36 +1188,34 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
   const handleSaveContrib = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!contribDonorName.trim() || !contribAmount || !contribProviderRef.trim()) {
-      setErrorMsg('শুভাকাঙ্ক্ষীর নাম, অনুদানের পরিমাণ এবং মাধ্যমের রেফারেন্স আবশ্যক');
-      setTimeout(() => setErrorMsg(''), 3000);
-      return;
-    }
-
+    const finalDonor = contribDonorName.trim() || 'শুভাকাঙ্ক্ষী অনুদানকারী';
     const parsedAmt = parseFloat(contribAmount);
     const amt = isNaN(parsedAmt) ? 0 : parsedAmt;
+    const finalProviderRef = contribProviderRef.trim() || 'সাধারণ অনুদান';
+    const finalAddress = contribAddress.trim() || '';
+    const finalDate = contribDate.trim() || new Date().toLocaleDateString('bn-BD');
 
     try {
       if (editingContrib && onEditExtraContribution) {
         await onEditExtraContribution({
           ...editingContrib,
-          donorName: contribDonorName.trim(),
+          donorName: finalDonor,
           photoUrl: contribPhotoUrl.trim(),
-          address: contribAddress.trim(),
-          providerReference: contribProviderRef.trim(),
+          address: finalAddress,
+          providerReference: finalProviderRef,
           amount: amt,
-          date: contribDate.trim(),
+          date: finalDate,
           description: contribDescription.trim()
         });
         setNoticeMsg('অতিরিক্ত অনুদান রেকর্ড সফলভাবে আপডেট করা হয়েছে');
       } else if (onAddExtraContribution) {
         await onAddExtraContribution({
-          donorName: contribDonorName.trim(),
+          donorName: finalDonor,
           photoUrl: contribPhotoUrl.trim(),
-          address: contribAddress.trim(),
-          providerReference: contribProviderRef.trim(),
+          address: finalAddress,
+          providerReference: finalProviderRef,
           amount: amt,
-          date: contribDate.trim(),
+          date: finalDate,
           description: contribDescription.trim()
         });
         setNoticeMsg('নতুন অতিরিক্ত অনুদান রেকর্ড সফলভাবে যোগ করা হয়েছে');
@@ -1277,27 +1270,23 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ruleText.trim()) {
-      setErrorMsg('নিয়মাবলির বিবরণ আবশ্যক');
-      setTimeout(() => setErrorMsg(''), 3000);
-      return;
-    }
+    const finalRuleText = ruleText.trim() || 'সংগঠনের নিয়মাবলি ও গঠনতন্ত্রের নীতিমালা মেনে চলুন।';
 
     try {
       if (editingRule && onEditRule) {
         await onEditRule({
           ...editingRule,
           pointNumber: Number(rulePointNumber) || 1,
-          ruleText: ruleText.trim(),
-          category: ruleCategory.trim(),
+          ruleText: finalRuleText,
+          category: ruleCategory.trim() || 'মৌলিক আদর্শ',
           isActive: ruleIsActive
         });
         setNoticeMsg('নিয়মাবলি সফলভাবে আপডেট করা হয়েছে');
       } else if (onAddRule) {
         await onAddRule({
           pointNumber: Number(rulePointNumber) || 1,
-          ruleText: ruleText.trim(),
-          category: ruleCategory.trim(),
+          ruleText: finalRuleText,
+          category: ruleCategory.trim() || 'মৌলিক আদর্শ',
           isActive: ruleIsActive
         });
         setNoticeMsg('নতুন নিয়মাবলি সফলভাবে যুক্ত হয়েছে');
@@ -1796,13 +1785,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               ) : (
                 <div className="space-y-4">
                   {pendingAccounts.map((account) => {
-                    const defaultGeneratedUsername = (account.username && isValidS5DigitUsername(account.username))
-                      ? account.username.toLowerCase()
-                      : generateS5DigitUsername(account.phone, userAccounts, account.id);
-
                     const currentUsername = assignedUsernames[account.id] !== undefined 
                       ? assignedUsernames[account.id] 
-                      : defaultGeneratedUsername;
+                      : (account.username || '');
 
                     return (
                       <div 
@@ -1915,7 +1900,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                         <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                           <div className="w-full sm:w-auto flex-1">
                             <label className="block text-xs font-bold text-emerald-950 mb-1">
-                              ইউনিক ইউজারনেম বরাদ্দ করুন (Strict S + ৫ ডিজিট, যেমন: s54776):
+                              অ্যাডমিন-নিয়ন্ত্রিত ইউনিক ইউজারনেম (Strict S + ৫ ডিজিট, যেমন: s54776):
                             </label>
                             <div className="flex items-center gap-2 max-w-sm">
                               <div className="relative flex-1">
@@ -1932,24 +1917,13 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                                     val = val.slice(0, 6);
                                     setAssignedUsernames(prev => ({ ...prev, [account.id]: val }));
                                   }}
-                                  placeholder="যেমন: s54776"
+                                  placeholder="সরাসরি টাইপ করুন (যেমন: s54776)"
                                   className="w-full pl-7 pr-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                 />
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const fresh = generateS5DigitUsername(account.phone, userAccounts, account.id);
-                                  setAssignedUsernames(prev => ({ ...prev, [account.id]: fresh }));
-                                }}
-                                className="px-2.5 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 text-[11px] font-bold shrink-0 transition cursor-pointer"
-                                title="নতুন ইউনিক S+৫ ডিজিট ইউজারনেম তৈরি করুন"
-                              >
-                                অটো s+৫ ডিজিট
-                              </button>
                             </div>
                             <span className="text-[10px] text-emerald-800 mt-1 block">
-                              অনুমোদনের পর এই <strong>@{currentUsername}</strong> ইউজারনেম এবং নিবন্ধনে দেওয়া পাসওয়ার্ড (<strong className="font-mono text-amber-900">{account.password || 'sms2022'}</strong>) দিয়ে সদস্য লগইন করতে পারবেন।
+                              অনুমোদনের পর এই <strong>@{currentUsername || 's_____'}</strong> ইউজারনেম এবং নিবন্ধনে দেওয়া পাসওয়ার্ড (<strong className="font-mono text-amber-900">{account.password || 'sms2022'}</strong>) দিয়ে সদস্য লগইন করতে পারবেন।
                             </span>
                           </div>
 
@@ -3760,11 +3734,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
             <form onSubmit={handleSaveMember} className="space-y-3.5 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  সদস্যের পুরো নাম <span className="text-rose-500">*</span>
+                  সদস্যের পুরো নাম
                 </label>
                 <input
                   type="text"
-                  required
                   value={memName}
                   onChange={(e) => setMemName(e.target.value)}
                   placeholder="যেমন: মো: ছাদিকুর রহমান"
@@ -3797,11 +3770,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  মোবাইল নম্বর <span className="text-rose-500">*</span>
+                  মোবাইল নম্বর
                 </label>
                 <input
                   type="tel"
-                  required
                   value={memPhone}
                   onChange={(e) => setMemPhone(e.target.value)}
                   placeholder="01886122678"
@@ -4516,19 +4488,6 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                       className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!credentialModalAccount) return;
-                      const fresh = generateS5DigitUsername(credentialModalAccount.phone, userAccounts, credentialModalAccount.id);
-                      setCredNewUsername(fresh);
-                      setCredError('');
-                    }}
-                    className="px-3 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 text-xs font-bold shrink-0 transition cursor-pointer"
-                    title="নতুন ইউনিক S+৫ ডিজিট ইউজারনেম জেনারেট করুন"
-                  >
-                    অটো s+৫ ডিজিট
-                  </button>
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1">
                   ফরম্যাট: অবশ্যই ইংরেজি 's' এবং ঠিক ৫টি সংখ্যা (মোট ৬ অক্ষর, যেমন: s54776)। কোনো চিহ্ন বা আন্ডারস্কোর গ্রহণযোগ্য নয়।
@@ -4630,7 +4589,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               {/* Photo Upload or URL */}
               <div className="space-y-2">
                 <label className="block font-bold text-slate-700">
-                  গ্রুপ ফটো / ব্যানার নির্বাচন (ডিভাইস থেকে আপলোড অথবা লিঙ্ক) <span className="text-rose-500">*</span>
+                  গ্রুপ ফটো / ব্যানার নির্বাচন (ঐচ্ছিক - ডিভাইস থেকে আপলোড অথবা লিঙ্ক)
                 </label>
                 <div className="flex items-center gap-3">
                   {slideImageUrl ? (
@@ -4731,11 +4690,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
             <form onSubmit={handleSaveDonation} className="space-y-3.5 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  সাহায্যপ্রাপ্তের নাম <span className="text-rose-500">*</span>
+                  সাহায্যপ্রাপ্তের নাম
                 </label>
                 <input
                   type="text"
-                  required
                   value={donationRecipientName}
                   onChange={(e) => setDonationRecipientName(e.target.value)}
                   placeholder="যেমন: রহিমা বেগম (অসহায় বিধবা)"
@@ -4788,11 +4746,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    বিতরণকৃত টাকার পরিমাণ (৳) <span className="text-rose-500">*</span>
+                    বিতরণকৃত টাকার পরিমাণ (৳)
                   </label>
                   <input
                     type="number"
-                    required
                     value={donationAmount}
                     onChange={(e) => setDonationAmount(e.target.value)}
                     placeholder="যেমন: 15000"
@@ -4813,11 +4770,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  ঠিকানা <span className="text-rose-500">*</span>
+                  ঠিকানা
                 </label>
                 <input
                   type="text"
-                  required
                   value={donationAddress}
                   onChange={(e) => setDonationAddress(e.target.value)}
                   placeholder="যেমন: পতেঙ্গা কাঠগড় বাজার এলাকা, চট্টগ্রাম"
@@ -4827,11 +4783,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  কার মাধ্যমে দেওয়া হয়েছে (দায়িত্বশীলের নাম ও পদবি) <span className="text-rose-500">*</span>
+                  কার মাধ্যমে দেওয়া হয়েছে (দায়িত্বশীলের নাম ও পদবি)
                 </label>
                 <input
                   type="text"
-                  required
                   value={donationProviderRef}
                   onChange={(e) => setDonationProviderRef(e.target.value)}
                   placeholder="যেমন: মোঃ কামরুল হাসান (সভাপতি)"
@@ -4931,11 +4886,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
             <form onSubmit={handleSaveContrib} className="space-y-3.5 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  শুভাকাঙ্ক্ষী / দাতার নাম <span className="text-rose-500">*</span>
+                  শুভাকাঙ্ক্ষী / দাতার নাম
                 </label>
                 <input
                   type="text"
-                  required
                   value={contribDonorName}
                   onChange={(e) => setContribDonorName(e.target.value)}
                   placeholder="যেমন: মোঃ আব্দুল করিম (প্রবাসী রেমিট্যান্স যোদ্ধা)"
@@ -4988,11 +4942,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    অনুদানের পরিমাণ (৳) <span className="text-rose-500">*</span>
+                    অনুদানের পরিমাণ (৳)
                   </label>
                   <input
                     type="number"
-                    required
                     value={contribAmount}
                     onChange={(e) => setContribAmount(e.target.value)}
                     placeholder="যেমন: 50000"
@@ -5024,11 +4977,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  কার মাধ্যমে দেওয়া হয়েছে / মাধ্যম <span className="text-rose-500">*</span>
+                  কার মাধ্যমে দেওয়া হয়েছে / মাধ্যম
                 </label>
                 <input
                   type="text"
-                  required
                   value={contribProviderRef}
                   onChange={(e) => setContribProviderRef(e.target.value)}
                   placeholder="যেমন: ফখরুল ইসলাম চৌধুরী (প্রবাসী কল্যাণ সমন্বয়ক)"
@@ -5090,12 +5042,11 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    ক্রমিক / ধারা নম্বর (1, 2, 3...) <span className="text-rose-500">*</span>
+                    ক্রমিক / ধারা নম্বর (ঐচ্ছিক)
                   </label>
                   <input
                     type="number"
                     min="1"
-                    required
                     value={rulePointNumber}
                     onChange={(e) => setRulePointNumber(parseInt(e.target.value) || 1)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold"
@@ -5118,11 +5069,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  নিয়মাবলি বা নির্দেশিকার পূর্ণ বিবরণ <span className="text-rose-500">*</span>
+                  নিয়মাবলি বা নির্দেশিকার বিবরণ
                 </label>
                 <textarea
                   rows={4}
-                  required
                   value={ruleText}
                   onChange={(e) => setRuleText(e.target.value)}
                   placeholder="যেমন: সংগঠনের প্রতিটি সদস্যকে সর্বদা নিঃস্বার্থ মানবসেবা ও আর্তমানবতার কল্যাণে নিবেদিত থাকতে হবে..."

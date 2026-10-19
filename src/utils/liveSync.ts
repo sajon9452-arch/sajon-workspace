@@ -1,4 +1,5 @@
 import { PMS_SYNC_EVENT } from './storage';
+import { subscribeToAllSupabaseTables } from './supabaseClient';
 
 /**
  * Cache Bypass & AppCreator24 WebView Optimization
@@ -357,10 +358,15 @@ export function initRealTimeDataSync(onSyncUpdate?: (data: any) => void): () => 
   fetchLatestState();
   connectSSE();
 
-  // 3. Fallback polling loop (every 3.5s) to guarantee updates in WebViews where SSE might suspend
+  // 3. Supabase Real-Time Subscriptions (postgres_changes / WebSockets)
+  const unsubscribeSupabase = subscribeToAllSupabaseTables(() => {
+    fetchLatestState();
+  });
+
+  // 4. Fallback polling loop (every 3.5s) to guarantee updates in WebViews where SSE might suspend
   pollInterval = setInterval(fetchLatestState, 3500);
 
-  // 4. Foreground listeners: When user returns to AppCreator24 app or brings it from background
+  // 5. Foreground listeners: When user returns to AppCreator24 app or brings it from background
   const handleForeground = () => {
     fetchLatestState();
     if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
@@ -388,6 +394,7 @@ export function initRealTimeDataSync(onSyncUpdate?: (data: any) => void): () => 
       clearInterval(pollInterval);
       pollInterval = null;
     }
+    unsubscribeSupabase();
     window.removeEventListener('focus', handleForeground);
     window.removeEventListener('online', handleForeground);
     document.removeEventListener('visibilitychange', handleVisibility);

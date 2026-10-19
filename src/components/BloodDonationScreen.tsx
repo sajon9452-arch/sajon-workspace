@@ -97,21 +97,19 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
 
   const handleSubmitDonor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim() || !formPhone.trim()) {
-      setFormError('রক্তদাতার নাম ও মোবাইল নম্বর প্রদান করুন');
-      return;
-    }
-
     if (!editingDonor) return;
 
     setIsSubmitting(true);
     setFormError('');
 
+    const finalName = formName.trim() || 'রক্তদাতা সদস্য';
+    const finalPhone = formPhone.trim();
+
     try {
       await onEditDonor({
         ...editingDonor,
-        name: formName.trim(),
-        phone: formPhone.trim(),
+        name: finalName,
+        phone: finalPhone,
         bloodGroup: formGroup,
         area: formArea.trim(),
         lastDonationDate: formLastDate || undefined,
@@ -346,11 +344,10 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
             <form onSubmit={handleSubmitDonor} className="space-y-3.5 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  রক্তদাতার পুরো নাম <span className="text-rose-500">*</span>
+                  রক্তদাতার পুরো নাম
                 </label>
                 <input
                   type="text"
-                  required
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   placeholder="যেমন: মো: আব্দুল্লাহ আল মামুন"
@@ -361,11 +358,10 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    মোবাইল নম্বর <span className="text-rose-500">*</span>
+                    মোবাইল নম্বর
                   </label>
                   <input
                     type="tel"
-                    required
                     value={formPhone}
                     onChange={(e) => setFormPhone(e.target.value)}
                     placeholder="01711000000"

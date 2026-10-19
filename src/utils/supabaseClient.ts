@@ -137,3 +137,46 @@ export async function safeDeleteFromSupabase(tableName: string, id: string): Pro
   }
   return false;
 }
+
+/**
+ * Real-Time Subscriptions: Subscribes to Supabase postgres_changes for all database tables
+ * (members, donors, funds, userAccounts, settings, slides, aidDonations, extraContributions, organizationRules, supportMembers)
+ * Reflects changes instantly across all devices.
+ */
+export function subscribeToAllSupabaseTables(
+  onTableChange?: (payload: { table: string; eventType: string; new: any; old: any }) => void
+): () => void {
+  try {
+    const channel = supabase
+      .channel('public-db-realtime-sync')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public'
+        },
+        (payload) => {
+          if (onTableChange) {
+            onTableChange({
+              table: payload.table,
+              eventType: payload.eventType,
+              new: payload.new,
+              old: payload.old
+            });
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Connected to Supabase Real-Time Live Sync');
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  } catch (err) {
+    console.warn('Supabase Realtime subscription error:', err);
+    return () => {};
+  }
+}

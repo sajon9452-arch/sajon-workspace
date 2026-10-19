@@ -83,17 +83,11 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
 
   const handleSaveNewMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!memName.trim()) {
-      setFormError('সদস্যের পুরো নাম প্রদান করুন');
-      return;
-    }
-    if (!memPhone.trim()) {
-      setFormError('সঠিক মোবাইল নম্বর প্রদান করুন');
-      return;
-    }
-
     setIsSubmitting(true);
     setFormError('');
+
+    const finalName = memName.trim() || 'নতুন সদস্য';
+    const finalPhone = memPhone.trim();
 
     try {
       if (onAddMember) {
@@ -106,9 +100,9 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
         const serial = Math.max(maxSerial, members.length) + 1;
 
         const newMem: Omit<Member, 'id'> = {
-          name: memName.trim(),
+          name: finalName,
           designation: memDesignation.trim() || 'সাধারণ সদস্য',
-          phone: memPhone.trim(),
+          phone: finalPhone,
           area: memArea.trim() || 'পতেঙ্গা, চট্টগ্রাম',
           status: 'সক্রিয়',
           joinDate: new Date().toISOString().split('T')[0],
@@ -479,11 +473,10 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
             <form onSubmit={handleSaveNewMember} className="space-y-3.5 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  সদস্যের পুরো নাম <span className="text-rose-500">*</span>
+                  সদস্যের পুরো নাম
                 </label>
                 <input
                   type="text"
-                  required
                   value={memName}
                   onChange={(e) => setMemName(e.target.value)}
                   placeholder="যেমন: মো: ছাদিকুর রহমান"
@@ -516,11 +509,10 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  মোবাইল নম্বর <span className="text-rose-500">*</span>
+                  মোবাইল নম্বর
                 </label>
                 <input
                   type="tel"
-                  required
                   value={memPhone}
                   onChange={(e) => setMemPhone(e.target.value)}
                   placeholder="01886122678"

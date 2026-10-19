@@ -148,45 +148,48 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
   // Save Support Representative
   const handleSaveRepresentative = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!repName.trim() || !repPhone.trim() || !repSubject.trim() || !repDescription.trim()) {
-      setFormError('দয়া করে নাম, মোবাইল নম্বর, বিষয় এবং বিস্তারিত নির্দেশনা পূরণ করুন');
-      return;
-    }
-
     setIsSubmitting(true);
     setFormError('');
+
+    const finalName = repName.trim() || 'সাপোর্ট প্রতিনিধি';
+    const finalPhone = repPhone.trim();
+    const finalDesignation = repDesignation.trim() || 'সাপোর্ট সমন্বয়ক';
+    const finalSubject = repSubject.trim() || 'সাধারণ সহায়তা';
+    const finalDescription = repDescription.trim() || 'যেকোনো সহায়তার জন্য সরাসরি যোগাযোগ করুন।';
+    const finalCategory = repCategory.trim() || 'সাধারণ সহায়তা';
+    const finalHours = repAvailableHours.trim() || 'সকাল ৯টা - রাত ১০টা';
 
     try {
       if (editingMember) {
         if (onEditSupportMember) {
           await onEditSupportMember({
             ...editingMember,
-            name: repName.trim(),
-            phone: repPhone.trim(),
-            designation: repDesignation.trim() || 'সাপোর্ট সমন্বয়ক',
-            subject: repSubject.trim(),
-            description: repDescription.trim(),
-            category: repCategory.trim() || 'সাধারণ সহায়তা',
-            availableHours: repAvailableHours.trim() || 'সকাল ৯টা - রাত ১০টা',
+            name: finalName,
+            phone: finalPhone,
+            designation: finalDesignation,
+            subject: finalSubject,
+            description: finalDescription,
+            category: finalCategory,
+            availableHours: finalHours,
             photoUrl: repPhoto || undefined
           });
-          setToastMsg(`প্রতিনিধি "${repName}" এর তথ্য সফলভাবে আপডেট করা হয়েছে`);
+          setToastMsg(`প্রতিনিধি "${finalName}" এর তথ্য সফলভাবে আপডেট করা হয়েছে`);
         }
       } else {
         if (onAddSupportMember) {
           const serial = (supportMembers.length || 0) + 1;
           await onAddSupportMember({
-            name: repName.trim(),
-            phone: repPhone.trim(),
-            designation: repDesignation.trim() || 'সাপোর্ট সমন্বয়ক',
-            subject: repSubject.trim(),
-            description: repDescription.trim(),
-            category: repCategory.trim() || 'সাধারণ সহায়তা',
-            availableHours: repAvailableHours.trim() || 'সকাল ৯টা - রাত ১০টা',
+            name: finalName,
+            phone: finalPhone,
+            designation: finalDesignation,
+            subject: finalSubject,
+            description: finalDescription,
+            category: finalCategory,
+            availableHours: finalHours,
             photoUrl: repPhoto || undefined,
             serial
           });
-          setToastMsg(`নতুন প্রতিনিধি "${repName}" সফলভাবে যুক্ত করা হয়েছে`);
+          setToastMsg(`নতুন প্রতিনিধি "${finalName}" সফলভাবে যুক্ত করা হয়েছে`);
         }
       }
       setIsEditModalOpen(false);
@@ -580,11 +583,10 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    নাম <span className="text-rose-500">*</span>
+                    নাম
                   </label>
                   <input
                     type="text"
-                    required
                     value={repName}
                     onChange={(e) => setRepName(e.target.value)}
                     placeholder="প্রতিনিধির পুরো নাম"
@@ -594,11 +596,10 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    মোবাইল নম্বর <span className="text-rose-500">*</span>
+                    মোবাইল নম্বর
                   </label>
                   <input
                     type="tel"
-                    required
                     value={repPhone}
                     onChange={(e) => setRepPhone(e.target.value)}
                     placeholder="01886122678"
@@ -611,11 +612,10 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    পদবি (Designation) <span className="text-rose-500">*</span>
+                    পদবি (Designation)
                   </label>
                   <input
                     type="text"
-                    required
                     value={repDesignation}
                     onChange={(e) => setRepDesignation(e.target.value)}
                     placeholder="যেমন: অর্থ সম্পাদক / ব্লাড কো-অর্ডিনেটর"
@@ -638,11 +638,10 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
               {/* Subject / Topic */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  সহায়তার বিষয় (Subject/Topic) <span className="text-rose-500">*</span>
+                  সহায়তার বিষয় (Subject/Topic)
                 </label>
                 <input
                   type="text"
-                  required
                   value={repSubject}
                   onChange={(e) => setRepSubject(e.target.value)}
                   placeholder="যেমন: চিকিৎসা ফান্ড আবেদন ও অনুদান যাচাই"
@@ -653,14 +652,13 @@ export const SupportScreen: React.FC<SupportScreenProps> = ({
               {/* Detailed Description / Instructions */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  বিস্তারিত ডেসক্রিপশন / নির্দেশনা <span className="text-rose-500">*</span>
+                  বিস্তারিত ডেসক্রিপশন / নির্দেশনা
                 </label>
                 <textarea
-                  required
                   rows={3}
                   value={repDescription}
                   onChange={(e) => setRepDescription(e.target.value)}
-                  placeholder="ব্যবহারকারীরা কোন কোন বিষয়ে এই প্রতিনিধির সাথে যোগাযোগ করতে পারবেন তার স্পষ্ট বিবরণ..."
+                  placeholder="ব্যবহারকারীরা কোন কোন বিষয়ে এই প্রতিনিধির সাথে যোগাযোগ করতে পারবেন তার বিবরণ..."
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>

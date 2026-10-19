@@ -167,26 +167,20 @@ export function normalizeS5DigitUsername(raw: string): string {
   return cleaned.slice(0, 6);
 }
 
-// Generate guaranteed-unique username: strictly starting with 's' followed by exactly 5 digits (e.g., s54776)
+// Generate guaranteed-unique username: strictly starting with 's' followed by exactly 5 digits (e.g., s54776) - never auto-generated from phone number
 export function generateS5DigitUsername(
-  phone?: string, 
+  _phone?: string, 
   existingAccounts?: UserAccount[], 
   excludeAccountId?: string
 ): string {
   const accounts = existingAccounts || loadUserAccounts();
-  const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
-  let candidateDigits = cleanPhone.length >= 5 ? cleanPhone.slice(-5) : '';
-
-  if (!candidateDigits || candidateDigits.length !== 5) {
-    candidateDigits = Math.floor(10000 + Math.random() * 90000).toString();
-  }
-
+  let candidateDigits = Math.floor(10000 + Math.random() * 90000).toString();
   let candidate = `s${candidateDigits}`;
 
   let attempts = 0;
   while (attempts < 500 && accounts.some(a => a.id !== excludeAccountId && a.username && a.username.toLowerCase() === candidate.toLowerCase())) {
-    const random5 = Math.floor(10000 + Math.random() * 90000).toString();
-    candidate = `s${random5}`;
+    candidateDigits = Math.floor(10000 + Math.random() * 90000).toString();
+    candidate = `s${candidateDigits}`;
     attempts++;
   }
   return candidate;
