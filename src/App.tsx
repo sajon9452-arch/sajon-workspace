@@ -736,7 +736,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col antialiased w-full max-w-full overflow-x-hidden">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col antialiased w-full max-w-full overflow-x-clip">
       {isOffline && (
         <div className="bg-amber-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between gap-2 shadow-md sticky top-0 z-50 animate-in slide-in-from-top">
           <div className="flex items-center gap-2">
@@ -767,7 +767,7 @@ export default function App() {
         openEmergencyModal={() => setIsEmergencyModalOpen(true)}
       />
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 overflow-x-hidden">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 overflow-x-clip">
         {activeScreen === 'home' && (
           <HomeScreen
             profile={profile}

@@ -127,7 +127,7 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-20 sm:pb-8 w-full max-w-full overflow-x-hidden">
+    <div className="space-y-6 pb-20 sm:pb-8 w-full max-w-full overflow-x-clip">
       {/* Header */}
       <div className="bg-gradient-to-r from-rose-900 via-rose-800 to-red-900 rounded-3xl p-5 sm:p-6 text-white shadow-lg space-y-3">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

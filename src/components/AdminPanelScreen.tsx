@@ -1468,7 +1468,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-20 sm:pb-8 w-full max-w-full overflow-x-hidden">
+    <div className="space-y-6 pb-20 sm:pb-8 w-full max-w-full overflow-x-clip">
       {/* Header */}
       <div className="bg-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-lg flex justify-between items-center flex-wrap gap-4">
         <div>
