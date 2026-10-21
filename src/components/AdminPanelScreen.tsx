@@ -44,12 +44,14 @@ import {
   Heart,
   Gift,
   Eye,
-  BookOpen
+  BookOpen,
+  Droplet
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
   Member, 
   BloodDonor, 
+  BloodGroup,
   FundRecord,
   PaymentStatus,
   PaymentGatewayConfig,
@@ -136,6 +138,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onAddMember,
   onEditMember,
   onDeleteMember,
+  donors = [],
+  onAddDonor,
+  onEditDonor,
+  onDeleteDonor,
   funds = [],
   onEditFundRecord,
   onToggleFundStatus,
@@ -167,7 +173,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onBack,
   onLogout
 }) => {
-  const [activeTab, setActiveTab] = useState<'members' | 'registrations' | 'funds' | 'slides' | 'donations' | 'contributions' | 'rules' | 'profile' | 'payments' | 'security'>(
+  const [activeTab, setActiveTab] = useState<'members' | 'donors' | 'registrations' | 'funds' | 'slides' | 'donations' | 'contributions' | 'rules' | 'profile' | 'payments' | 'security'>(
     (initialTab as any) || 'members'
   );
   
@@ -412,6 +418,149 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
+
+  // Blood Donor Management States (Admin-Exclusive)
+  const [donorSearch, setDonorSearch] = useState('');
+  const [donorGroupFilter, setDonorGroupFilter] = useState<string>('all');
+  const [isAddDonorModalOpen, setIsAddDonorModalOpen] = useState(false);
+  const [editingDonor, setEditingDonor] = useState<BloodDonor | null>(null);
+  const [deletingDonorId, setDeletingDonorId] = useState<string | null>(null);
+  const [donorName, setDonorName] = useState('');
+  const [donorPhone, setDonorPhone] = useState('');
+  const [donorGroup, setDonorGroup] = useState<BloodGroup>('O+');
+  const [donorArea, setDonorArea] = useState('পতেঙ্গা, চট্টগ্রাম');
+  const [donorLastDate, setDonorLastDate] = useState('');
+  const [donorTotal, setDonorTotal] = useState<number | ''>(1);
+  const [donorIsAvailable, setDonorIsAvailable] = useState(true);
+  const [donorFormError, setDonorFormError] = useState('');
+  const [isSavingDonor, setIsSavingDonor] = useState(false);
+
+  const isDonorAdminEligible = (lastDate?: string): boolean => {
+    if (!lastDate) return true;
+    try {
+      const last = new Date(lastDate);
+      const diffDays = Math.floor((Date.now() - last.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays >= 90;
+    } catch {
+      return true;
+    }
+  };
+
+  const filteredAdminDonors = useMemo(() => {
+    return (donors || []).filter(d => {
+      if (donorGroupFilter !== 'all' && d.bloodGroup !== donorGroupFilter) return false;
+      if (donorSearch.trim()) {
+        const q = donorSearch.trim().toLowerCase();
+        return (
+          d.name.toLowerCase().includes(q) ||
+          d.phone.includes(q) ||
+          d.area.toLowerCase().includes(q) ||
+          d.bloodGroup.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [donors, donorGroupFilter, donorSearch]);
+
+  const handleOpenAddDonor = () => {
+    setEditingDonor(null);
+    setDonorName('');
+    setDonorPhone('');
+    setDonorGroup('O+');
+    setDonorArea('পতেঙ্গা, চট্টগ্রাম');
+    setDonorLastDate('');
+    setDonorTotal(1);
+    setDonorIsAvailable(true);
+    setDonorFormError('');
+    setIsAddDonorModalOpen(true);
+  };
+
+  const handleOpenEditDonor = (d: BloodDonor) => {
+    setEditingDonor(d);
+    setDonorName(d.name);
+    setDonorPhone(d.phone);
+    setDonorGroup(d.bloodGroup);
+    setDonorArea(d.area);
+    setDonorLastDate(d.lastDonationDate || '');
+    setDonorTotal(d.totalDonations !== undefined ? d.totalDonations : 1);
+    setDonorIsAvailable(d.isAvailable !== false);
+    setDonorFormError('');
+    setIsAddDonorModalOpen(true);
+  };
+
+  const handleSaveDonor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingDonor(true);
+    setDonorFormError('');
+
+    const finalName = donorName.trim() || 'রক্তদাতা সদস্য';
+    const finalPhone = donorPhone.trim();
+    const finalArea = donorArea.trim() || 'পতেঙ্গা, চট্টগ্রাম';
+    const finalTotal = donorTotal === '' ? 1 : Number(donorTotal);
+
+    try {
+      if (editingDonor && onEditDonor) {
+        await onEditDonor({
+          ...editingDonor,
+          name: finalName,
+          phone: finalPhone,
+          bloodGroup: donorGroup,
+          area: finalArea,
+          lastDonationDate: donorLastDate || undefined,
+          totalDonations: finalTotal,
+          isAvailable: donorIsAvailable
+        });
+        setNoticeMsg(`রক্তদাতা "${finalName}" এর তথ্য সফলভাবে আপডেট ও ডাটাবেসে সংরক্ষিত হয়েছে`);
+      } else if (onAddDonor) {
+        await onAddDonor({
+          name: finalName,
+          phone: finalPhone,
+          bloodGroup: donorGroup,
+          area: finalArea,
+          lastDonationDate: donorLastDate || undefined,
+          totalDonations: finalTotal,
+          isAvailable: donorIsAvailable
+        });
+        setNoticeMsg(`নতুন রক্তদাতা "${finalName}" সফলভাবে ডাটাবেসে যুক্ত হয়েছে ও লাইভ সিঙ্ক সম্পন্ন`);
+      }
+      setIsAddDonorModalOpen(false);
+      setEditingDonor(null);
+      setTimeout(() => setNoticeMsg(''), 3500);
+    } catch {
+      setDonorFormError('রক্তদাতার তথ্য সংরক্ষণে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন');
+    } finally {
+      setIsSavingDonor(false);
+    }
+  };
+
+  const handleConfirmDeleteDonor = async (id: string, name: string) => {
+    if (!onDeleteDonor) return;
+    try {
+      await onDeleteDonor(id);
+      setDeletingDonorId(null);
+      setNoticeMsg(`রক্তদাতা "${name}" সফলভাবে মুছে ফেলা হয়েছে`);
+      setTimeout(() => setNoticeMsg(''), 3000);
+    } catch {
+      setErrorMsg('মুছে ফেলার প্রক্রিয়ায় ত্রুটি হয়েছে');
+      setTimeout(() => setErrorMsg(''), 3000);
+    }
+  };
+
+  const handleToggleDonorAvailability = async (donor: BloodDonor) => {
+    if (!onEditDonor) return;
+    const newAvail = donor.isAvailable === false ? true : false;
+    try {
+      await onEditDonor({
+        ...donor,
+        isAvailable: newAvail
+      });
+      setNoticeMsg(`রক্তদাতা ${donor.name} এর প্রাপ্যতা ${newAvail ? 'সক্রিয়' : 'নিষ্ক্রিয়'} করা হয়েছে`);
+      setTimeout(() => setNoticeMsg(''), 2500);
+    } catch {
+      setErrorMsg('স্ট্যাটাস পরিবর্তনে সমস্যা হয়েছে');
+      setTimeout(() => setErrorMsg(''), 3000);
+    }
+  };
 
   // Fund & Manual Net Balance Management States
   const [inputNetBalance, setInputNetBalance] = useState<string>(
@@ -1319,7 +1468,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-20 sm:pb-8">
+    <div className="space-y-6 pb-20 sm:pb-8 w-full max-w-full overflow-x-hidden">
       {/* Header */}
       <div className="bg-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-lg flex justify-between items-center flex-wrap gap-4">
         <div>
@@ -1411,6 +1560,18 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         >
           <Users className="w-4 h-4" />
           <span>সদস্য ব্যবস্থাপনা ({toBengaliNumber(members.length)})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('donors')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+            activeTab === 'donors'
+              ? 'bg-rose-700 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Droplet className="w-4 h-4 text-rose-500" />
+          <span>রক্তদাতা ব্যবস্থাপনা ({toBengaliNumber(donors.length)})</span>
         </button>
 
         <button
@@ -1670,6 +1831,196 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Blood Donors Management Tab (Admin Exclusive) */}
+      {activeTab === 'donors' && (
+        <div className="space-y-4">
+          {/* Sub-header */}
+          <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Droplet className="w-5 h-5 text-rose-600" />
+                <span>জরুরি রক্তদাতা ডেটাবেজ ও তালিকা নিয়ন্ত্রণ</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                নতুন রক্তদাতা যুক্ত করুন, তথ্য সংশোধন করুন এবং সরাসরি কল বা প্রাপ্যতা আপডেট করুন (Supabase Live Sync)
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenAddDonor}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow transition cursor-pointer active:scale-95 whitespace-nowrap"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>নতুন রক্তদাতা যোগ করুন</span>
+            </button>
+          </div>
+
+          {/* Blood Group Filter Buttons */}
+          <div className="w-full max-w-full overflow-hidden">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar touch-pan-x">
+              <button
+                type="button"
+                onClick={() => setDonorGroupFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                  donorGroupFilter === 'all'
+                    ? 'bg-rose-700 text-white shadow-xs'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                সকল গ্রুপ ({toBengaliNumber(donors.length)})
+              </button>
+              {(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as BloodGroup[]).map((grp) => {
+                const count = donors.filter(d => d.bloodGroup === grp).length;
+                return (
+                  <button
+                    type="button"
+                    key={grp}
+                    onClick={() => setDonorGroupFilter(grp)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1 ${
+                      donorGroupFilter === grp
+                        ? 'bg-rose-700 text-white shadow-xs'
+                        : 'bg-white text-slate-700 hover:bg-rose-50 border border-slate-200'
+                    }`}
+                  >
+                    <span>{grp}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                      donorGroupFilter === grp ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {toBengaliNumber(count)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={donorSearch}
+              onChange={(e) => setDonorSearch(e.target.value)}
+              placeholder="রক্তদাতার নাম, এলাকা বা ফোন নম্বর দিয়ে খুঁজুন..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+            />
+            {donorSearch && (
+              <button
+                type="button"
+                onClick={() => setDonorSearch('')}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Donors List */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {filteredAdminDonors.map((donor) => {
+              const eligible = isDonorAdminEligible(donor.lastDonationDate);
+              const isAvailable = donor.isAvailable !== false;
+
+              return (
+                <div
+                  key={donor.id}
+                  className="bg-white rounded-3xl p-4 border border-slate-200 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-14 h-14 rounded-2xl bg-rose-100 border-2 border-rose-300 text-rose-800 flex flex-col items-center justify-center shrink-0">
+                      <span className="text-base font-black leading-none">{donor.bloodGroup}</span>
+                      <span className="text-[9px] font-bold mt-0.5 text-rose-600">গ্রুপ</span>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 justify-between">
+                        <h4 className="text-sm font-bold text-slate-900 truncate">
+                          {donor.name}
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleDonorAvailability(donor)}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition cursor-pointer ${
+                            isAvailable && eligible
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200'
+                              : 'bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200'
+                          }`}
+                          title="ক্লিক করে প্রাপ্যতা পরিবর্তন করুন"
+                        >
+                          {isAvailable ? (eligible ? 'রক্তদানে প্রস্তুত' : 'সম্প্রতি দিয়েছেন') : 'নিষ্ক্রিয়'}
+                        </button>
+                      </div>
+
+                      <div className="mt-2 space-y-1 text-xs text-slate-600">
+                        <div className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <a
+                            href={`tel:${sanitizePhone(donor.phone)}`}
+                            className="font-mono text-[11px] font-semibold text-slate-800 hover:underline"
+                          >
+                            {donor.phone || 'নম্বর নেই'}
+                          </a>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">{donor.area || 'পতেঙ্গা, চট্টগ্রাম'}</span>
+                        </div>
+
+                        {donor.lastDonationDate && (
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <span>শেষ রক্তদান: {donor.lastDonationDate}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      মোট রক্তদান: {toBengaliNumber(donor.totalDonations || 1)} বার
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditDonor(donor)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-xs font-bold transition cursor-pointer"
+                        title="সম্পাদনা"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>সম্পাদনা</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDeletingDonorId(donor.id)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-xs font-bold transition cursor-pointer"
+                        title="স্থায়ীভাবে মুছুন"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>মুছুন</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {filteredAdminDonors.length === 0 && (
+            <div className="bg-white rounded-3xl p-10 text-center border border-slate-200">
+              <Droplet className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <p className="text-xs font-bold text-slate-600">কোনো রক্তদাতা পাওয়া যায়নি</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">নতুন রক্তদাতা যুক্ত করতে উপরের বাটনে চাপ দিন</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -5111,6 +5462,197 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add / Edit Blood Donor (Admin Exclusive) */}
+      {isAddDonorModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Droplet className="w-5 h-5 text-rose-600" />
+                <span>{editingDonor ? 'রক্তদাতার তথ্য সম্পাদনা' : 'নতুন রক্তদাতা যোগ করুন'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddDonorModalOpen(false);
+                  setEditingDonor(null);
+                }}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {donorFormError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{donorFormError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveDonor} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  রক্তদাতার পুরো নাম
+                </label>
+                <input
+                  type="text"
+                  value={donorName}
+                  onChange={(e) => setDonorName(e.target.value)}
+                  placeholder="যেমন: মোঃ কামরুল হাসান"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    রক্তের গ্রুপ
+                  </label>
+                  <select
+                    value={donorGroup}
+                    onChange={(e) => setDonorGroup(e.target.value as BloodGroup)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  >
+                    {(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as BloodGroup[]).map((grp) => (
+                      <option key={grp} value={grp}>{grp}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    মোবাইল নম্বর
+                  </label>
+                  <input
+                    type="tel"
+                    value={donorPhone}
+                    onChange={(e) => setDonorPhone(e.target.value)}
+                    placeholder="01XXXXXXXXX"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-mono focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  এলাকা / বর্তমান ঠিকানা
+                </label>
+                <input
+                  type="text"
+                  value={donorArea}
+                  onChange={(e) => setDonorArea(e.target.value)}
+                  placeholder="যেমন: পতেঙ্গা, চট্টগ্রাম অথবা সিলেট সদর"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    সর্বশেষ রক্তদান (ঐচ্ছিক)
+                  </label>
+                  <input
+                    type="date"
+                    value={donorLastDate}
+                    onChange={(e) => setDonorLastDate(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    মোট রক্তদান (বার)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={donorTotal}
+                    onChange={(e) => setDonorTotal(e.target.value === '' ? '' : parseInt(e.target.value) || 1)}
+                    placeholder="1"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-mono focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  />
+                </div>
+              </div>
+
+              {/* Availability checkbox */}
+              <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="donorAvailCheck"
+                  checked={donorIsAvailable}
+                  onChange={(e) => setDonorIsAvailable(e.target.checked)}
+                  className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                />
+                <label htmlFor="donorAvailCheck" className="font-bold text-slate-800 cursor-pointer select-none">
+                  বর্তমানে রক্তদানে প্রস্তুত ও সক্রিয়
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddDonorModalOpen(false);
+                    setEditingDonor(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer font-bold"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingDonor}
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow transition cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSavingDonor ? 'সংরক্ষণ হচ্ছে...' : (editingDonor ? 'আপডেট করুন' : 'রক্তদাতা সংরক্ষণ')}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Donor Confirmation Modal */}
+      {deletingDonorId && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                রক্তদাতা স্থায়ীভাবে মুছে ফেলবেন?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                মুছে ফেলার পর এই রক্তদাতার সকল তথ্য ক্লাউড ডেটাবেজ থেকে স্থায়ীভাবে মুছে যাবে এবং সাধারণ ব্যবহারকারীরা আর দেখতে পাবেন না।
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingDonorId(null)}
+                className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+              >
+                না, রাখুন
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = donors.find(d => d.id === deletingDonorId);
+                  handleConfirmDeleteDonor(deletingDonorId, target ? target.name : 'রক্তদাতা');
+                }}
+                className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow transition cursor-pointer active:scale-95"
+              >
+                হ্যাঁ, স্থায়ীভাবে মুছুন
+              </button>
+            </div>
           </div>
         </div>
       )}

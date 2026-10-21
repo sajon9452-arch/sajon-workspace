@@ -23,6 +23,7 @@ interface BloodDonationScreenProps {
   onEditDonor: (donor: BloodDonor) => Promise<void>;
   onDeleteDonor: (id: string) => Promise<void>;
   isAdmin: boolean;
+  onNavigateToAdminTab?: (tab: string) => void;
   onBack: () => void;
 }
 
@@ -33,6 +34,7 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
   onEditDonor,
   onDeleteDonor,
   isAdmin,
+  onNavigateToAdminTab,
   onBack
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -125,7 +127,7 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-20 sm:pb-8">
+    <div className="space-y-6 pb-20 sm:pb-8 w-full max-w-full overflow-x-hidden">
       {/* Header */}
       <div className="bg-gradient-to-r from-rose-900 via-rose-800 to-red-900 rounded-3xl p-5 sm:p-6 text-white shadow-lg space-y-3">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -137,24 +139,35 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
               </h2>
             </div>
             <p className="text-xs text-rose-100 mt-1 max-w-xl">
-              "এক ব্যাগ রক্ত, বাঁচায় একটি প্রাণ"—পতেঙ্গা ও সিলেটের যেকোনো মুমূর্ষু রোগীর প্রয়োজনে সরাসরি রক্তদাতার সাথে যোগাযোগ করুন
+              "এক ব্যাগ রক্ত, বাঁচায় একটি প্রাণ"—পতেঙ্গা ও সিলেটের যেকোনো মুমূর্ষু রোগীর প্রয়োজনে সরাসরি রক্তদাতার সাথে যোগাযোগ করুন।
             </p>
           </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => onNavigateToAdminTab && onNavigateToAdminTab('donors')}
+              className="bg-white/10 hover:bg-white/20 border border-white/20 rounded-2xl px-3.5 py-2 text-xs text-rose-100 font-bold flex items-center gap-2 cursor-pointer transition shadow-xs active:scale-95 whitespace-nowrap"
+            >
+              <Heart className="w-4 h-4 text-rose-300" />
+              <span>নতুন রক্তদাতা যুক্ত করুন (অ্যাডমিন প্যানেল)</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Blood Group Selector Buttons */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-        <button
-          onClick={() => setSelectedGroup('all')}
-          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-            selectedGroup === 'all'
-              ? 'bg-rose-700 text-white shadow-xs'
-              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-          }`}
-        >
-          সকল গ্রুপ ({toBengaliNumber(donors.length)})
-        </button>
+      <div className="w-full max-w-full overflow-hidden">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar touch-pan-x">
+          <button
+            onClick={() => setSelectedGroup('all')}
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              selectedGroup === 'all'
+                ? 'bg-rose-700 text-white shadow-xs'
+                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            সকল গ্রুপ ({toBengaliNumber(donors.length)})
+          </button>
         {BLOOD_GROUPS.map((grp) => {
           const count = donors.filter(d => d.bloodGroup === grp).length;
           return (
@@ -176,6 +189,7 @@ export const BloodDonationScreen: React.FC<BloodDonationScreenProps> = ({
             </button>
           );
         })}
+        </div>
       </div>
 
       {/* Search Bar */}

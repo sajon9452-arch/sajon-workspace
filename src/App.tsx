@@ -518,6 +518,8 @@ export default function App() {
     const updated = [donor, ...donors];
     setDonors(updated);
     saveDonors(updated);
+    // Direct sync to Supabase database
+    await safeSyncToSupabase('donors', donor);
     return donor;
   };
 
@@ -525,6 +527,8 @@ export default function App() {
     const updated = donors.map(d => d.id === updatedDonor.id ? updatedDonor : d);
     setDonors(updated);
     saveDonors(updated);
+    // Direct sync to Supabase database
+    await safeSyncToSupabase('donors', updatedDonor);
   };
 
   const handleDeleteDonor = async (id: string): Promise<void> => {
@@ -700,7 +704,7 @@ export default function App() {
   // Strict Login/Registration Gate: When not authenticated, hide all main app content completely
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col antialiased">
+      <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col antialiased w-full max-w-full overflow-x-hidden">
         {isOffline && (
           <div className="bg-amber-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between gap-2 shadow-md sticky top-0 z-50 animate-in slide-in-from-top">
             <div className="flex items-center gap-2">
@@ -732,7 +736,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col antialiased">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col antialiased w-full max-w-full overflow-x-hidden">
       {isOffline && (
         <div className="bg-amber-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between gap-2 shadow-md sticky top-0 z-50 animate-in slide-in-from-top">
           <div className="flex items-center gap-2">
@@ -763,7 +767,7 @@ export default function App() {
         openEmergencyModal={() => setIsEmergencyModalOpen(true)}
       />
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 overflow-x-hidden">
         {activeScreen === 'home' && (
           <HomeScreen
             profile={profile}
@@ -797,6 +801,11 @@ export default function App() {
             onEditDonor={handleEditDonor}
             onDeleteDonor={handleDeleteDonor}
             isAdmin={effectiveIsAdminForScreens}
+            onNavigateToAdminTab={(tab) => {
+              setAdminActiveTab(tab);
+              setActiveScreen('admin');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             onBack={() => setActiveScreen('home')}
           />
         )}

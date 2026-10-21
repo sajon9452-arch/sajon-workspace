@@ -22,7 +22,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   openAuthModal
 }) => {
   return (
-    <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 z-40 py-1.5 px-2 shadow-lg">
+    <nav className="sm:hidden fixed bottom-0 left-0 right-0 w-full max-w-full overflow-hidden bg-white/95 backdrop-blur-md border-t border-slate-200 z-40 py-1.5 px-2 shadow-lg overscroll-none">
       <div className="flex justify-around items-center">
         <button
           onClick={() => setActiveScreen('home')}

@@ -93,13 +93,13 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Main Header Bar */}
-      <div className="max-w-6xl mx-auto px-4 py-3 sm:py-3.5 flex justify-between items-center gap-3">
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3.5 flex justify-between items-center gap-2 sm:gap-3 w-full max-w-full overflow-hidden">
         {/* Brand Logo & Title */}
         <div 
           onClick={() => setActiveScreen('home')}
-          className="flex items-center gap-3 cursor-pointer select-none group"
+          className="flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none group min-w-0 flex-1 overflow-hidden"
         >
-          <div className="w-12 h-12 rounded-2xl bg-white shadow-md flex items-center justify-center p-1.5 border-2 border-emerald-400 text-emerald-800 shrink-0 group-hover:scale-105 transition-transform duration-300">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white shadow-md flex items-center justify-center p-1.5 border-2 border-emerald-400 text-emerald-800 shrink-0 group-hover:scale-105 transition-transform duration-300">
             {profile.logoUrl ? (
               <img 
                 src={profile.logoUrl} 
@@ -107,25 +107,25 @@ export const Header: React.FC<HeaderProps> = ({
                 className="w-full h-full object-cover rounded-xl"
               />
             ) : (
-              <HeartHandshake className="w-8 h-8 text-emerald-700" />
+              <HeartHandshake className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-700" />
             )}
           </div>
           {/* Requirement 1: Header Text Formatting (Strict 3-Line Clean Stack) */}
-          <div className="flex flex-col justify-center min-w-0">
-            <h1 className="text-sm sm:text-base md:text-lg font-black tracking-tight text-white leading-tight whitespace-nowrap">
+          <div className="flex flex-col justify-center min-w-0 flex-1 overflow-hidden">
+            <h1 className="text-xs sm:text-base md:text-lg font-black tracking-tight text-white leading-tight truncate">
               {profile.name || 'সিলেট মানবসেবা সংগঠন'}
             </h1>
-            <p className="text-[10px] sm:text-xs text-emerald-200 font-medium leading-snug mt-0.5 whitespace-nowrap">
+            <p className="text-[9.5px] sm:text-xs text-emerald-200 font-medium leading-snug mt-0.5 truncate">
               {profile.tagline || 'মানবতার কল্যাণে নিবেদিত প্রান'}
             </p>
-            <p className="text-[10px] sm:text-xs text-amber-300 font-bold leading-snug whitespace-nowrap">
+            <p className="text-[9.5px] sm:text-xs text-amber-300 font-bold leading-snug truncate">
               {profile.address || 'পতেঙ্গা, চট্টগ্রাম'}
             </p>
           </div>
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {activeScreen !== 'home' && (
             <button
               onClick={() => setActiveScreen('home')}
