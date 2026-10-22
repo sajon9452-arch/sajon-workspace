@@ -4250,6 +4250,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                     members: 'সদস্য তালিকা',
                     donors: 'রক্তদাতা',
                     funds: 'ফান্ড/আদায়',
+                    pending_payments: 'পেমেন্ট রিকোয়েস্ট',
                     notices: 'নোটিশ বোর্ড',
                     support_members: 'সাপোর্ট টিম',
                     home_slides: 'স্লাইডার',
@@ -4267,7 +4268,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                       >
                         <span className={`w-1.5 h-1.5 rounded-full ${isReady ? 'bg-emerald-600' : 'bg-amber-600'}`} />
                         <span>{label}</span>
-                        <span>{isReady ? '✓' : '✗'}</span>
+                        <span>{isReady ? '✔️' : '✗'}</span>
                       </span>
                     );
                   })}

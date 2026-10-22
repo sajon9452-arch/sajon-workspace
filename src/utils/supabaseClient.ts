@@ -291,6 +291,37 @@ CREATE TABLE IF NOT EXISTS public.settings (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 13. Pending Payments (পেমেন্ট রিকোয়েস্ট)
+CREATE TABLE IF NOT EXISTS public.pending_payments (
+  id TEXT PRIMARY KEY,
+  user_name TEXT,
+  userName TEXT,
+  member_name TEXT,
+  memberName TEXT,
+  member_id TEXT,
+  memberId TEXT,
+  designation TEXT,
+  sender_phone TEXT,
+  senderPhone TEXT,
+  amount NUMERIC,
+  trx_id TEXT,
+  trxId TEXT,
+  transaction_id TEXT,
+  transactionId TEXT,
+  gateway TEXT,
+  status TEXT DEFAULT 'pending',
+  submitted_at TEXT,
+  submittedAt TEXT,
+  created_at TEXT,
+  createdAt TEXT,
+  reviewed_at TEXT,
+  reviewedAt TEXT,
+  reviewed_by TEXT,
+  reviewedBy TEXT,
+  notes TEXT,
+  data JSONB
+);
+
 -- ====================================================================
 -- Enable Row Level Security (RLS) & Allow Open App Access
 -- ====================================================================
@@ -300,7 +331,7 @@ DECLARE
 BEGIN
   FOR tbl IN
     SELECT unnest(ARRAY[
-      'app_collections', 'members', 'donors', 'funds', 'notices',
+      'app_collections', 'members', 'donors', 'funds', 'pending_payments', 'notices',
       'support_members', 'home_slides', 'aid_donations',
       'extra_contributions', 'organization_rules', 'support_reports', 'settings'
     ])
@@ -352,7 +383,7 @@ export async function checkSupabaseTableDetails(): Promise<{
     isConnected = conn.connected;
 
     // Check each primary table
-    const checkList = ['members', 'donors', 'funds', 'notices', 'support_members', 'home_slides', 'app_collections', 'settings'];
+    const checkList = ['members', 'donors', 'funds', 'pending_payments', 'notices', 'support_members', 'home_slides', 'app_collections', 'settings'];
     await Promise.all(
       checkList.map(async (tbl) => {
         try {
