@@ -617,11 +617,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         ? rec.dueAmount.toString() 
         : (rec.status === 'Due' ? (rec.amount || 500).toString() : '0')
     );
-    setEditFundMonth(rec.month || 'মার্চ ২০২৬');
-    setEditFundPaidMonths(rec.paidMonths || (rec.status === 'Paid' ? (rec.month || 'মার্চ ২০২৬') : ''));
-    setEditFundDueMonths(rec.dueMonths || (rec.status === 'Due' ? (rec.month || 'মার্চ ২০২৬') : ''));
+    setEditFundMonth(rec.notes || rec.month || 'রানিং মাস');
+    setEditFundNotes(rec.notes || rec.month || 'রানিং মাস');
     setEditFundDate(rec.date || new Date().toISOString().split('T')[0]);
-    setEditFundNotes(rec.notes || rec.description || '');
   };
 
   const handleSaveFundRecordEdit = async (e: React.FormEvent) => {
@@ -630,10 +628,11 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
     const parsedAmount = parseFloat(editFundAmount);
     const amount = isNaN(parsedAmount) ? 0 : parsedAmount;
-    const parsedPaid = parseFloat(editFundPaidAmount);
-    const paidAmount = isNaN(parsedPaid) ? (editFundStatus === 'Paid' ? amount : 0) : parsedPaid;
-    const parsedDue = parseFloat(editFundDueAmount);
-    const dueAmount = isNaN(parsedDue) ? (editFundStatus === 'Due' ? amount : 0) : parsedDue;
+    const isPaid = editFundStatus === 'Paid';
+    const noteText = editFundNotes.trim() || 'রানিং মাস';
+
+    const paidAmount = isPaid ? amount : 0;
+    const dueAmount = !isPaid ? amount : 0;
 
     setIsSavingFundEdit(true);
     try {
@@ -650,13 +649,13 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         amount,
         paidAmount,
         dueAmount,
-        month: editFundMonth.trim() || 'চলতি মাস',
-        paidMonths: editFundPaidMonths.trim(),
-        dueMonths: editFundDueMonths.trim(),
-        date: editFundDate.trim() || new Date().toISOString().split('T')[0],
-        notes: editFundNotes.trim(),
-        description: editFundNotes.trim() || editingFundRecord.description || 'নিয়মিত চাঁদা',
-        approvedAt: editFundStatus === 'Paid' ? (editingFundRecord.approvedAt || new Date().toISOString()) : undefined
+        month: noteText,
+        paidMonths: isPaid ? noteText : '',
+        dueMonths: !isPaid ? noteText : '',
+        date: editingFundRecord.date || new Date().toISOString().split('T')[0],
+        notes: noteText,
+        description: noteText,
+        approvedAt: isPaid ? (editingFundRecord.approvedAt || new Date().toISOString()) : undefined
       };
 
       if (onEditFundRecord) {
@@ -1850,11 +1849,11 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               const cleanPhone = sanitizePhone(member.phone);
 
               return (
-                <div key={member.id} className="p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-slate-50/60 transition">
-                  <div className="flex items-center gap-3.5 min-w-0">
+                <div key={member.id} className="p-3 sm:p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition">
+                  <div className="flex items-center gap-3 min-w-0">
                     {/* Member Photo */}
                     <div className="relative shrink-0">
-                      <div className="w-14 h-14 rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center font-bold text-slate-700 text-base">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center font-bold text-slate-700 text-sm">
                         {photo ? (
                           <img src={photo} alt={member.name} className="w-full h-full object-cover" />
                         ) : (
@@ -3113,21 +3112,26 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                           </span>
                         </div>
 
-                        {/* Specific Dues & Payments (Requirement 4) */}
-                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 text-xs">
-                          <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100">
-                            <span className="text-[10px] text-emerald-700 block font-bold">পরিশোধিত টাকা:</span>
-                            <span className="font-mono font-black text-emerald-900 text-sm">
-                              {formatBengaliCurrency(record.paidAmount ?? (isPaid ? record.amount : 0))}
-                            </span>
+                        {/* Dynamic Amount Display (Requirement 3: Do not show Paid and Due side-by-side; show only Due if due, only Paid if paid) */}
+                        {isPaid ? (
+                          <div className="pt-2 border-t border-slate-200">
+                            <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-100 flex items-center justify-between">
+                              <span className="text-xs text-emerald-800 font-bold">পরিশোধিত টাকা:</span>
+                              <span className="font-mono font-black text-emerald-900 text-sm">
+                                {formatBengaliCurrency(record.paidAmount ?? record.amount)}
+                              </span>
+                            </div>
                           </div>
-                          <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-100">
-                            <span className="text-[10px] text-amber-700 block font-bold">বকেয়া টাকা:</span>
-                            <span className="font-mono font-black text-amber-900 text-sm">
-                              {formatBengaliCurrency(record.dueAmount ?? (!isPaid ? record.amount : 0))}
-                            </span>
+                        ) : (
+                          <div className="pt-2 border-t border-slate-200">
+                            <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-100 flex items-center justify-between">
+                              <span className="text-xs text-amber-800 font-bold">বকেয়া টাকা:</span>
+                              <span className="font-mono font-black text-amber-900 text-sm">
+                                {formatBengaliCurrency(record.dueAmount ?? record.amount)}
+                              </span>
+                            </div>
                           </div>
-                        </div>
+                        )}
 
                         {/* Month Details */}
                         <div className="pt-2 border-t border-slate-200/80 text-[11px] space-y-1.5">
@@ -4701,11 +4705,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 </div>
               </div>
 
-              {/* Field 2: Amount & Paid/Due Breakdown (Requirement 4) */}
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2.5">
+              {/* Field 2: Amount & Note/Remarks Input Box (Clean, Simple, Mobile-Optimized) */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3.5">
+                {/* Amount input */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    মূল চাঁদার পরিমাণ (টাকায়) <span className="text-rose-500">*</span>
+                    টাকার পরিমাণ (৳) <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-emerald-700 text-sm">৳</span>
@@ -4722,11 +4727,11 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                         }
                       }}
                       placeholder="যেমন: 500"
-                      className="w-full pl-8 pr-4 py-2 rounded-xl border border-slate-200 bg-white font-mono text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white font-mono text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                     />
                   </div>
                   {/* Amount quick selectors */}
-                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     {['200', '300', '500', '1000', '2000'].map((amt) => (
                       <button
                         key={amt}
@@ -4739,7 +4744,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                             setEditFundDueAmount(amt);
                           }
                         }}
-                        className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-[10px] font-bold transition cursor-pointer"
+                        className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-[11px] font-bold transition cursor-pointer"
                       >
                         {amt} ৳
                       </button>
@@ -4747,221 +4752,42 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                   </div>
                 </div>
 
-                {/* Paid & Due Breakdown */}
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
-                  <div>
-                    <label className="block font-bold text-emerald-800 text-[11px] mb-1">
-                      পরিশোধিত টাকা (৳):
-                    </label>
-                    <input
-                      type="number"
-                      value={editFundPaidAmount}
-                      onChange={(e) => setEditFundPaidAmount(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50/50 font-mono text-xs font-bold text-emerald-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      placeholder="0"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-amber-800 text-[11px] mb-1">
-                      বকেয়া টাকা (৳):
-                    </label>
-                    <input
-                      type="number"
-                      value={editFundDueAmount}
-                      onChange={(e) => setEditFundDueAmount(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50/50 font-mono text-xs font-bold text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Field 3: Month & Specific Paid / Due Month Management (Requirement 4) */}
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block font-bold text-slate-700 text-[11px] mb-1">
-                      মূল রেফারেন্স মাস <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={editFundMonth}
-                      onChange={(e) => setEditFundMonth(e.target.value)}
-                      placeholder="যেমন: মার্চ ২০২৬"
-                      className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 text-[11px] mb-1">
-                      তারিখ (Date)
-                    </label>
-                    <input
-                      type="date"
-                      value={editFundDate}
-                      onChange={(e) => setEditFundDate(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white font-mono text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Specific Paid Months (পরিশোধিত মাসসমূহ) */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-bold text-emerald-800 text-[11px]">
-                      পরিশোধিত মাসসমূহ (Paid Months):
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setEditFundPaidMonths('')}
-                      className="text-[10px] text-slate-400 hover:text-slate-600 underline cursor-pointer"
-                    >
-                      ক্লিয়ার
-                    </button>
-                  </div>
+                {/* Note / Text input box */}
+                <div className="pt-2.5 border-t border-slate-200">
+                  <label className="block font-bold text-slate-700 mb-1">
+                    নোট / বিবরণ (যেমন: রানিং মাস)
+                  </label>
                   <input
                     type="text"
-                    value={editFundPaidMonths}
-                    onChange={(e) => setEditFundPaidMonths(e.target.value)}
-                    placeholder="যেমন: জানুয়ারি ২০২৬, ফেব্রুয়ারি ২০২৬"
-                    className="w-full px-2.5 py-1.5 rounded-xl border border-emerald-200 bg-white text-xs text-emerald-950 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  />
-                  {/* Interactive Month Selector Chips */}
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {[
-                      'জানুয়ারি ২০২৬', 'ফেব্রুয়ারি ২০২৬', 'মার্চ ২০২৬', 'এপ্রিল ২০২৬',
-                      'মে ২০২৬', 'জুন ২০২৬', 'জুলাই ২০২৬', 'আগস্ট ২০২৬',
-                      'সেপ্টেম্বর ২০২৬', 'অক্টোবর ২০২৬', 'নভেম্বর ২০২৬', 'ডিসেম্বর ২০২৬'
-                    ].map((m) => {
-                      const isSelected = editFundPaidMonths.includes(m);
-                      return (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => {
-                            const parts = editFundPaidMonths.split(',').map(s => s.trim()).filter(Boolean);
-                            if (parts.includes(m)) {
-                              setEditFundPaidMonths(parts.filter(x => x !== m).join(', '));
-                            } else {
-                              setEditFundPaidMonths([...parts, m].join(', '));
-                            }
-                          }}
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer border ${
-                            isSelected
-                              ? 'bg-emerald-700 text-white border-emerald-700 shadow-2xs'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-emerald-50'
-                          }`}
-                        >
-                          {isSelected && '✓ '}{m.split(' ')[0]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Specific Due Months (বকেয়া মাসসমূহ) */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-bold text-amber-800 text-[11px]">
-                      বকেয়া মাসসমূহ (Due Months):
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setEditFundDueMonths('')}
-                      className="text-[10px] text-slate-400 hover:text-slate-600 underline cursor-pointer"
-                    >
-                      ক্লিয়ার
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={editFundDueMonths}
-                    onChange={(e) => setEditFundDueMonths(e.target.value)}
-                    placeholder="যেমন: মার্চ ২০২৬, এপ্রিল ২০২৬"
-                    className="w-full px-2.5 py-1.5 rounded-xl border border-amber-200 bg-white text-xs text-amber-950 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                  {/* Interactive Month Selector Chips */}
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {[
-                      'জানুয়ারি ২০২৬', 'ফেব্রুয়ারি ২০২৬', 'মার্চ ২০২৬', 'এপ্রিল ২০২৬',
-                      'মে ২০২৬', 'জুন ২০২৬', 'জুলাই ২০২৬', 'আগস্ট ২০২৬',
-                      'সেপ্টেম্বর ২০২৬', 'অক্টোবর ২০২৬', 'নভেম্বর ২০২৬', 'ডিসেম্বর ২০২৬'
-                    ].map((m) => {
-                      const isSelected = editFundDueMonths.includes(m);
-                      return (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => {
-                            const parts = editFundDueMonths.split(',').map(s => s.trim()).filter(Boolean);
-                            if (parts.includes(m)) {
-                              setEditFundDueMonths(parts.filter(x => x !== m).join(', '));
-                            } else {
-                              setEditFundDueMonths([...parts, m].join(', '));
-                            }
-                          }}
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer border ${
-                            isSelected
-                              ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-amber-50'
-                          }`}
-                        >
-                          {isSelected && '✓ '}{m.split(' ')[0]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Quick Month Control Buttons */}
-                <div className="flex items-center gap-1.5 pt-1 border-t border-slate-200 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditFundStatus('Paid');
-                      setEditFundPaidMonths(editFundMonth || 'মার্চ ২০২৬');
-                      setEditFundDueMonths('');
-                      setEditFundPaidAmount(editFundAmount);
-                      setEditFundDueAmount('0');
+                    value={editFundNotes}
+                    onChange={(e) => {
+                      setEditFundNotes(e.target.value);
+                      setEditFundMonth(e.target.value);
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 text-[10px] font-bold transition cursor-pointer"
-                  >
-                    সব পরিশোধিত চিহ্নিত করুন
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditFundStatus('Due');
-                      setEditFundDueMonths(editFundMonth || 'মার্চ ২০২৬');
-                      setEditFundDueAmount(editFundAmount);
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 text-[10px] font-bold transition cursor-pointer"
-                  >
-                    চলতি মাস বকেয়া চিহ্নিত করুন
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditFundDueMonths('')}
-                    className="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold transition cursor-pointer"
-                  >
-                    বকেয়া তালিকা খালি করুন
-                  </button>
+                    placeholder="যেমন: রানিং মাস / মার্চ ২০২৬ / এককালীন চাঁদা"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                  {/* Quick Note Suggestions */}
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    {['রানিং মাস', 'চলতি মাস', 'মার্চ ২০২৬', 'বকেয়া চাঁদা', 'অগ্রিম চাঁদা'].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => {
+                          setEditFundNotes(n);
+                          setEditFundMonth(n);
+                        }}
+                        className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer border ${
+                          editFundNotes === n
+                            ? 'bg-emerald-700 text-white border-emerald-700'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-emerald-50'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-
-              {/* Field 4: Notes / Remarks */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  মন্তব্য বা রসিদ বিবরণ
-                </label>
-                <input
-                  type="text"
-                  value={editFundNotes}
-                  onChange={(e) => setEditFundNotes(e.target.value)}
-                  placeholder="যেমন: মাসিক নিয়মিত চাঁদা / বিকাশ মারফত পরিশোধিত"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">

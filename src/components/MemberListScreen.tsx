@@ -299,18 +299,18 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
           return (
             <div
               key={member.id}
-              className={`bg-white rounded-3xl p-4 sm:p-5 border transition hover:shadow-md flex flex-col justify-between space-y-3.5 ${
+              className={`bg-white rounded-2xl p-3 sm:p-3.5 border transition hover:shadow-xs flex flex-col justify-between space-y-2.5 ${
                 isExec 
                   ? 'border-emerald-300 ring-1 ring-emerald-500/20' 
                   : 'border-slate-200'
               }`}
             >
-              <div className="flex items-start gap-4">
-                {/* Member Photo Avatar: Larger Photo Box */}
+              <div className="flex items-start gap-3">
+                {/* Member Photo Avatar: Compact & Clean */}
                 <div className="relative shrink-0">
                   <div 
                     onClick={() => photo && setZoomedPhoto({ src: photo, name: member.name, designation: member.designation })}
-                    className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl overflow-hidden border-2 flex items-center justify-center font-bold text-xl select-none shadow-sm ${
+                    className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl overflow-hidden border-2 flex items-center justify-center font-bold text-base select-none shadow-2xs ${
                       photo 
                         ? 'border-emerald-500 cursor-pointer group hover:border-emerald-600' 
                         : isExec 
@@ -331,7 +331,7 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                   </div>
 
                   {/* Strict Seniority Serial Badge (#1, #2... #N) */}
-                  <span className="absolute -top-2 -left-1.5 px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-900 text-white shadow-sm border border-slate-700">
+                  <span className="absolute -top-1.5 -left-1 px-1.5 py-0.2 rounded text-[9px] font-black bg-slate-900 text-white shadow-2xs border border-slate-700">
                     #{toBengaliNumber(member.serial)}
                   </span>
                 </div>
@@ -339,14 +339,14 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                 {/* Member Details */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                    <h3 className="text-sm font-bold text-slate-900 truncate">
                       {member.name}
                     </h3>
                   </div>
 
                   {/* Designation Badges */}
-                  <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-lg ${
+                  <div className="mt-1 flex items-center gap-1 flex-wrap">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                       isExec 
                         ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' 
                         : 'bg-slate-100 text-slate-700'
@@ -355,20 +355,20 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                     </span>
 
                     {isExp && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-blue-100 text-blue-800 flex items-center gap-1">
-                        <Globe className="w-3 h-3 text-blue-600" />
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-800 flex items-center gap-1">
+                        <Globe className="w-2.5 h-2.5 text-blue-600" />
                         <span>{member.countryStatus || 'প্রবাসী'}</span>
                       </span>
                     )}
                   </div>
 
                   {/* Phone & Area */}
-                  <div className="mt-2.5 space-y-1 text-xs text-slate-600">
-                    <div className="flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <div className="mt-1.5 space-y-0.5 text-xs text-slate-600">
+                    <div className="flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
                       <a 
                         href={`tel:${cleanPhone}`}
-                        className="hover:underline font-mono text-xs font-bold text-slate-800"
+                        className="hover:underline font-mono text-[11px] font-bold text-slate-800"
                       >
                         {member.phone}
                       </a>
@@ -378,46 +378,44 @@ export const MemberListScreen: React.FC<MemberListScreenProps> = ({
                         title="নম্বর কপি করুন"
                       >
                         {copiedPhone === member.phone ? (
-                          <Check className="w-3 h-3 text-emerald-600" />
+                          <Check className="w-2.5 h-2.5 text-emerald-600" />
                         ) : (
-                          <Copy className="w-3 h-3" />
+                          <Copy className="w-2.5 h-2.5" />
                         )}
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
                       <span className="truncate">{member.area || 'পতেঙ্গা, চট্টগ্রাম'}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Public Member Card Action Bar: Direct Call & WhatsApp only */}
-              <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 w-full">
-                  <a
-                    href={`tel:${cleanPhone}`}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-2xs"
-                    title="সরাসরি কল দিন"
-                  >
-                    <Phone className="w-3.5 h-3.5" />
-                    <span>কল দিন</span>
-                  </a>
+              {/* Public Member Card Action Bar: Compact Direct Call & WhatsApp buttons */}
+              <div className="pt-2 border-t border-slate-100 flex items-center gap-2 text-xs">
+                <a
+                  href={`tel:${cleanPhone}`}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-2xs"
+                  title="সরাসরি কল দিন"
+                >
+                  <Phone className="w-3 h-3" />
+                  <span>কল দিন</span>
+                </a>
 
-                  {cleanPhone && (
-                    <a
-                      href={`https://wa.me/880${cleanPhone.replace(/^0/, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs transition shadow-2xs"
-                      title="হোয়াটসঅ্যাপে মেসেজ পাঠান"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                      <span>WhatsApp</span>
-                    </a>
-                  )}
-                </div>
+                {cleanPhone && (
+                  <a
+                    href={`https://wa.me/880${cleanPhone.replace(/^0/, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs transition shadow-2xs"
+                    title="হোয়াটসঅ্যাপে মেসেজ পাঠান"
+                  >
+                    <MessageCircle className="w-3 h-3" />
+                    <span>WhatsApp</span>
+                  </a>
+                )}
               </div>
             </div>
           );

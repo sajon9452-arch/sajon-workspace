@@ -439,19 +439,22 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                       </span>
                     </div>
 
-                    {/* Dues & Payments Specific Details (Requirement 4) */}
-                    {(record.paidAmount !== undefined || record.dueAmount !== undefined) && (
-                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 text-xs">
-                        <div className="p-2 rounded-xl bg-emerald-50/70 border border-emerald-100">
-                          <span className="text-[10px] text-emerald-700 block font-bold">পরিশোধিত টাকা:</span>
-                          <span className="font-mono font-black text-emerald-900">
-                            {formatBengaliCurrency(record.paidAmount ?? (isPaid ? record.amount : 0))}
+                    {/* Dynamic Amount Display (Requirement 3: Do not show Paid and Due side-by-side; show only Due if due, only Paid if paid) */}
+                    {isPaid ? (
+                      <div className="pt-2 border-t border-slate-200">
+                        <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-100 flex items-center justify-between">
+                          <span className="text-xs text-emerald-800 font-bold">পরিশোধিত টাকা:</span>
+                          <span className="font-mono font-black text-emerald-900 text-sm">
+                            {formatBengaliCurrency(record.paidAmount ?? record.amount)}
                           </span>
                         </div>
-                        <div className="p-2 rounded-xl bg-amber-50/70 border border-amber-100">
-                          <span className="text-[10px] text-amber-700 block font-bold">বকেয়া টাকা:</span>
-                          <span className="font-mono font-black text-amber-900">
-                            {formatBengaliCurrency(record.dueAmount ?? (!isPaid ? record.amount : 0))}
+                      </div>
+                    ) : (
+                      <div className="pt-2 border-t border-slate-200">
+                        <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-100 flex items-center justify-between">
+                          <span className="text-xs text-amber-800 font-bold">বকেয়া টাকা:</span>
+                          <span className="font-mono font-black text-amber-900 text-sm">
+                            {formatBengaliCurrency(record.dueAmount ?? record.amount)}
                           </span>
                         </div>
                       </div>
