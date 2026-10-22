@@ -1,5 +1,9 @@
 import { PMS_SYNC_EVENT } from './storage';
-import { subscribeToAllSupabaseTables } from './supabaseClient';
+import { 
+  subscribeToAllSupabaseTables, 
+  pullAllDataFromSupabase, 
+  pushAllDataToSupabase 
+} from './supabaseClient';
 
 /**
  * Cache Bypass & AppCreator24 WebView Optimization
@@ -122,8 +126,8 @@ export function getLocalSyncSnapshot(): Record<string, any> {
 }
 
 /**
- * Applies remote synchronized data from server into local storage and fires PMS_SYNC_EVENT.
- * Protects existing records so a blank server or partial response never wipes local user data.
+ * Applies remote synchronized data from server or Supabase into local storage and fires PMS_SYNC_EVENT.
+ * Guarantees that a blank server or empty payload NEVER wipes populated user data.
  */
 export function applyRemoteSyncSnapshot(remoteData: Record<string, any>, remoteVersion?: number) {
   if (!remoteData || typeof remoteData !== 'object' || typeof window === 'undefined') return;
@@ -145,8 +149,8 @@ export function applyRemoteSyncSnapshot(remoteData: Record<string, any>, remoteV
             return true;
           });
 
-          // Protection: If incoming remote array is empty, but local storage already has valid items not in deletedIds,
-          // do NOT overwrite local storage with an empty array unless remote payload explicitly flags allowEmpty.
+          // Protection: If incoming remote array is empty, but local storage already has valid records,
+          // NEVER overwrite populated local data with an empty array unless remote payload explicitly permits it.
           if (valueToSave.length === 0 && existingRaw) {
             try {
               const parsedExisting = JSON.parse(existingRaw);
@@ -171,7 +175,7 @@ export function applyRemoteSyncSnapshot(remoteData: Record<string, any>, remoteV
       }
     }
 
-    if (typeof remoteVersion === 'number') {
+    if (typeof remoteVersion === 'number' && remoteVersion > currentLocalVersion) {
       currentLocalVersion = remoteVersion;
     }
 
@@ -186,7 +190,7 @@ export function applyRemoteSyncSnapshot(remoteData: Record<string, any>, remoteV
     // Small timeout to prevent immediate bounce-back loop
     setTimeout(() => {
       isApplyingRemoteUpdate = false;
-    }, 100);
+    }, 120);
   }
 }
 
@@ -261,15 +265,63 @@ export function pushLiveUpdate(storageKeyOrApiKey?: string, data?: any) {
     } catch (err) {
       console.warn('Live sync push failed (offline or server starting):', err);
     }
-  }, 150);
+  }, 120);
+}
+
+/**
+ * Triggers a comprehensive full-cloud two-way sync:
+ * 1. Pulls all fresh data from Supabase Cloud
+ * 2. Merges with local and server data safely
+ * 3. Pushes any unsaved local changes to Supabase and Server
+ */
+export async function triggerFullCloudSync(): Promise<{ success: boolean; message: string }> {
+  try {
+    // 1. Pull from Supabase
+    const cloudData = await pullAllDataFromSupabase();
+    let hasCloud = false;
+
+    if (cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0) {
+      applyRemoteSyncSnapshot(cloudData);
+      hasCloud = true;
+    }
+
+    // 2. Fetch from Server
+    try {
+      const res = await fetchNoCache('/api/sync');
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.data) {
+          applyRemoteSyncSnapshot(json.data, json.version);
+        }
+      }
+    } catch {
+      // server offline
+    }
+
+    // 3. Push complete current snapshot to Supabase & Server
+    const snapshot = getLocalSyncSnapshot();
+    await pushAllDataToSupabase(snapshot);
+    pushLiveUpdate();
+
+    return {
+      success: true,
+      message: hasCloud ? 'Supabase ক্লাউড থেকে ডাটা সফলভাবে সিঙ্ক হয়েছে' : 'ক্লাউডে ডাটা সফলভাবে ব্যাকআপ হয়েছে'
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err?.message || 'সিঙ্ক ব্যর্থ হয়েছে'
+    };
+  }
 }
 
 /**
  * Initializes Real-Time Data Synchronization:
- * 1. Immediate fetch with No-Cache bypass
- * 2. Real-Time Push Stream via Server-Sent Events (SSE)
- * 3. High-frequency fallback polling for AppCreator24 WebView
- * 4. Automatic foreground sync on focus / visibility change
+ * 1. Immediate Supabase Cloud fetch
+ * 2. Immediate Server fetch with No-Cache bypass
+ * 3. Real-Time Push Stream via Server-Sent Events (SSE)
+ * 4. High-frequency fallback polling for AppCreator24 WebView
+ * 5. Automatic foreground sync on focus / visibility change
  */
 export function initRealTimeDataSync(onSyncUpdate?: (data: any) => void): () => void {
   if (typeof window === 'undefined') return () => {};
@@ -278,7 +330,22 @@ export function initRealTimeDataSync(onSyncUpdate?: (data: any) => void): () => 
   let pollInterval: ReturnType<typeof setInterval> | null = null;
   let isDestroyed = false;
 
-  // 1. Fetch latest server state immediately
+  // 1. Initial Cloud Data Load from Supabase (Universal Source of Truth)
+  const fetchCloudFirst = async () => {
+    try {
+      const cloudData = await pullAllDataFromSupabase();
+      if (cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0) {
+        applyRemoteSyncSnapshot(cloudData);
+        if (onSyncUpdate) onSyncUpdate(cloudData);
+        // Also push cloud data to server storage so server is kept updated
+        pushLiveUpdate();
+      }
+    } catch {
+      // Supabase loading fallback
+    }
+  };
+
+  // 2. Fetch latest server state immediately
   const fetchLatestState = async () => {
     if (isDestroyed) return;
     try {
@@ -286,21 +353,35 @@ export function initRealTimeDataSync(onSyncUpdate?: (data: any) => void): () => 
       if (res.ok) {
         const json = await res.json();
         if (json && json.data) {
-          if (json.version && json.version > currentLocalVersion) {
-            applyRemoteSyncSnapshot(json.data, json.version);
-            if (onSyncUpdate) onSyncUpdate(json.data);
-          } else if (Object.keys(json.data).length === 0) {
-            // Server database is empty or new; seed server with our local data
-            pushLiveUpdate();
+          // Check if server is completely empty of records
+          const hasServerRecords = Object.entries(json.data).some(
+            ([k, v]) => k !== 'permanentlyDeleted' && Array.isArray(v) && v.length > 0
+          );
+
+          if (hasServerRecords) {
+            if (!json.version || json.version > currentLocalVersion) {
+              applyRemoteSyncSnapshot(json.data, json.version);
+              if (onSyncUpdate) onSyncUpdate(json.data);
+            }
+          } else {
+            // Server has no records, but local storage or Supabase might!
+            // Seed server with our local data
+            const snapshot = getLocalSyncSnapshot();
+            const hasLocalRecords = Object.entries(snapshot).some(
+              ([k, v]) => k !== 'permanentlyDeleted' && Array.isArray(v) && v.length > 0
+            );
+            if (hasLocalRecords) {
+              pushLiveUpdate();
+            }
           }
         }
       }
-    } catch (err) {
+    } catch {
       // Offline fallback
     }
   };
 
-  // 2. Connect to Server-Sent Events (SSE) stream for instant live push (<50ms)
+  // 3. Connect to Server-Sent Events (SSE) stream for instant live push (<50ms)
   const connectSSE = () => {
     if (isDestroyed) return;
     try {
@@ -325,26 +406,11 @@ export function initRealTimeDataSync(onSyncUpdate?: (data: any) => void): () => 
         }
       });
 
-      eventSource.onmessage = (e: MessageEvent) => {
-        try {
-          const payload = JSON.parse(e.data);
-          if (payload && payload.data) {
-            if (!payload.version || payload.version > currentLocalVersion) {
-              applyRemoteSyncSnapshot(payload.data, payload.version);
-              if (onSyncUpdate) onSyncUpdate(payload.data);
-            }
-          }
-        } catch {
-          // ignore
-        }
-      };
-
       eventSource.onerror = () => {
         if (eventSource) {
           eventSource.close();
           eventSource = null;
         }
-        // Auto-reconnect after 3 seconds
         if (!isDestroyed) {
           setTimeout(connectSSE, 3000);
         }
@@ -354,20 +420,24 @@ export function initRealTimeDataSync(onSyncUpdate?: (data: any) => void): () => 
     }
   };
 
-  // Start initial fetch & SSE
-  fetchLatestState();
+  // Initial sequence
+  fetchCloudFirst().then(() => {
+    fetchLatestState();
+  });
   connectSSE();
 
-  // 3. Supabase Real-Time Subscriptions (postgres_changes / WebSockets)
+  // 4. Supabase Real-Time Subscriptions (postgres_changes / WebSockets)
   const unsubscribeSupabase = subscribeToAllSupabaseTables(() => {
+    fetchCloudFirst();
     fetchLatestState();
   });
 
-  // 4. Fallback polling loop (every 3.5s) to guarantee updates in WebViews where SSE might suspend
-  pollInterval = setInterval(fetchLatestState, 3500);
+  // 5. Fallback polling loop (every 4s) to guarantee updates in WebViews
+  pollInterval = setInterval(fetchLatestState, 4000);
 
-  // 5. Foreground listeners: When user returns to AppCreator24 app or brings it from background
+  // 6. Foreground listeners: When user returns to AppCreator24 app or brings it from background
   const handleForeground = () => {
+    fetchCloudFirst();
     fetchLatestState();
     if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
       connectSSE();

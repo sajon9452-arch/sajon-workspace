@@ -48,6 +48,10 @@ try {
   // Graceful fallback if filesystem is read-only
 }
 
+// Supabase Server Integration Bridge
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://quqzeiuaybmhzisivrud.supabase.co';
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Cjt1ffMfKo0CEEw3uMIbQw_1qMYftvd';
+
 // In-Memory Database State for ultra-fast response times (<10ms)
 let dbData: Record<string, any> = {};
 let dbVersion = 1;
@@ -67,6 +71,91 @@ const DEFAULT_INITIAL_COLLECTIONS: Record<string, any> = {
   humanitarianActivities: [],
   supportReports: []
 };
+
+// Helper to push collection updates to Supabase app_collections in the background
+async function pushToSupabaseServer(collectionKey: string, data: any) {
+  if (!collectionKey || data === undefined) return;
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Prefer': 'resolution=merge-duplicates'
+    };
+    await fetch(`${SUPABASE_URL}/rest/v1/app_collections`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        id: collectionKey,
+        data: data,
+        updated_at: new Date().toISOString()
+      })
+    });
+  } catch {
+    // Non-blocking background sync
+  }
+}
+
+// Helper: Seed server database from Supabase Cloud on startup
+async function syncFromSupabaseServer() {
+  try {
+    const headers = {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+    };
+
+    // 1. Attempt read from universal app_collections table
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_collections?select=*`, { headers });
+      if (res.ok) {
+        const collections = await res.json();
+        if (Array.isArray(collections) && collections.length > 0) {
+          let updated = false;
+          for (const item of collections) {
+            if (item && item.id && item.data) {
+              const changed = mergeCollectionSafely(item.id, item.data, false);
+              if (changed) updated = true;
+            }
+          }
+          if (updated) {
+            dbVersion += 1;
+            dbLastModified = new Date().toISOString();
+            persistDbToDisk();
+            console.log('[Server Supabase] Seeded database from Supabase cloud app_collections successfully');
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Check individual tables
+    const tableKeys = ['members', 'donors', 'funds', 'notices', 'support_members', 'home_slides', 'settings'];
+    for (const tbl of tableKeys) {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${tbl}?select=*`, { headers });
+        if (res.ok) {
+          const rows = await res.json();
+          if (Array.isArray(rows) && rows.length > 0) {
+            let normalizedKey = tbl;
+            if (tbl === 'support_members') normalizedKey = 'supportMembers';
+            if (tbl === 'home_slides') normalizedKey = 'homeSlides';
+            const changed = mergeCollectionSafely(normalizedKey, rows, false);
+            if (changed) {
+              dbVersion += 1;
+              dbLastModified = new Date().toISOString();
+              persistDbToDisk();
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  } catch (err) {
+    console.warn('[Server Supabase] Startup seed error:', err);
+  }
+}
 
 // Helper: Load database state from disk with backup fallback
 function loadDatabaseState() {
@@ -108,10 +197,10 @@ function loadDatabaseState() {
     }
   }
 
-  // Pre-seed initial collections if they are missing or empty
+  // Pre-seed initial collections if they are missing
   let needsInitialPersist = false;
   for (const [key, defaultList] of Object.entries(DEFAULT_INITIAL_COLLECTIONS)) {
-    if (!dbData[key] || !Array.isArray(dbData[key]) || dbData[key].length === 0) {
+    if (!dbData[key] || !Array.isArray(dbData[key])) {
       dbData[key] = defaultList;
       needsInitialPersist = true;
     }
@@ -124,6 +213,9 @@ function loadDatabaseState() {
   if (needsInitialPersist || !loaded) {
     persistDbToDisk();
   }
+
+  // Seed from Supabase Cloud
+  syncFromSupabaseServer();
 }
 
 // Initial database load
@@ -390,6 +482,17 @@ app.post('/api/sync', (req, res) => {
       dbLastModified = new Date().toISOString();
       persistDbToDisk();
       broadcastSyncUpdate();
+
+      // Asynchronously backup to Supabase
+      if (body) {
+        if (body.key && body.data !== undefined) {
+          pushToSupabaseServer(body.key, body.data);
+        } else if (body.data && typeof body.data === 'object') {
+          for (const [k, val] of Object.entries(body.data)) {
+            pushToSupabaseServer(k, val);
+          }
+        }
+      }
     }
 
     return res.json({
@@ -401,6 +504,25 @@ app.post('/api/sync', (req, res) => {
   } catch (err) {
     console.error('Error processing /api/sync:', err);
     return res.status(500).json({ error: 'Failed to synchronize live data' });
+  }
+});
+
+// Supabase Status & SQL schema helper endpoints
+app.get('/api/supabase/status', async (_req, res) => {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+    return res.json({
+      connected: r.ok || r.status === 200 || r.status === 404,
+      url: SUPABASE_URL,
+      status: r.status
+    });
+  } catch (e: any) {
+    return res.json({ connected: false, error: e?.message });
   }
 });
 

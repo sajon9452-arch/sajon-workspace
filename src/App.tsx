@@ -68,7 +68,10 @@ import {
   safeSyncToSupabase, 
   safeDeleteFromSupabase,
   syncNetBalanceToSupabase,
-  fetchNetBalanceFromSupabase
+  fetchNetBalanceFromSupabase,
+  pullAllDataFromSupabase,
+  syncFinancialsToSupabase,
+  pushAllDataToSupabase
 } from './utils/supabaseClient';
 import { initRealTimeDataSync } from './utils/liveSync';
 
@@ -272,51 +275,107 @@ export default function App() {
     window.addEventListener(PMS_SYNC_EVENT, handleSync);
     window.addEventListener('storage', handleSync);
 
-    // Initial check from cloud / fallback
+    // Universal Cloud Data Loader: Dynamically fetches all admin-managed sections live from Supabase
     const loadFromSupabase = async () => {
       try {
-        const cloudMembers = await fetchSupabaseData<Member>('members');
-        if (cloudMembers && Array.isArray(cloudMembers) && cloudMembers.length > 0) {
-          const liveMembers = sortMembersOldestFirst(
-            cloudMembers.filter(m => m && m.id && !isIdPermanentlyDeleted(m.id))
-          );
-          if (liveMembers.length > 0) {
-            setMembers(liveMembers);
-            saveMembers(liveMembers);
+        const cloudData = await pullAllDataFromSupabase();
+        if (cloudData && typeof cloudData === 'object') {
+          // 1. Members
+          if (Array.isArray(cloudData.members) && cloudData.members.length > 0) {
+            const liveMembers = sortMembersOldestFirst(
+              cloudData.members.filter((m: any) => m && m.id && !isIdPermanentlyDeleted(m.id))
+            );
+            if (liveMembers.length > 0) {
+              setMembers(liveMembers);
+              saveMembers(liveMembers);
+            }
           }
-        }
 
-        const cloudFunds = await fetchSupabaseData<FundRecord>('funds');
-        if (cloudFunds && Array.isArray(cloudFunds) && cloudFunds.length > 0) {
-          const liveFunds = cloudFunds.filter(f => f && f.id && !isIdPermanentlyDeleted(f.id));
-          if (liveFunds.length > 0) {
-            setFunds(liveFunds);
-            saveFunds(liveFunds);
+          // 2. Funds
+          if (Array.isArray(cloudData.funds) && cloudData.funds.length > 0) {
+            const liveFunds = cloudData.funds.filter((f: any) => f && f.id && !isIdPermanentlyDeleted(f.id));
+            if (liveFunds.length > 0) {
+              setFunds(liveFunds);
+              saveFunds(liveFunds);
+            }
           }
-        }
 
-        const cloudDonors = await fetchSupabaseData<BloodDonor>('donors');
-        if (cloudDonors && Array.isArray(cloudDonors) && cloudDonors.length > 0) {
-          const liveDonors = cloudDonors.filter(d => d && d.id && !isIdPermanentlyDeleted(d.id));
-          if (liveDonors.length > 0) {
-            setDonors(liveDonors);
-            saveDonors(liveDonors);
+          // 3. Blood Donors
+          if (Array.isArray(cloudData.donors) && cloudData.donors.length > 0) {
+            const liveDonors = cloudData.donors.filter((d: any) => d && d.id && !isIdPermanentlyDeleted(d.id));
+            if (liveDonors.length > 0) {
+              setDonors(liveDonors);
+              saveDonors(liveDonors);
+            }
           }
-        }
 
-        const cloudNotices = await fetchSupabaseData<Notice>('notices');
-        if (cloudNotices && Array.isArray(cloudNotices) && cloudNotices.length > 0) {
-          const liveNotices = cloudNotices.filter(n => n && n.id && !isIdPermanentlyDeleted(n.id));
-          if (liveNotices.length > 0) {
-            setNotices(liveNotices);
-            saveNotices(liveNotices);
+          // 4. Notices
+          if (Array.isArray(cloudData.notices) && cloudData.notices.length > 0) {
+            const liveNotices = cloudData.notices.filter((n: any) => n && n.id && !isIdPermanentlyDeleted(n.id));
+            if (liveNotices.length > 0) {
+              setNotices(liveNotices);
+              saveNotices(liveNotices);
+            }
           }
-        }
 
-        const cloudNetBalance = await fetchNetBalanceFromSupabase();
-        if (cloudNetBalance !== null && !isNaN(cloudNetBalance) && cloudNetBalance > 0) {
-          setManualTotalBalance(cloudNetBalance);
-          saveManualTotalBalance(cloudNetBalance);
+          // 5. Support Team Members
+          if (Array.isArray(cloudData.supportMembers) && cloudData.supportMembers.length > 0) {
+            const liveSupport = cloudData.supportMembers.filter((s: any) => s && s.id && !isIdPermanentlyDeleted(s.id));
+            if (liveSupport.length > 0) {
+              setSupportMembers(liveSupport);
+              saveSupportMembers(liveSupport);
+            }
+          }
+
+          // 6. Home Slides
+          if (Array.isArray(cloudData.homeSlides) && cloudData.homeSlides.length > 0) {
+            const liveSlides = cloudData.homeSlides.filter((s: any) => s && s.id && !isIdPermanentlyDeleted(s.id));
+            if (liveSlides.length > 0) {
+              setHomeSlides(liveSlides);
+              saveHomeSlides(liveSlides);
+            }
+          }
+
+          // 7. Aid Donations
+          if (Array.isArray(cloudData.aidDonations) && cloudData.aidDonations.length > 0) {
+            const liveAid = cloudData.aidDonations.filter((a: any) => a && a.id && !isIdPermanentlyDeleted(a.id));
+            if (liveAid.length > 0) {
+              setAidDonations(liveAid);
+              saveAidDonations(liveAid);
+            }
+          }
+
+          // 8. Extra Contributions
+          if (Array.isArray(cloudData.extraContributions) && cloudData.extraContributions.length > 0) {
+            const liveExtra = cloudData.extraContributions.filter((c: any) => c && c.id && !isIdPermanentlyDeleted(c.id));
+            if (liveExtra.length > 0) {
+              setExtraContributions(liveExtra);
+              saveExtraContributions(liveExtra);
+            }
+          }
+
+          // 9. Organization Rules
+          if (Array.isArray(cloudData.organizationRules) && cloudData.organizationRules.length > 0) {
+            const liveRules = cloudData.organizationRules.filter((r: any) => r && r.id && !isIdPermanentlyDeleted(r.id));
+            if (liveRules.length > 0) {
+              setOrganizationRules(liveRules);
+              saveOrganizationRules(liveRules);
+            }
+          }
+
+          // 10. Financial Balances
+          if (cloudData.manualTotalBalance !== undefined && cloudData.manualTotalBalance !== null) {
+            setManualTotalBalance(cloudData.manualTotalBalance);
+            saveManualTotalBalance(cloudData.manualTotalBalance);
+          }
+          if (typeof cloudData.monthlyExpense === 'number') {
+            setMonthlyExpense(cloudData.monthlyExpense);
+            saveMonthlyExpense(cloudData.monthlyExpense);
+          }
+          if (typeof cloudData.extraMoney === 'number') {
+            setExtraMoney(cloudData.extraMoney);
+            saveExtraMoney(cloudData.extraMoney);
+          }
         }
       } catch (err) {
         // Fallback to local and server sync
@@ -365,7 +424,7 @@ export default function App() {
     });
 
     // Safe sync to Supabase
-    safeSyncToSupabase('members', member);
+    await safeSyncToSupabase('members', member);
 
     return member;
   };
@@ -384,12 +443,12 @@ export default function App() {
     });
 
     // Safe sync to Supabase
-    safeSyncToSupabase('members', updatedMember);
+    await safeSyncToSupabase('members', updatedMember);
   };
 
   const handleDeleteMember = async (id: string): Promise<void> => {
     // 1. Mark permanently deleted in storage registry (cannot be revived)
-    markIdAsPermanentlyDeleted(id);
+    markIdAsPermanentlyDeleted(id, 'members');
 
     // 2. Permanently remove from members state and localStorage
     const updated = members.filter(m => m.id !== id);
@@ -417,6 +476,7 @@ export default function App() {
     const updated = [fund, ...funds.filter(f => f.id !== id)];
     setFunds(updated);
     saveFunds(updated);
+    await safeSyncToSupabase('funds', fund);
     return fund;
   };
 
@@ -437,7 +497,7 @@ export default function App() {
   };
 
   const handleDeleteFund = async (id: string): Promise<void> => {
-    markIdAsPermanentlyDeleted(id);
+    markIdAsPermanentlyDeleted(id, 'funds');
     const updated = funds.filter(f => f.id !== id);
     setFunds(updated);
     saveFunds(updated);
@@ -486,7 +546,7 @@ export default function App() {
     setFunds(updated);
     saveFunds(updated);
     if (changedFund) {
-      safeSyncToSupabase('funds', changedFund);
+      await safeSyncToSupabase('funds', changedFund);
     }
   };
 
@@ -501,11 +561,13 @@ export default function App() {
   const handleUpdateMonthlyExpense = (amount: number) => {
     setMonthlyExpense(amount);
     saveMonthlyExpense(amount);
+    syncFinancialsToSupabase(amount, extraMoney);
   };
 
   const handleUpdateExtraMoney = (amount: number) => {
     setExtraMoney(amount);
     saveExtraMoney(amount);
+    syncFinancialsToSupabase(monthlyExpense, amount);
   };
 
   // 3. Donor Handlers
@@ -532,7 +594,7 @@ export default function App() {
   };
 
   const handleDeleteDonor = async (id: string): Promise<void> => {
-    markIdAsPermanentlyDeleted(id);
+    markIdAsPermanentlyDeleted(id, 'donors');
     const updated = donors.filter(d => d.id !== id);
     setDonors(updated);
     saveDonors(updated);
@@ -549,11 +611,12 @@ export default function App() {
     const updated = [notice, ...notices];
     setNotices(updated);
     saveNotices(updated);
+    await safeSyncToSupabase('notices', notice);
     return notice;
   };
 
   const handleDeleteNotice = async (id: string): Promise<void> => {
-    markIdAsPermanentlyDeleted(id);
+    markIdAsPermanentlyDeleted(id, 'notices');
     const updated = notices.filter(n => n.id !== id);
     setNotices(updated);
     saveNotices(updated);
@@ -570,6 +633,7 @@ export default function App() {
     const updated = [item, ...supportReports];
     setSupportReports(updated);
     saveSupportReports(updated);
+    await safeSyncToSupabase('supportReports', item);
     return item;
   };
 
@@ -582,6 +646,7 @@ export default function App() {
     const updated = [...supportMembers, item];
     setSupportMembers(updated);
     saveSupportMembers(updated);
+    await safeSyncToSupabase('supportMembers', item);
     return item;
   };
 
@@ -589,13 +654,15 @@ export default function App() {
     const updated = supportMembers.map(m => m.id === updatedMember.id ? updatedMember : m);
     setSupportMembers(updated);
     saveSupportMembers(updated);
+    await safeSyncToSupabase('supportMembers', updatedMember);
   };
 
   const handleDeleteSupportMember = async (id: string): Promise<void> => {
-    markIdAsPermanentlyDeleted(id);
+    markIdAsPermanentlyDeleted(id, 'supportMembers');
     const updated = supportMembers.filter(m => m.id !== id);
     setSupportMembers(updated);
     saveSupportMembers(updated);
+    await safeDeleteFromSupabase('supportMembers', id);
   };
 
   // 5.1 Home Slide Handlers
@@ -605,6 +672,7 @@ export default function App() {
     const updated = [...homeSlides, slide];
     setHomeSlides(updated);
     saveHomeSlides(updated);
+    await safeSyncToSupabase('homeSlides', slide);
     return slide;
   };
 
@@ -612,13 +680,15 @@ export default function App() {
     const updated = homeSlides.map(s => s.id === updatedSlide.id ? updatedSlide : s);
     setHomeSlides(updated);
     saveHomeSlides(updated);
+    await safeSyncToSupabase('homeSlides', updatedSlide);
   };
 
   const handleDeleteHomeSlide = async (id: string): Promise<void> => {
-    markIdAsPermanentlyDeleted(id);
+    markIdAsPermanentlyDeleted(id, 'homeSlides');
     const updated = homeSlides.filter(s => s.id !== id);
     setHomeSlides(updated);
     saveHomeSlides(updated);
+    await safeDeleteFromSupabase('homeSlides', id);
   };
 
   // 5.2 Aid Donation Record Handlers
@@ -628,6 +698,7 @@ export default function App() {
     const updated = [donation, ...aidDonations];
     setAidDonations(updated);
     saveAidDonations(updated);
+    await safeSyncToSupabase('aidDonations', donation);
     return donation;
   };
 
@@ -635,13 +706,15 @@ export default function App() {
     const updated = aidDonations.map(d => d.id === updatedDonation.id ? updatedDonation : d);
     setAidDonations(updated);
     saveAidDonations(updated);
+    await safeSyncToSupabase('aidDonations', updatedDonation);
   };
 
   const handleDeleteAidDonation = async (id: string): Promise<void> => {
-    markIdAsPermanentlyDeleted(id);
+    markIdAsPermanentlyDeleted(id, 'aidDonations');
     const updated = aidDonations.filter(d => d.id !== id);
     setAidDonations(updated);
     saveAidDonations(updated);
+    await safeDeleteFromSupabase('aidDonations', id);
   };
 
   // 5.3 Extra Contribution Handlers
@@ -651,6 +724,7 @@ export default function App() {
     const updated = [contrib, ...extraContributions];
     setExtraContributions(updated);
     saveExtraContributions(updated);
+    await safeSyncToSupabase('extraContributions', contrib);
     return contrib;
   };
 
@@ -658,13 +732,15 @@ export default function App() {
     const updated = extraContributions.map(c => c.id === updatedContrib.id ? updatedContrib : c);
     setExtraContributions(updated);
     saveExtraContributions(updated);
+    await safeSyncToSupabase('extraContributions', updatedContrib);
   };
 
   const handleDeleteExtraContribution = async (id: string): Promise<void> => {
-    markIdAsPermanentlyDeleted(id);
+    markIdAsPermanentlyDeleted(id, 'extraContributions');
     const updated = extraContributions.filter(c => c.id !== id);
     setExtraContributions(updated);
     saveExtraContributions(updated);
+    await safeDeleteFromSupabase('extraContributions', id);
   };
 
   // 5.4 Organization Rule Handlers
@@ -674,6 +750,7 @@ export default function App() {
     const updated = [...organizationRules, rule];
     setOrganizationRules(updated);
     saveOrganizationRules(updated);
+    await safeSyncToSupabase('organizationRules', rule);
     return rule;
   };
 
@@ -681,24 +758,28 @@ export default function App() {
     const updated = organizationRules.map(r => r.id === updatedRule.id ? updatedRule : r);
     setOrganizationRules(updated);
     saveOrganizationRules(updated);
+    await safeSyncToSupabase('organizationRules', updatedRule);
   };
 
   const handleDeleteRule = async (id: string): Promise<void> => {
-    markIdAsPermanentlyDeleted(id);
+    markIdAsPermanentlyDeleted(id, 'organizationRules');
     const updated = organizationRules.filter(r => r.id !== id);
     setOrganizationRules(updated);
     saveOrganizationRules(updated);
+    await safeDeleteFromSupabase('organizationRules', id);
   };
 
   // 6. Organization Profile & Payment Settings
   const handleUpdateProfile = (newProfile: OrganizationProfile) => {
     setProfile(newProfile);
     saveOrgProfile(newProfile);
+    safeSyncToSupabase('settings', { id: 'pms_org_profile', key: 'profile', data: newProfile });
   };
 
   const handleUpdatePaymentConfig = (newConfig: PaymentGatewayConfig) => {
     setPaymentConfig(newConfig);
     savePaymentSettings(newConfig);
+    safeSyncToSupabase('settings', { id: 'pms_payment_settings', key: 'payment_settings', data: newConfig });
   };
 
   // Strict Login/Registration Gate: When not authenticated, hide all main app content completely
