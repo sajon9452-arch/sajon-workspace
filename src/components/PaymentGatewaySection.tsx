@@ -11,8 +11,9 @@ import {
   AlertCircle,
   ArrowRight
 } from 'lucide-react';
-import { PaymentGatewayConfig, Member, FundRecord } from '../types';
+import { PaymentGatewayConfig, Member, FundRecord, PendingPayment } from '../types';
 import { safeSyncToSupabase } from '../utils/supabaseClient';
+import { PMS_SYNC_EVENT } from '../utils/storage';
 
 // Authentic High-Fidelity Colorful Logos
 export const BkashLogo: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
@@ -196,28 +197,30 @@ export const PaymentGatewaySection: React.FC<PaymentGatewaySectionProps> = ({
       const cleanTrx = trxId.trim().toUpperCase();
       const numAmount = Number(amount);
 
-      // Create fund submission record for verification
-      const newSubmissionRecord: FundRecord = {
-        id: `fund_sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      // 1. Requirement 1: Save submission directly into pending_payments table in Supabase with status 'pending'
+      const newPendingPayment: PendingPayment = {
+        id: `pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         memberId: selectedMemberId || undefined,
+        userName: userName.trim(),
         memberName: userName.trim(),
-        designation: designation.trim(),
-        phone: senderPhone.trim(),
+        designation: designation.trim() || 'সাধারণ সদস্য',
         senderPhone: senderPhone.trim(),
         amount: numAmount,
-        paidAmount: numAmount,
-        status: 'Due', // Pending admin verification
-        date: new Date().toISOString().split('T')[0],
-        month: 'রানিং মাস',
-        category: 'মাসিক চাঁদা',
-        type: 'income',
-        description: `${currentMethod.nameEn} TrxID: ${cleanTrx} (${senderPhone.trim()})`,
-        notes: `${currentMethod.name} পেমেন্ট | প্রেরক নম্বর: ${senderPhone.trim()} | TrxID: ${cleanTrx}`,
-        voucherNo: cleanTrx
+        trxId: cleanTrx,
+        transactionId: cleanTrx,
+        gateway: currentMethod.nameEn,
+        status: 'pending',
+        submittedAt: new Date().toISOString(),
+        notes: `${currentMethod.name} (${currentMethod.nameEn}) TrxID: ${cleanTrx} - প্রেরক: ${senderPhone.trim()}`
       };
 
-      // Safely sync to Supabase database
-      await safeSyncToSupabase('funds', newSubmissionRecord);
+      // Direct Supabase save to pending_payments table
+      await safeSyncToSupabase('pendingPayments', newPendingPayment);
+
+      // Broadcast local sync event so Admin Panel and App update immediately
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(PMS_SYNC_EVENT));
+      }
 
       // Trigger callback if provided
       if (onDepositSuccess) {

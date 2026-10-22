@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Settings, 
   Users, 
@@ -61,7 +61,8 @@ import {
   HomeSlide,
   AidDonationRecord,
   ExtraContributionRecord,
-  OrganizationRule
+  OrganizationRule,
+  PendingPayment
 } from '../types';
 import { 
   toBengaliNumber, 
@@ -74,7 +75,8 @@ import {
 } from '../utils/helpers';
 import { autoSyncMembersToFunds } from '../utils/memberFundLinker';
 import { generateDirectSimPaidSms, generateDirectSimDueSms, triggerDirectSimSms } from '../utils/smsHelper';
-import { saveAdminPin, PMS_SYNC_EVENT } from '../utils/storage';
+import { saveAdminPin, PMS_SYNC_EVENT, saveFunds, loadFunds } from '../utils/storage';
+import { BkashLogo, NagadLogo, RocketLogo } from './PaymentGatewaySection';
 import { 
   loadUserAccounts, 
   saveUserAccounts, 
@@ -94,7 +96,10 @@ import {
   SUPABASE_SETUP_SQL,
   updateSupabaseCredentials,
   resetSupabaseCredentials,
-  pushAllDataToSupabase
+  pushAllDataToSupabase,
+  fetchSupabaseCollection,
+  safeSyncToSupabase,
+  safeDeleteFromSupabase
 } from '../utils/supabaseClient';
 import { triggerFullCloudSync, getLocalSyncSnapshot } from '../utils/liveSync';
 import { compressImageFile } from '../utils/imageCompressor';
@@ -184,7 +189,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onBack,
   onLogout
 }) => {
-  const [activeTab, setActiveTab] = useState<'members' | 'donors' | 'registrations' | 'funds' | 'slides' | 'donations' | 'contributions' | 'rules' | 'profile' | 'payments' | 'security'>(
+  const [activeTab, setActiveTab] = useState<'members' | 'donors' | 'registrations' | 'funds' | 'verification' | 'slides' | 'donations' | 'contributions' | 'rules' | 'profile' | 'payments' | 'security'>(
     (initialTab as any) || 'members'
   );
   
@@ -196,6 +201,197 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [assignedUsernames, setAssignedUsernames] = useState<Record<string, string>>({});
   const [isProcessingApproval, setIsProcessingApproval] = useState<string | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null);
+
+  // Digital Payment Gateway Verification State (Requirement 2 & 3)
+  const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
+  const [isLoadingPayments, setIsLoadingPayments] = useState(false);
+  const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentFilterStatus, setPaymentFilterStatus] = useState<'all' | 'pending' | 'approved'>('pending');
+  const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(null);
+  const [paymentSuccessToast, setPaymentSuccessToast] = useState<string | null>(null);
+  const [copiedTrxId, setCopiedTrxId] = useState<string | null>(null);
+
+  // Load pending payments directly from Supabase in real-time
+  const loadPendingPaymentsFromCloud = useCallback(async () => {
+    setIsLoadingPayments(true);
+    try {
+      const data = await fetchSupabaseCollection<PendingPayment>('pendingPayments');
+      if (Array.isArray(data)) {
+        const sorted = [...data].sort((a, b) => {
+          const timeA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+          const timeB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+          return timeB - timeA;
+        });
+        setPendingPayments(sorted);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingPayments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPendingPaymentsFromCloud();
+  }, [loadPendingPaymentsFromCloud]);
+
+  useEffect(() => {
+    const handleSync = () => {
+      loadPendingPaymentsFromCloud();
+    };
+    window.addEventListener(PMS_SYNC_EVENT, handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener(PMS_SYNC_EVENT, handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, [loadPendingPaymentsFromCloud]);
+
+  const pendingVerificationList = useMemo(() => {
+    return pendingPayments.filter(p => p.status === 'pending');
+  }, [pendingPayments]);
+
+  const approvedVerificationList = useMemo(() => {
+    return pendingPayments.filter(p => p.status === 'approved');
+  }, [pendingPayments]);
+
+  const filteredVerificationList = useMemo(() => {
+    let list = pendingPayments;
+    if (paymentFilterStatus === 'pending') {
+      list = list.filter(p => p.status === 'pending');
+    } else if (paymentFilterStatus === 'approved') {
+      list = list.filter(p => p.status === 'approved');
+    }
+
+    if (paymentSearch.trim()) {
+      const q = paymentSearch.trim().toLowerCase();
+      list = list.filter(p => 
+        (p.userName && p.userName.toLowerCase().includes(q)) ||
+        (p.senderPhone && p.senderPhone.includes(q)) ||
+        (p.trxId && p.trxId.toLowerCase().includes(q)) ||
+        (p.gateway && p.gateway.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [pendingPayments, paymentFilterStatus, paymentSearch]);
+
+  // Requirement 3: Admin Approve action
+  const handleApprovePayment = async (payment: PendingPayment) => {
+    setProcessingPaymentId(payment.id);
+    try {
+      const allFunds = funds.length > 0 ? [...funds] : loadFunds();
+      const numAmount = Number(payment.amount) || 500;
+      const cleanTrx = payment.trxId || payment.transactionId || '';
+      
+      let targetFundIndex = -1;
+      if (payment.memberId) {
+        targetFundIndex = allFunds.findIndex(f => f.memberId === payment.memberId);
+      }
+      if (targetFundIndex === -1 && payment.userName) {
+        const cleanName = payment.userName.trim().toLowerCase();
+        targetFundIndex = allFunds.findIndex(f => f.memberName.trim().toLowerCase() === cleanName);
+      }
+      if (targetFundIndex === -1 && payment.senderPhone) {
+        const cleanP = sanitizePhone(payment.senderPhone);
+        if (cleanP) {
+          targetFundIndex = allFunds.findIndex(f => f.phone && sanitizePhone(f.phone) === cleanP);
+        }
+      }
+
+      let updatedFundRecord: FundRecord;
+      if (targetFundIndex !== -1) {
+        const target = allFunds[targetFundIndex];
+        updatedFundRecord = {
+          ...target,
+          status: 'Paid',
+          paidAmount: numAmount,
+          dueAmount: 0,
+          paymentMethod: payment.gateway,
+          transactionId: cleanTrx,
+          notes: `${payment.gateway || 'অনলাইন'} পেমেন্ট TrxID: ${cleanTrx} (অনুমোদিত)`,
+          voucherNo: cleanTrx,
+          approvedAt: new Date().toISOString()
+        };
+        allFunds[targetFundIndex] = updatedFundRecord;
+      } else {
+        updatedFundRecord = {
+          id: `fund_appr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          memberId: payment.memberId,
+          memberName: payment.userName || payment.memberName || 'সদস্য',
+          designation: payment.designation || 'সাধারণ সদস্য',
+          phone: payment.senderPhone,
+          senderPhone: payment.senderPhone,
+          amount: numAmount,
+          paidAmount: numAmount,
+          dueAmount: 0,
+          status: 'Paid',
+          paymentMethod: payment.gateway,
+          transactionId: cleanTrx,
+          date: new Date().toISOString().split('T')[0],
+          month: 'রানিং মাস',
+          category: 'মাসিক চাঁদা',
+          type: 'income',
+          description: `${payment.gateway || 'অনলাইন'} TrxID: ${cleanTrx} (${payment.senderPhone})`,
+          notes: `${payment.gateway} পেমেন্ট অনুমোদিত | TrxID: ${cleanTrx}`,
+          voucherNo: cleanTrx,
+          approvedAt: new Date().toISOString()
+        };
+        allFunds.unshift(updatedFundRecord);
+      }
+
+      // Automatically update the corresponding member's payment status in main database
+      await safeSyncToSupabase('funds', updatedFundRecord);
+      saveFunds(allFunds);
+      if (onEditFundRecord) {
+        await onEditFundRecord(updatedFundRecord);
+      }
+
+      // Update payment status in pending_payments
+      const updatedPayment: PendingPayment = {
+        ...payment,
+        status: 'approved',
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: 'Admin'
+      };
+      await safeSyncToSupabase('pendingPayments', updatedPayment);
+
+      setPendingPayments(prev => prev.map(p => p.id === payment.id ? updatedPayment : p));
+
+      setPaymentSuccessToast(`সফল! ${payment.userName}-এর ${formatBengaliCurrency(numAmount)} টাকার পেমেন্ট অনুমোদন করা হয়েছে এবং সদস্যের চাঁদা 'পরিশোধিত' হিসেবে আপডেট করা হয়েছে।`);
+      setTimeout(() => setPaymentSuccessToast(null), 4000);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(PMS_SYNC_EVENT));
+      }
+    } catch {
+      alert('পেমেন্ট অনুমোদন করতে সমস্যা হয়েছে।');
+    } finally {
+      setProcessingPaymentId(null);
+    }
+  };
+
+  // Requirement 3: Admin Reject action
+  const handleRejectPayment = async (paymentId: string) => {
+    if (!confirm('আপনি কি নিশ্চিত যে এই পেমেন্ট রিকোয়েস্টটি বাতিল বা মুছে ফেলতে চান?')) {
+      return;
+    }
+    setProcessingPaymentId(paymentId);
+    try {
+      // Discard or delete the request from Supabase pending_payments table
+      await safeDeleteFromSupabase('pendingPayments', paymentId);
+      setPendingPayments(prev => prev.filter(p => p.id !== paymentId));
+      setPaymentSuccessToast('পেমেন্ট রিকোয়েস্টটি সফলভাবে বাতিল করা হয়েছে।');
+      setTimeout(() => setPaymentSuccessToast(null), 3000);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(PMS_SYNC_EVENT));
+      }
+    } catch {
+      alert('রিকোয়েস্টটি মুছতে সমস্যা হয়েছে।');
+    } finally {
+      setProcessingPaymentId(null);
+    }
+  };
 
   // Sync user accounts & security alerts
   useEffect(() => {
@@ -1705,6 +1901,24 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         >
           <Wallet className="w-4 h-4" />
           <span>তহবিল ও চাঁদা ব্যবস্থাপনা ({toBengaliNumber(effectiveAdminFunds.length)})</span>
+        </button>
+
+        {/* Dedicated Payment Verification Tab (Requirement 2) */}
+        <button
+          onClick={() => setActiveTab('verification')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer whitespace-nowrap relative ${
+            activeTab === 'verification'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Receipt className="w-4 h-4 text-amber-500" />
+          <span>পেমেন্ট রিকোয়েস্ট</span>
+          {pendingVerificationList.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black animate-pulse">
+              {toBengaliNumber(pendingVerificationList.length)}
+            </span>
+          )}
         </button>
 
         {/* Dynamic Image Slider Management Tab */}
@@ -3248,6 +3462,348 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Requirement 2: Dedicated Payment Verification Section */}
+      {activeTab === 'verification' && (
+        <div className="space-y-6">
+          {/* Section Header */}
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <Receipt className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+                    <span>পেমেন্ট রিকোয়েস্ট যাচাইকরণ ও অনুমোদন</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                      লাইভ গেটওয়ে
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    বিকাশ, নগদ ও রকেটের মাধ্যমে পাঠানো পেমেন্ট TrxID যাচাই করে এক ক্লিকে অনুমোদন বা বাতিল করুন
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadPendingPaymentsFromCloud()}
+              disabled={isLoadingPayments}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer disabled:opacity-50 active:scale-95 shrink-0"
+              title="নতুন রিকোয়েস্ট রিফ্রেশ করুন"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingPayments ? 'animate-spin text-emerald-600' : ''}`} />
+              <span>{isLoadingPayments ? 'লোড হচ্ছে...' : 'লাইভ রিফ্রেশ'}</span>
+            </button>
+          </div>
+
+          {/* Success Toast */}
+          {paymentSuccessToast && (
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-2 shadow-xs animate-in fade-in">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>{paymentSuccessToast}</span>
+            </div>
+          )}
+
+          {/* Metrics summary cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-amber-800 block">অপেক্ষমাণ রিকোয়েস্ট</span>
+                <span className="text-2xl font-black text-amber-950 font-mono">
+                  {toBengaliNumber(pendingVerificationList.length)}
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                <Clock className="w-5 h-5 text-amber-700" />
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-emerald-800 block">অপেক্ষমাণ মোট টাকা</span>
+                <span className="text-2xl font-black text-emerald-950 font-mono">
+                  {formatBengaliCurrency(
+                    pendingVerificationList.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0)
+                  )}
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-emerald-700" />
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-blue-800 block">অনুমোদিত রিকোয়েস্ট</span>
+                <span className="text-2xl font-black text-blue-950 font-mono">
+                  {toBengaliNumber(approvedVerificationList.length)}
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                <CheckCircle2 className="w-5 h-5 text-blue-700" />
+              </div>
+            </div>
+          </div>
+
+          {/* Search & Filter Controls */}
+          <div className="bg-white rounded-3xl p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setPaymentFilterStatus('pending')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                  paymentFilterStatus === 'pending'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                অপেক্ষমাণ ({toBengaliNumber(pendingVerificationList.length)})
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentFilterStatus('approved')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                  paymentFilterStatus === 'approved'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                অনুমোদিত ({toBengaliNumber(approvedVerificationList.length)})
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentFilterStatus('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                  paymentFilterStatus === 'all'
+                    ? 'bg-slate-800 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                সকল ({toBengaliNumber(pendingPayments.length)})
+              </button>
+            </div>
+
+            <div className="relative flex-1 sm:max-w-xs">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={paymentSearch}
+                onChange={(e) => setPaymentSearch(e.target.value)}
+                placeholder="নাম, ফোন বা TrxID..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-slate-50"
+              />
+            </div>
+          </div>
+
+          {/* Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredVerificationList.map((payment) => {
+              const isPending = payment.status === 'pending';
+              const gw = (payment.gateway || 'bKash').toLowerCase();
+              const numAmount = Number(payment.amount) || 0;
+              const isProcessing = processingPaymentId === payment.id;
+
+              return (
+                <div
+                  key={payment.id}
+                  className={`bg-white rounded-3xl p-5 border transition-all duration-200 flex flex-col justify-between space-y-4 hover:shadow-md ${
+                    isPending
+                      ? 'border-amber-300 ring-1 ring-amber-500/20'
+                      : 'border-slate-200 bg-slate-50/50'
+                  }`}
+                >
+                  <div>
+                    {/* Top Header: Gateway badge, Status, and Date */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap pb-3 border-b border-slate-100">
+                      {/* Gateway Badge */}
+                      <div className="flex items-center gap-1.5">
+                        {gw.includes('bkash') || gw.includes('বিকাশ') ? (
+                          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#E2136E]/15 text-[#D82360] font-black text-xs border border-[#E2136E]/30">
+                            <BkashLogo className="w-3.5 h-3.5" />
+                            <span>বিকাশ (bKash)</span>
+                          </span>
+                        ) : gw.includes('nagad') || gw.includes('নগদ') ? (
+                          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#EA1D25]/15 text-[#EA1D25] font-black text-xs border border-[#EA1D25]/30">
+                            <NagadLogo className="w-3.5 h-3.5" />
+                            <span>নগদ (Nagad)</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#8C3494]/15 text-[#8C3494] font-black text-xs border border-[#8C3494]/30">
+                            <RocketLogo className="w-3.5 h-3.5" />
+                            <span>রকেট (Rocket)</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Status Badge */}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border ${
+                        isPending
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                      }`}>
+                        {isPending ? (
+                          <>
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            <span>অপেক্ষমাণ (Pending)</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>অনুমোদিত (Approved)</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+
+                    {/* Member & Payment Details */}
+                    <div className="mt-3 space-y-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h4 className="text-base font-black text-slate-900">
+                            {payment.userName || payment.memberName || 'অজ্ঞাত আবেদনকারী'}
+                          </h4>
+                          <span className="inline-block mt-0.5 text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
+                            {payment.designation || 'সাধারণ সদস্য'}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400 block font-bold">জমা সময়:</span>
+                          <span className="text-[11px] text-slate-600 font-bold">
+                            {payment.submittedAt 
+                              ? new Date(payment.submittedAt).toLocaleDateString('bn-BD', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : 'চলতি সময়'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Phone Number with Click-to-Call */}
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-slate-500 font-bold">প্রেরকের ফোন:</span>
+                        <a
+                          href={`tel:${sanitizePhone(payment.senderPhone)}`}
+                          className="font-mono font-bold text-emerald-700 hover:underline flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100"
+                        >
+                          <Phone className="w-3 h-3" />
+                          <span>{payment.senderPhone}</span>
+                        </a>
+                      </div>
+
+                      {/* Amount & TrxID Highlight Box */}
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-600">টাকার পরিমাণ:</span>
+                          <span className="text-lg font-black text-emerald-700 font-mono">
+                            {formatBengaliCurrency(numAmount)}
+                          </span>
+                        </div>
+
+                        {/* TrxID Box with Copy Button */}
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200">
+                          <div className="min-w-0">
+                            <span className="text-[10px] text-slate-400 block font-bold">ট্রানজেকশন আইডি:</span>
+                            <span className="font-mono text-sm font-black text-slate-900 tracking-wider">
+                              {payment.trxId || payment.transactionId || 'N/A'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const code = payment.trxId || payment.transactionId || '';
+                              if (code) {
+                                navigator.clipboard.writeText(code);
+                                setCopiedTrxId(payment.id);
+                                setTimeout(() => setCopiedTrxId(null), 2000);
+                              }
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer active:scale-95 shrink-0"
+                            title="TrxID কপি করুন"
+                          >
+                            {copiedTrxId === payment.id ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-emerald-700">কপি হয়েছে!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>কপি</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons: Requirement 3 (Approve / Reject) */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                    {isPending ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleRejectPayment(payment.id)}
+                          disabled={isProcessing}
+                          className="flex items-center gap-1 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 text-xs font-bold transition cursor-pointer active:scale-95 disabled:opacity-50"
+                          title="এই রিকোয়েস্টটি বাতিল করুন"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>বাতিল (Reject)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleApprovePayment(payment)}
+                          disabled={isProcessing}
+                          className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
+                          title="পেমেন্ট অনুমোদন করুন এবং সদস্যের চাঁদা পরিশোধিত করুন"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>{isProcessing ? 'প্রসেসিং...' : 'অনুমোদন (Approve)'}</span>
+                        </button>
+                      </>
+                    ) : (
+                      <div className="w-full flex items-center justify-between text-xs text-slate-500 font-bold">
+                        <span className="flex items-center gap-1 text-emerald-700">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>অনুমোদিত ও সদস্যের চাঁদায় যুক্ত</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRejectPayment(payment.id)}
+                          disabled={isProcessing}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                          title="তালিকা থেকে হিস্ট্রি মুছুন"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Empty state */}
+          {filteredVerificationList.length === 0 && (
+            <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 space-y-3">
+              <Receipt className="w-12 h-12 text-slate-300 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-700">কোনো পেমেন্ট রিকোয়েস্ট পাওয়া যায়নি</h4>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                ব্যবহারকারীরা বিকাশ, নগদ বা রকেটের মাধ্যমে TrxID সাবমিট করলে তা স্বয়ংক্রিয়ভাবে এখানে প্রদর্শিত হবে।
+              </p>
+            </div>
+          )}
         </div>
       )}
 

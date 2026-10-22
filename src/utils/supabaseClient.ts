@@ -105,7 +105,8 @@ export const TABLE_CANDIDATES_MAP: Record<string, string[]> = {
   extraContributions: ['extra_contributions', 'extraContributions'],
   organizationRules: ['organization_rules', 'organizationRules'],
   supportReports: ['support_reports', 'supportReports'],
-  settings: ['settings']
+  settings: ['settings'],
+  pendingPayments: ['pending_payments', 'pendingPayments']
 };
 
 /**
@@ -415,6 +416,12 @@ function prepareRecordForSupabase(record: any): any {
   if (record.recipientName && !record.recipient_name) prepared.recipient_name = record.recipientName;
   if (record.donorName && !record.donor_name) prepared.donor_name = record.donorName;
   if (record.ruleNo !== undefined && record.rule_no === undefined) prepared.rule_no = record.ruleNo;
+  if (record.userName && !record.user_name) prepared.user_name = record.userName;
+  if (record.senderPhone && !record.sender_phone) prepared.sender_phone = record.senderPhone;
+  if (record.trxId && !record.trx_id) prepared.trx_id = record.trxId;
+  if (record.submittedAt && !record.submitted_at) prepared.submitted_at = record.submittedAt;
+  if (record.reviewedAt && !record.reviewed_at) prepared.reviewed_at = record.reviewedAt;
+  if (record.reviewedBy && !record.reviewed_by) prepared.reviewed_by = record.reviewedBy;
 
   return prepared;
 }
@@ -763,7 +770,8 @@ export async function pullAllDataFromSupabase(): Promise<Record<string, any>> {
     'aidDonations',
     'extraContributions',
     'organizationRules',
-    'supportReports'
+    'supportReports',
+    'pendingPayments'
   ];
 
   await Promise.all(

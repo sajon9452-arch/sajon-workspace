@@ -68,6 +68,8 @@ export interface FundRecord {
   approvedAt?: string;
   disbursedTo?: string;
   voucherNo?: string;
+  paymentMethod?: string;
+  transactionId?: string;
   totalBalance?: number;
 }
 
@@ -245,4 +247,23 @@ export interface SecurityAlert {
   device: string;
   timestamp: string;
   resolved: boolean;
+}
+
+export interface PendingPayment {
+  id: string;
+  memberId?: string;
+  userName: string;
+  memberName?: string;
+  designation: string;
+  senderPhone: string;
+  amount: number;
+  trxId: string;
+  transactionId?: string;
+  gateway: 'bKash' | 'Nagad' | 'Rocket' | string;
+  status: 'pending' | 'approved' | 'rejected';
+  submittedAt: string;
+  createdAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  notes?: string;
 }
