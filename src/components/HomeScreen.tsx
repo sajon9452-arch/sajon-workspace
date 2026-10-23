@@ -32,7 +32,7 @@ import {
   ExtraContributionRecord,
   OrganizationRule
 } from '../types';
-import { toBengaliNumber, formatBengaliCurrency } from '../utils/helpers';
+import { toBengaliNumber, formatBengaliCurrency, sanitizePhone } from '../utils/helpers';
 
 interface HomeScreenProps {
   profile: OrganizationProfile;
@@ -812,17 +812,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           ========================================================================= */}
       {/* =========================================================================
           SECTION 5: Official Social Media / Page Link & Official Email Address (Strict Conditional Visibility)
-          - Each item strictly conditional: only displayed if admin provided a value/link
-          - If all fields are empty, the entire section card is completely hidden
+          - Every single contact option is independently checked.
+          - Only render a specific contact card if admin has actually added a value/link for that exact field.
+          - If a field is empty or blank, that specific card is completely hidden.
+          - If all fields are empty across all contacts, completely hide the entire section card so space remains completely blank.
           ========================================================================= */}
       {(() => {
-        const officialPhone = (profile.hotline && profile.hotline.trim()) || (profile.phone && profile.phone.trim()) || '';
-        const hasFacebook = Boolean(profile.facebookUrl && profile.facebookUrl.trim());
-        const hasEmail = Boolean(profile.email && profile.email.trim());
-        const hasPhone = Boolean(officialPhone);
-        const hasYoutube = Boolean(profile.youtubeUrl && profile.youtubeUrl.trim());
-        const hasAnyContact = hasFacebook || hasEmail || hasPhone || hasYoutube;
+        const facebookUrl = (profile?.facebookUrl || '').trim();
+        const email = (profile?.email || '').trim();
+        const hotline = (profile?.hotline || '').trim();
+        const phone = (profile?.phone || '').trim();
+        const emergency = (profile?.emergencyContact || '').trim();
+        const youtubeUrl = (profile?.youtubeUrl || '').trim();
 
+        const hasFacebook = Boolean(facebookUrl);
+        const hasEmail = Boolean(email);
+        const hasHotline = Boolean(hotline);
+        // Show phone independently if provided and not identical to hotline
+        const hasPhone = Boolean(phone && phone !== hotline);
+        // Show emergency independently if provided and not identical to hotline or phone
+        const hasEmergency = Boolean(emergency && emergency !== hotline && emergency !== phone);
+        const hasYoutube = Boolean(youtubeUrl);
+
+        const hasAnyContact = hasFacebook || hasEmail || hasHotline || hasPhone || hasEmergency || hasYoutube;
+
+        // If admin has not added any contact info across all fields, completely hide the entire section
         if (!hasAnyContact) return null;
 
         return (
@@ -854,10 +868,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Official Facebook Page Link */}
+              {/* 1. Official Facebook Page Link */}
               {hasFacebook && (
                 <a
-                  href={profile.facebookUrl}
+                  href={facebookUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-blue-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
@@ -878,10 +892,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </a>
               )}
 
-              {/* Official Email Address */}
+              {/* 2. Official Email Address */}
               {hasEmail && (
                 <a
-                  href={`mailto:${profile.email?.trim()}`}
+                  href={`mailto:${email}`}
                   className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
@@ -891,7 +905,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     <div className="min-w-0">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">অফিসিয়াল ইমেইল</span>
                       <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-emerald-700 transition-colors font-mono">
-                        {profile.email?.trim()}
+                        {email}
                       </h4>
                       <p className="text-[11px] text-slate-500 truncate">মেইল পাঠাতে ক্লিক করুন</p>
                     </div>
@@ -900,10 +914,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </a>
               )}
 
-              {/* Official Hotline & Mobile */}
-              {hasPhone && (
+              {/* 3. Official Hotline */}
+              {hasHotline && (
                 <a
-                  href={`tel:${officialPhone}`}
+                  href={`tel:${sanitizePhone(hotline)}`}
                   className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-teal-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
@@ -911,9 +925,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       <Phone className="w-6 h-6" />
                     </div>
                     <div className="min-w-0">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">হটলাইন ও যোগাযোগ</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">জরুরি হটলাইন</span>
                       <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-teal-700 transition-colors font-mono">
-                        {officialPhone}
+                        {hotline}
                       </h4>
                       <p className="text-[11px] text-slate-500 truncate">সরাসরি কল করতে ট্যাপ করুন</p>
                     </div>
@@ -922,13 +936,57 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </a>
               )}
 
-              {/* Official YouTube Channel / Media */}
+              {/* 4. Official Phone / Mobile */}
+              {hasPhone && (
+                <a
+                  href={`tel:${sanitizePhone(phone)}`}
+                  className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-700 group-hover:text-white transition-colors">
+                      <Phone className="w-6 h-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">মোবাইল নম্বর</span>
+                      <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-emerald-700 transition-colors font-mono">
+                        {phone}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 truncate">সরাসরি কল করতে ট্যাপ করুন</p>
+                    </div>
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 shrink-0 transition-colors" />
+                </a>
+              )}
+
+              {/* 5. Emergency Contact (if distinct) */}
+              {hasEmergency && (
+                <a
+                  href={`tel:${sanitizePhone(emergency)}`}
+                  className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-rose-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center shrink-0 group-hover:bg-rose-700 group-hover:text-white transition-colors">
+                      <Phone className="w-6 h-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">জরুরি যোগাযোগ</span>
+                      <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-rose-700 transition-colors font-mono">
+                        {emergency}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 truncate">জরুরি প্রয়োজনে কল করুন</p>
+                    </div>
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-rose-600 shrink-0 transition-colors" />
+                </a>
+              )}
+
+              {/* 6. Official YouTube Channel / Media */}
               {hasYoutube && (
                 <a
-                  href={profile.youtubeUrl}
+                  href={youtubeUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-red-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer sm:col-span-2 lg:col-span-3"
+                  className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-red-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
                     <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
