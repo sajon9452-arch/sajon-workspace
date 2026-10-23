@@ -46,6 +46,7 @@ import {
   Eye,
   BookOpen,
   Droplet,
+  Headphones,
   Code
 } from 'lucide-react';
 import { 
@@ -62,7 +63,8 @@ import {
   AidDonationRecord,
   ExtraContributionRecord,
   OrganizationRule,
-  PendingPayment
+  PendingPayment,
+  SupportTeamMember
 } from '../types';
 import { 
   toBengaliNumber, 
@@ -141,6 +143,10 @@ interface AdminPanelScreenProps {
   onAddRule?: (rule: Omit<OrganizationRule, 'id'>) => Promise<OrganizationRule>;
   onEditRule?: (rule: OrganizationRule) => Promise<void>;
   onDeleteRule?: (id: string) => Promise<void>;
+  supportMembers?: SupportTeamMember[];
+  onAddSupportMember?: (member: Omit<SupportTeamMember, 'id'>) => Promise<SupportTeamMember>;
+  onEditSupportMember?: (member: SupportTeamMember) => Promise<void>;
+  onDeleteSupportMember?: (id: string) => Promise<void>;
   paymentConfig: PaymentGatewayConfig;
   onUpdatePaymentConfig: (config: PaymentGatewayConfig) => void;
   initialTab?: string;
@@ -184,13 +190,17 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onAddRule,
   onEditRule,
   onDeleteRule,
+  supportMembers = [],
+  onAddSupportMember,
+  onEditSupportMember,
+  onDeleteSupportMember,
   paymentConfig,
   onUpdatePaymentConfig,
   initialTab,
   onBack,
   onLogout
 }) => {
-  const [activeTab, setActiveTab] = useState<'members' | 'donors' | 'registrations' | 'funds' | 'verification' | 'slides' | 'donations' | 'contributions' | 'rules' | 'profile' | 'payments' | 'security'>(
+  const [activeTab, setActiveTab] = useState<'members' | 'donors' | 'registrations' | 'funds' | 'verification' | 'slides' | 'donations' | 'contributions' | 'rules' | 'profile' | 'payments' | 'security' | 'support'>(
     (initialTab as any) || 'members'
   );
   
@@ -1763,6 +1773,148 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     }
   };
 
+  // ==========================================
+  // SUPPORT TEAM MANAGEMENT STATES & HANDLERS (Admin-Exclusive)
+  // ==========================================
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [editingSupport, setEditingSupport] = useState<SupportTeamMember | null>(null);
+  const [suppName, setSuppName] = useState('');
+  const [suppPhone, setSuppPhone] = useState('');
+  const [suppDesignation, setSuppDesignation] = useState('');
+  const [suppCategory, setSuppCategory] = useState('সাধারণ সহায়তা');
+  const [suppSubject, setSuppSubject] = useState('');
+  const [suppDescription, setSuppDescription] = useState('');
+  const [suppAvailableHours, setSuppAvailableHours] = useState('সকাল ৯টা - রাত ১০টা');
+  const [suppPhoto, setSuppPhoto] = useState('');
+  const [suppSearch, setSuppSearch] = useState('');
+  const [isSavingSupport, setIsSavingSupport] = useState(false);
+  const [suppFormError, setSuppFormError] = useState('');
+
+  const handleOpenAddSupport = () => {
+    setEditingSupport(null);
+    setSuppName('');
+    setSuppPhone('');
+    setSuppDesignation('সাপোর্ট সমন্বয়ক');
+    setSuppCategory('সাধারণ সহায়তা');
+    setSuppSubject('');
+    setSuppDescription('');
+    setSuppAvailableHours('সকাল ৯টা - রাত ১০টা');
+    setSuppPhoto('');
+    setSuppFormError('');
+    setIsSupportModalOpen(true);
+  };
+
+  const handleOpenEditSupport = (item: SupportTeamMember) => {
+    setEditingSupport(item);
+    setSuppName(item.name || '');
+    setSuppPhone(item.phone || '');
+    setSuppDesignation(item.designation || 'সাপোর্ট সমন্বয়ক');
+    setSuppCategory(item.category || 'সাধারণ সহায়তা');
+    setSuppSubject(item.subject || '');
+    setSuppDescription(item.description || '');
+    setSuppAvailableHours(item.availableHours || 'সকাল ৯টা - রাত ১০টা');
+    setSuppPhoto(item.photoUrl || '');
+    setSuppFormError('');
+    setIsSupportModalOpen(true);
+  };
+
+  const handleSupportPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setSuppFormError('ছবির সাইজ সর্বোচ্চ ১০ মেগাবাইট হতে পারবে');
+      return;
+    }
+
+    try {
+      const compressed = await compressImageFile(file, { maxWidth: 600, maxHeight: 600, quality: 0.8 });
+      setSuppPhoto(compressed);
+      setSuppFormError('');
+    } catch {
+      setSuppFormError('ছবি প্রসেসিংয়ে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন');
+    }
+  };
+
+  const handleSaveSupport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSupport(true);
+    setSuppFormError('');
+
+    const finalName = suppName.trim() || 'সাপোর্ট প্রতিনিধি';
+    const finalPhone = suppPhone.trim();
+    const finalDesignation = suppDesignation.trim() || 'সাপোর্ট সমন্বয়ক';
+    const finalCategory = suppCategory.trim() || 'সাধারণ সহায়তা';
+    const finalSubject = suppSubject.trim() || 'সাধারণ সহায়তা';
+    const finalDescription = suppDescription.trim() || 'যেকোনো সহায়তার জন্য সরাসরি যোগাযোগ করুন।';
+    const finalHours = suppAvailableHours.trim() || 'সকাল ৯টা - রাত ১০টা';
+
+    try {
+      if (editingSupport && onEditSupportMember) {
+        await onEditSupportMember({
+          ...editingSupport,
+          name: finalName,
+          phone: finalPhone,
+          designation: finalDesignation,
+          category: finalCategory,
+          subject: finalSubject,
+          description: finalDescription,
+          availableHours: finalHours,
+          photoUrl: suppPhoto || undefined
+        });
+        setNoticeMsg(`প্রতিনিধি "${finalName}" এর তথ্য সফলভাবে আপডেট করা হয়েছে`);
+      } else if (onAddSupportMember) {
+        const serial = (supportMembers.length || 0) + 1;
+        await onAddSupportMember({
+          name: finalName,
+          phone: finalPhone,
+          designation: finalDesignation,
+          category: finalCategory,
+          subject: finalSubject,
+          description: finalDescription,
+          availableHours: finalHours,
+          photoUrl: suppPhoto || undefined,
+          serial
+        });
+        setNoticeMsg(`নতুন প্রতিনিধি "${finalName}" সফলভাবে যুক্ত করা হয়েছে`);
+      }
+      setIsSupportModalOpen(false);
+      setTimeout(() => setNoticeMsg(''), 3000);
+    } catch {
+      setSuppFormError('সংরক্ষণে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন');
+    } finally {
+      setIsSavingSupport(false);
+    }
+  };
+
+  const handleDeleteSupport = async (id: string, name: string) => {
+    if (!window.confirm(`আপনি কি নিশ্চিতভাবে প্রতিনিধি "${name}" কে তালিকা থেকে মুছে ফেলতে চান?`)) {
+      return;
+    }
+    try {
+      if (onDeleteSupportMember) {
+        await onDeleteSupportMember(id);
+        setNoticeMsg(`প্রতিনিধি "${name}" সফলভাবে মুছে ফেলা হয়েছে`);
+        setTimeout(() => setNoticeMsg(''), 3000);
+      }
+    } catch {
+      setErrorMsg('মুছে ফেলতে সমস্যা হয়েছে');
+      setTimeout(() => setErrorMsg(''), 3000);
+    }
+  };
+
+  const filteredSupportMembers = useMemo(() => {
+    if (!suppSearch.trim()) return supportMembers;
+    const q = suppSearch.trim().toLowerCase();
+    return supportMembers.filter(m => 
+      m.name.toLowerCase().includes(q) ||
+      (m.phone || '').includes(q) ||
+      (m.designation || '').toLowerCase().includes(q) ||
+      (m.subject || '').toLowerCase().includes(q) ||
+      (m.category || '').toLowerCase().includes(q)
+    );
+  }, [supportMembers, suppSearch]);
+
   return (
     <div className="space-y-6 pb-20 sm:pb-8 w-full max-w-full overflow-x-clip">
       {/* Header */}
@@ -1972,6 +2124,19 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         >
           <BookOpen className="w-4 h-4 text-teal-600" />
           <span>সংগঠনের নিয়মাবলি ({toBengaliNumber(organizationRules.length)})</span>
+        </button>
+
+        {/* Support Team Management Tab (Requirement 2) */}
+        <button
+          onClick={() => setActiveTab('support')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+            activeTab === 'support'
+              ? 'bg-emerald-700 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Headphones className="w-4 h-4 text-emerald-400" />
+          <span>সাপোর্ট টিম ({toBengaliNumber(supportMembers.length)})</span>
         </button>
 
         <button
@@ -4849,6 +5014,296 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 9. Support Team Management Tab (Requirement 2: Strictly managed exclusively from Admin Panel) */}
+      {activeTab === 'support' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Headphones className="w-5 h-5 text-emerald-700" />
+                <span>সাপোর্ট টিম ও হেল্পডেস্ক প্রতিনিধি ব্যবস্থাপনা</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                সাপোর্ট পেজের সকল হেল্পডেস্ক প্রতিনিধির তথ্য, দায়িত্ব, মোবাইল ও সময়সূচি কেন্দ্রীয়ভাবে পরিচালনা করুন
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenAddSupport}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 whitespace-nowrap"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>নতুন প্রতিনিধি যোগ করুন</span>
+            </button>
+          </div>
+
+          {/* Search Box */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={suppSearch}
+              onChange={(e) => setSuppSearch(e.target.value)}
+              placeholder="প্রতিনিধির নাম, মোবাইল নম্বর, পদবি বা সহায়তার বিষয় দিয়ে খুঁজুন..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            />
+            {suppSearch && (
+              <button
+                type="button"
+                onClick={() => setSuppSearch('')}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Support Representatives List */}
+          {supportMembers.length > 0 ? (
+            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs divide-y divide-slate-100 space-y-3">
+              {filteredSupportMembers.map((rep) => (
+                <div
+                  key={rep.id}
+                  className="pt-3 first:pt-0 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-3 rounded-2xl hover:bg-slate-50/70 transition"
+                >
+                  <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                    {/* Photo */}
+                    <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                      {rep.photoUrl ? (
+                        <img src={rep.photoUrl} alt={rep.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-emerald-50 text-emerald-800 font-black text-lg">
+                          {rep.name.charAt(0)}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 space-y-1 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-black text-slate-900">{rep.name}</h4>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          {rep.designation}
+                        </span>
+                        {rep.category && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                            {rep.category}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+                        <span className="flex items-center gap-1 font-mono text-emerald-700 font-bold">
+                          <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{rep.phone}</span>
+                        </span>
+                        {rep.availableHours && (
+                          <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <span>{rep.availableHours}</span>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-xs text-slate-700 bg-slate-50 p-2 rounded-xl border border-slate-200/60 mt-1">
+                        <span className="font-bold text-emerald-900">বিষয়: </span>
+                        <span>{rep.subject}</span>
+                        {rep.description && (
+                          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{rep.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditSupport(rep)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition border border-amber-200 cursor-pointer active:scale-95"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      <span>সম্পাদনা</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSupport(rep.id, rep.name)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition border border-rose-200 cursor-pointer active:scale-95"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>মুছুন</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-3">
+              <Headphones className="w-10 h-10 text-slate-300 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-700">কোনো সাপোর্ট প্রতিনিধি তালিকাভুক্ত নেই</h4>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                পাবলিক সাপোর্ট পেজে প্রদর্শনের জন্য নতুন প্রতিনিধি যুক্ত করতে উপরের বাটনে চাপুন।
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Support Representative Add / Edit Modal (Admin Exclusive) */}
+      {isSupportModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Headphones className="w-5 h-5 text-emerald-700" />
+                <span>{editingSupport ? 'সাপোর্ট প্রতিনিধি তথ্য সম্পাদন' : 'নতুন সাপোর্ট প্রতিনিধি যোগ করুন'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsSupportModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {suppFormError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{suppFormError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSupport} className="space-y-3.5 text-xs">
+              {/* Photo Upload with Preview */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">প্রতিনিধির ছবি</label>
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-300 flex items-center justify-center overflow-hidden shrink-0">
+                    {suppPhoto ? (
+                      <img src={suppPhoto} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <Headphones className="w-6 h-6 text-slate-400" />
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleSupportPhotoUpload}
+                    className="text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Name & Phone */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">প্রতিনিধির নাম *</label>
+                  <input
+                    type="text"
+                    required
+                    value={suppName}
+                    onChange={(e) => setSuppName(e.target.value)}
+                    placeholder="পুরো নাম লিখুন"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">মোবাইল নম্বর *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={suppPhone}
+                    onChange={(e) => setSuppPhone(e.target.value)}
+                    placeholder="01886122678"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Designation & Category */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">পদবি (Designation)</label>
+                  <input
+                    type="text"
+                    value={suppDesignation}
+                    onChange={(e) => setSuppDesignation(e.target.value)}
+                    placeholder="যেমন: অর্থ সম্পাদক / ব্লাড কো-অর্ডিনেটর"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">ক্যাটাগরি</label>
+                  <input
+                    type="text"
+                    value={suppCategory}
+                    onChange={(e) => setSuppCategory(e.target.value)}
+                    placeholder="যেমন: চিকিৎসা ফান্ড / রক্তদান উইং"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+              </div>
+
+              {/* Subject */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">সহায়তার বিষয় (Subject/Topic) *</label>
+                <input
+                  type="text"
+                  required
+                  value={suppSubject}
+                  onChange={(e) => setSuppSubject(e.target.value)}
+                  placeholder="যেমন: চিকিৎসা ফান্ড আবেদন ও অনুদান যাচাই"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium"
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">বিস্তারিত ডেসক্রিপশন / দিকনির্দেশনা</label>
+                <textarea
+                  rows={3}
+                  value={suppDescription}
+                  onChange={(e) => setSuppDescription(e.target.value)}
+                  placeholder="ব্যবহারকারীরা কোন কোন বিষয়ে এই প্রতিনিধির সাথে যোগাযোগ করতে পারবেন তার বিবরণ..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              {/* Available Hours */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">যোগাযোগের সময়সূচি</label>
+                <input
+                  type="text"
+                  value={suppAvailableHours}
+                  onChange={(e) => setSuppAvailableHours(e.target.value)}
+                  placeholder="যেমন: সকাল ৯টা - রাত ১০টা / ২৪/৭ জরুরি সেবা"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsSupportModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold cursor-pointer"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingSupport}
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingSupport ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

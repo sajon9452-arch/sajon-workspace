@@ -307,8 +307,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           - All details strictly underneath the photo
           - Dynamic multiple records support
           ========================================================================= */}
-      <section className="space-y-5">
-        {/* Section Header */}
+      {aidDonations && aidDonations.length > 0 && (
+        <section className="space-y-5">
+          {/* Section Header */}
         <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5 flex-wrap">
@@ -556,13 +557,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         ) : (
           <div className="p-8 rounded-3xl bg-white border border-slate-200 text-center space-y-2">
             <Heart className="w-10 h-10 text-slate-300 mx-auto" />
-            <h4 className="text-sm font-bold text-slate-700">কোনো অনুদান রেকর্ড পাওয়া যায়নি</h4>
+            <h4 className="text-sm font-bold text-slate-700">কোনো অনুদান রেকর্ড মেলেনি</h4>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              {donationSearch ? 'আপনার অনুসন্ধান অনুযায়ী কোনো রেকর্ড নেই।' : 'অ্যাডমিন প্যানেল থেকে নতুন অনুদান ও সাহায্যপ্রাপ্তদের তথ্য যুক্ত করুন।'}
+              আপনার অনুসন্ধান অনুযায়ী কোনো রেকর্ড নেই।
             </p>
           </div>
         )}
       </section>
+      )}
 
       {/* =========================================================================
           SECTION 3: Extra Contribution / Additional Fund Section
@@ -572,7 +574,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             • Multiple records dynamically supported
             • Personal payment numbers removed (exclusive for donor records)
           ========================================================================= */}
-      <section className="space-y-5">
+      {extraContributions && extraContributions.length > 0 && (
+        <section className="space-y-5">
         {/* Section Header */}
         <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="space-y-1">
@@ -730,50 +733,51 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         ) : (
           <div className="p-8 rounded-3xl bg-white border border-slate-200 text-center space-y-2">
             <Gift className="w-10 h-10 text-slate-300 mx-auto" />
-            <h4 className="text-sm font-bold text-slate-700">কোনো অতিরিক্ত অনুদান রেকর্ড পাওয়া যায়নি</h4>
+            <h4 className="text-sm font-bold text-slate-700">কোনো অতিরিক্ত অনুদান রেকর্ড মেলেনি</h4>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              {contributionSearch ? 'আপনার অনুসন্ধান অনুযায়ী কোনো রেকর্ড নেই।' : 'শুভাকাঙ্ক্ষী ও শুভানুধ্যায়ীদের প্রদত্ত অনুদান তথ্য অ্যাডমিন প্যানেল থেকে যোগ করুন।'}
+              আপনার অনুসন্ধান অনুযায়ী কোনো রেকর্ড নেই।
             </p>
           </div>
         )}
       </section>
+      )}
 
       {/* =========================================================================
-          SECTION 4: Organization Rules & Guidelines (সংগঠনের নিয়মাবলি)
-          - Displayed below donation sections in a clean, numbered list (1, 2, 3...)
-          - Solely editable via Admin Panel
+          SECTION 4: Organization Rules & Guidelines (Strict Conditional Visibility)
+          - Completely hidden if admin has added 0 rules
+          - Only displayed when rules are explicitly added
           ========================================================================= */}
-      <section className="space-y-4">
-        <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="p-2.5 rounded-2xl bg-teal-100 text-teal-800">
-                <BookOpen className="w-5 h-5 text-teal-700" />
+      {activeRules && activeRules.length > 0 && (
+        <section className="space-y-4">
+          <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="p-2.5 rounded-2xl bg-teal-100 text-teal-800">
+                  <BookOpen className="w-5 h-5 text-teal-700" />
+                </div>
+                <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                  সংগঠনের নিয়মাবলি ও নির্দেশিকা
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-teal-100 text-teal-800">
+                  {toBengaliNumber(activeRules.length)}টি ধারা
+                </span>
               </div>
-              <h3 className="text-lg sm:text-xl font-black text-slate-900">
-                সংগঠনের নিয়মাবলি ও নির্দেশিকা
-              </h3>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-teal-100 text-teal-800">
-                {toBengaliNumber(activeRules.length)}টি ধারা
-              </span>
+              <p className="text-xs text-slate-500">
+                সংগঠনের আদর্শ, অভ্যন্তরীণ শৃঙ্খলা, সদস্য আচরণ ও মানবিক কার্যক্রম পরিচালনার মৌলিক নিয়মাবলি
+              </p>
             </div>
-            <p className="text-xs text-slate-500">
-              সংগঠনের আদর্শ, অভ্যন্তরীণ শৃঙ্খলা, সদস্য আচরণ ও মানবিক কার্যক্রম পরিচালনার মৌলিক নিয়মাবলি
-            </p>
+
+            {isAdmin && onNavigateToAdminTab && (
+              <button
+                onClick={() => onNavigateToAdminTab('rules')}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>নিয়মাবলি পরিচালনা ও সম্পাদন</span>
+              </button>
+            )}
           </div>
 
-          {isAdmin && onNavigateToAdminTab && (
-            <button
-              onClick={() => onNavigateToAdminTab('rules')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-xs transition cursor-pointer"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>নিয়মাবলি পরিচালনা ও সম্পাদন</span>
-            </button>
-          )}
-        </div>
-
-        {activeRules.length > 0 ? (
           <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-xs divide-y divide-slate-100 space-y-3">
             {activeRules.map((rule, idx) => (
               <div 
@@ -798,159 +802,153 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </div>
             ))}
           </div>
-        ) : (
-          <div className="p-8 rounded-3xl bg-white border border-slate-200 text-center space-y-2">
-            <BookOpen className="w-10 h-10 text-slate-300 mx-auto" />
-            <h4 className="text-sm font-bold text-slate-700">কোনো নিয়মাবলি যুক্ত করা নেই</h4>
-            <p className="text-xs text-slate-400">অ্যাডমিন প্যানেল থেকে নিয়মাবলি এন্ট্রি করুন।</p>
-          </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* =========================================================================
           SECTION 5: Official Social Media / Page Link & Official Email Address
           - Clickable direct links to official Facebook page, email, hotline, YouTube
           - Fully manageable via Admin Panel (Profile tab)
           ========================================================================= */}
-      <section className="space-y-4">
-        <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="p-2.5 rounded-2xl bg-indigo-100 text-indigo-800">
-                <Share2 className="w-5 h-5 text-indigo-700" />
+      {/* =========================================================================
+          SECTION 5: Official Social Media / Page Link & Official Email Address (Strict Conditional Visibility)
+          - Each item strictly conditional: only displayed if admin provided a value/link
+          - If all fields are empty, the entire section card is completely hidden
+          ========================================================================= */}
+      {(() => {
+        const officialPhone = (profile.hotline && profile.hotline.trim()) || (profile.phone && profile.phone.trim()) || '';
+        const hasFacebook = Boolean(profile.facebookUrl && profile.facebookUrl.trim());
+        const hasEmail = Boolean(profile.email && profile.email.trim());
+        const hasPhone = Boolean(officialPhone);
+        const hasYoutube = Boolean(profile.youtubeUrl && profile.youtubeUrl.trim());
+        const hasAnyContact = hasFacebook || hasEmail || hasPhone || hasYoutube;
+
+        if (!hasAnyContact) return null;
+
+        return (
+          <section className="space-y-4">
+            <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <div className="p-2.5 rounded-2xl bg-indigo-100 text-indigo-800">
+                    <Share2 className="w-5 h-5 text-indigo-700" />
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                    অফিসিয়াল যোগাযোগ ও সোশ্যাল মিডিয়া
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500">
+                  সংগঠনের সাথে সার্বক্ষণিক যোগাযোগের জন্য অফিসিয়াল ফেসবুক পেজ, ইমেইল এবং মোবাইল নম্বরে ক্লিক করুন
+                </p>
               </div>
-              <h3 className="text-lg sm:text-xl font-black text-slate-900">
-                অফিসিয়াল যোগাযোগ ও সোশ্যাল মিডিয়া
-              </h3>
+
+              {isAdmin && onNavigateToAdminTab && (
+                <button
+                  onClick={() => onNavigateToAdminTab('profile')}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>যোগাযোগ তথ্য সম্পাদন করুন</span>
+                </button>
+              )}
             </div>
-            <p className="text-xs text-slate-500">
-              সংগঠনের সাথে সার্বক্ষণিক যোগাযোগের জন্য অফিসিয়াল ফেসবুক পেজ, ইমেইল এবং মোবাইল নম্বরে ক্লিক করুন
-            </p>
-          </div>
 
-          {isAdmin && onNavigateToAdminTab && (
-            <button
-              onClick={() => onNavigateToAdminTab('profile')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold shadow-xs transition cursor-pointer"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>যোগাযোগ তথ্য সম্পাদন করুন</span>
-            </button>
-          )}
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Official Facebook Page Link */}
+              {hasFacebook && (
+                <a
+                  href={profile.facebookUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-blue-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                      <Facebook className="w-6 h-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ফেসবুক পেজ</span>
+                      <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-blue-700 transition-colors">
+                        অফিসিয়াল ফেসবুক পেজ
+                      </h4>
+                      <p className="text-[11px] text-slate-500 truncate">ভিজিট করতে এখানে ক্লিক করুন</p>
+                    </div>
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-blue-600 shrink-0 transition-colors" />
+                </a>
+              )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Official Facebook Page Link */}
-          {profile.facebookUrl ? (
-            <a
-              href={profile.facebookUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-blue-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                  <Facebook className="w-6 h-6" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ফেসবুক পেজ</span>
-                  <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-blue-700 transition-colors">
-                    অফিসিয়াল ফেসবুক পেজ
-                  </h4>
-                  <p className="text-[11px] text-slate-500 truncate">ভিজিট করতে এখানে ক্লিক করুন</p>
-                </div>
-              </div>
-              <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-blue-600 shrink-0 transition-colors" />
-            </a>
-          ) : (
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs flex items-center gap-3.5 opacity-60">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
-                <Facebook className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 block">ফেসবুক পেজ</span>
-                <h4 className="text-xs font-bold text-slate-700">শীঘ্রই যুক্ত করা হবে</h4>
-              </div>
+              {/* Official Email Address */}
+              {hasEmail && (
+                <a
+                  href={`mailto:${profile.email?.trim()}`}
+                  className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-700 group-hover:text-white transition-colors">
+                      <Mail className="w-6 h-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">অফিসিয়াল ইমেইল</span>
+                      <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-emerald-700 transition-colors font-mono">
+                        {profile.email?.trim()}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 truncate">মেইল পাঠাতে ক্লিক করুন</p>
+                    </div>
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 shrink-0 transition-colors" />
+                </a>
+              )}
+
+              {/* Official Hotline & Mobile */}
+              {hasPhone && (
+                <a
+                  href={`tel:${officialPhone}`}
+                  className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-teal-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 group-hover:bg-teal-700 group-hover:text-white transition-colors">
+                      <Phone className="w-6 h-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">হটলাইন ও যোগাযোগ</span>
+                      <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-teal-700 transition-colors font-mono">
+                        {officialPhone}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 truncate">সরাসরি কল করতে ট্যাপ করুন</p>
+                    </div>
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-teal-600 shrink-0 transition-colors" />
+                </a>
+              )}
+
+              {/* Official YouTube Channel / Media */}
+              {hasYoutube && (
+                <a
+                  href={profile.youtubeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-red-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer sm:col-span-2 lg:col-span-3"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                      <Youtube className="w-6 h-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ইউটিউব চ্যানেল / মিডিয়া</span>
+                      <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-red-700 transition-colors">
+                        অফিসিয়াল ইউটিউব চ্যানেল
+                      </h4>
+                      <p className="text-[11px] text-slate-500 truncate">ভিডিও ও মানবিক কার্যক্রমের তথ্যচিত্র দেখতে ক্লিক করুন</p>
+                    </div>
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-red-600 shrink-0 transition-colors" />
+                </a>
+              )}
             </div>
-          )}
-
-          {/* Official Email Address */}
-          {profile.email ? (
-            <a
-              href={`mailto:${profile.email}`}
-              className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-700 group-hover:text-white transition-colors">
-                  <Mail className="w-6 h-6" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">অফিসিয়াল ইমেইল</span>
-                  <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-emerald-700 transition-colors font-mono">
-                    {profile.email}
-                  </h4>
-                  <p className="text-[11px] text-slate-500 truncate">মেইল পাঠাতে ক্লিক করুন</p>
-                </div>
-              </div>
-              <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 shrink-0 transition-colors" />
-            </a>
-          ) : (
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs flex items-center gap-3.5 opacity-60">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
-                <Mail className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 block">অফিসিয়াল ইমেইল</span>
-                <h4 className="text-xs font-bold text-slate-700">শীঘ্রই যুক্ত করা হবে</h4>
-              </div>
-            </div>
-          )}
-
-          {/* Official Hotline & Mobile */}
-          <a
-            href={`tel:${profile.hotline || profile.phone || '01886122678'}`}
-            className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-teal-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer"
-          >
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 group-hover:bg-teal-700 group-hover:text-white transition-colors">
-                <Phone className="w-6 h-6" />
-              </div>
-              <div className="min-w-0">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">হটলাইন ও যোগাযোগ</span>
-                <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-teal-700 transition-colors font-mono">
-                  {profile.hotline || profile.phone || '01886122678'}
-                </h4>
-                <p className="text-[11px] text-slate-500 truncate">সরাসরি কল করতে ট্যাপ করুন</p>
-              </div>
-            </div>
-            <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-teal-600 shrink-0 transition-colors" />
-          </a>
-
-          {/* Official YouTube Channel / Media */}
-          {profile.youtubeUrl && (
-            <a
-              href={profile.youtubeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-red-400 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer sm:col-span-2 lg:col-span-3"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
-                  <Youtube className="w-6 h-6" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ইউটিউব চ্যানেল / মিডিয়া</span>
-                  <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate group-hover:text-red-700 transition-colors">
-                    অফিসিয়াল ইউটিউব চ্যানেল
-                  </h4>
-                  <p className="text-[11px] text-slate-500 truncate">ভিডিও ও মানবিক কার্যক্রমের তথ্যচিত্র দেখতে ক্লিক করুন</p>
-                </div>
-              </div>
-              <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-red-600 shrink-0 transition-colors" />
-            </a>
-          )}
-        </div>
-      </section>
+          </section>
+        );
+      })()}
 
       {/* Lightbox / Zoom Modal */}
       {zoomedImage && (

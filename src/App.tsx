@@ -923,14 +923,6 @@ export default function App() {
         {activeScreen === 'support' && (
           <SupportScreen
             supportMembers={supportMembers}
-            onAddSupportMember={handleAddSupportMember}
-            onEditSupportMember={handleEditSupportMember}
-            onDeleteSupportMember={handleDeleteSupportMember}
-            reports={supportReports}
-            profile={profile}
-            onAddReport={handleAddReport}
-            isAdmin={effectiveIsAdminForScreens}
-            openAdminModal={() => handleOpenAuthModal('login')}
             onBack={() => setActiveScreen('home')}
           />
         )}
@@ -972,6 +964,10 @@ export default function App() {
             onAddRule={handleAddRule}
             onEditRule={handleEditRule}
             onDeleteRule={handleDeleteRule}
+            supportMembers={supportMembers}
+            onAddSupportMember={handleAddSupportMember}
+            onEditSupportMember={handleEditSupportMember}
+            onDeleteSupportMember={handleDeleteSupportMember}
             paymentConfig={paymentConfig}
             onUpdatePaymentConfig={handleUpdatePaymentConfig}
             initialTab={adminActiveTab}
