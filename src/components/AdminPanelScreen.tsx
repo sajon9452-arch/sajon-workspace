@@ -99,7 +99,8 @@ import {
   pushAllDataToSupabase,
   fetchSupabaseCollection,
   safeSyncToSupabase,
-  safeDeleteFromSupabase
+  safeDeleteFromSupabase,
+  APP_SUPABASE_TABLES
 } from '../utils/supabaseClient';
 import { triggerFullCloudSync, getLocalSyncSnapshot } from '../utils/liveSync';
 import { compressImageFile } from '../utils/imageCompressor';
@@ -4242,34 +4243,44 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 {SUPABASE_URL}
               </div>
 
-              {/* Table Status Badges */}
-              <div className="pt-2 border-t border-slate-200/50">
-                <div className="text-[11px] font-bold text-slate-700 mb-1.5">টেবিল রেডি যাচাই:</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries({
-                    members: 'সদস্য তালিকা',
-                    donors: 'রক্তদাতা',
-                    funds: 'ফান্ড/আদায়',
-                    pending_payments: 'পেমেন্ট রিকোয়েস্ট',
-                    notices: 'নোটিশ বোর্ড',
-                    support_members: 'সাপোর্ট টিম',
-                    home_slides: 'স্লাইডার',
-                    app_collections: 'কলেকশন স্টোর'
-                  }).map(([tblKey, label]) => {
-                    const isReady = supabaseTableDetails[tblKey];
+              {/* Table Status Badges: Dynamically scans & renders every single app table and data section */}
+              <div className="pt-2.5 border-t border-slate-200/50 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                    <span>টেবিল রেডি যাচাই (Table Ready Check):</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono font-black border border-emerald-300">
+                      {Object.values(supabaseTableDetails).filter(Boolean).length} / {APP_SUPABASE_TABLES.length} প্রস্তুত
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-bold">
+                    সর্বমোট {toBengaliNumber(APP_SUPABASE_TABLES.length)} টি ডেটাবেস টেবিল
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+                  {APP_SUPABASE_TABLES.map((table) => {
+                    const isReady = Boolean(supabaseTableDetails[table.id]);
                     return (
-                      <span
-                        key={tblKey}
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border flex items-center gap-1 ${
+                      <div
+                        key={table.id}
+                        className={`px-2 py-1.5 rounded-xl border transition flex items-center justify-between gap-1.5 ${
                           isReady 
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
-                            : 'bg-amber-100 text-amber-800 border-amber-300'
+                            ? 'bg-emerald-50/90 text-emerald-900 border-emerald-300 shadow-2xs' 
+                            : 'bg-amber-50/80 text-amber-900 border-amber-300'
                         }`}
+                        title={`${table.englishLabel} (${table.id}): ${table.description}`}
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${isReady ? 'bg-emerald-600' : 'bg-amber-600'}`} />
-                        <span>{label}</span>
-                        <span>{isReady ? '✔️' : '✗'}</span>
-                      </span>
+                        <div className="min-w-0 flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${isReady ? 'bg-emerald-600 shadow-xs' : 'bg-amber-600 animate-pulse'}`} />
+                          <div className="min-w-0">
+                            <span className="text-[11px] font-bold block truncate leading-tight">{table.label}</span>
+                            <span className="text-[9px] font-mono text-slate-500 block truncate leading-tight">{table.id}</span>
+                          </div>
+                        </div>
+                        <span className={`text-xs font-black shrink-0 ${isReady ? 'text-emerald-700' : 'text-amber-700'}`}>
+                          {isReady ? '✔️' : '✗'}
+                        </span>
+                      </div>
                     );
                   })}
                 </div>

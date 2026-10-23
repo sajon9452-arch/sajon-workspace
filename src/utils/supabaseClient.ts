@@ -93,20 +93,58 @@ export function resetSupabaseCredentials(): void {
   supabase = createConfiguredClient(DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY);
 }
 
+export interface AppTableDefinition {
+  id: string;
+  key: string;
+  label: string;
+  englishLabel: string;
+  category: 'core' | 'finance' | 'community' | 'media' | 'security' | 'system';
+  description: string;
+}
+
+/**
+ * Universal Registry of all Supabase database tables & data sections across the entire app.
+ * Any new table or data section added here automatically appears in the Admin Panel
+ * "টেবিল রেডি যাচাই" (Table Ready Check) with live status checkmark, and is included
+ * in automated table health verification, SQL generator, and cloud sync loops.
+ */
+export const APP_SUPABASE_TABLES: AppTableDefinition[] = [
+  { id: 'members', key: 'members', label: 'সদস্য তালিকা', englishLabel: 'Members', category: 'core', description: 'সংগঠনের সকল সাধারণ, প্রবাসী ও কার্যনির্বাহী সদস্য' },
+  { id: 'donors', key: 'donors', label: 'রক্তদাতা ডিরেক্টরি', englishLabel: 'Blood Donors', category: 'community', description: 'জরুরি রক্তের গ্রুপভিত্তিক রক্তদাতা তালিকা' },
+  { id: 'funds', key: 'funds', label: 'তহবিল ও চাঁদা', englishLabel: 'Funds & Dues', category: 'finance', description: 'মাসিক চাঁদা, অনুদান ও ব্যয়ের আয়-ব্যয় হিসাব' },
+  { id: 'pending_payments', key: 'pendingPayments', label: 'পেমেন্ট রিকোয়েস্ট', englishLabel: 'Payment Requests', category: 'finance', description: 'বিকাশ, নগদ, রকেটে পাঠানো ডিজিটাল TrxID যাচাই' },
+  { id: 'notices', key: 'notices', label: 'নোটিশ বোর্ড', englishLabel: 'Notices', category: 'core', description: 'জরুরি ঘোষণা ও সাধারণ নোটিশ প্রকাশ' },
+  { id: 'support_members', key: 'supportMembers', label: 'সাপোর্ট প্রতিনিধি', englishLabel: 'Support Team', category: 'community', description: 'বিভাগভিত্তিক দায়িত্বপ্রাপ্ত প্রতিনিধিদের তালিকা' },
+  { id: 'support_reports', key: 'supportReports', label: 'সাপোর্ট রিপোর্ট', englishLabel: 'Support Reports', category: 'community', description: 'ইউজারদের পাঠানো অভিযোগ ও পরামর্শ রিকোয়েস্ট' },
+  { id: 'home_slides', key: 'homeSlides', label: 'স্লাইডার ফটো', englishLabel: 'Slider Banners', category: 'media', description: 'হোম পেজের ডায়নামিক ব্যানার ফটো ও ক্যাপশন' },
+  { id: 'aid_donations', key: 'aidDonations', label: 'সাহায্য ও অনুদান', englishLabel: 'Aid Donations', category: 'finance', description: 'অসহায় ও দুস্থদের মাঝে বিতরণকৃত আর্থিক সহায়তা' },
+  { id: 'extra_contributions', key: 'extraContributions', label: 'অতিরিক্ত অনুদান', englishLabel: 'Extra Contributions', category: 'finance', description: 'শুভাকাঙ্ক্ষী ও দাতাদের বিশেষ এককালীন অনুদান' },
+  { id: 'humanitarian_activities', key: 'humanitarianActivities', label: 'মানবিক কার্যক্রম', englishLabel: 'Humanitarian Activities', category: 'community', description: 'ত্রাণ বিতরণ ও সমাজকল্যাণমূলক প্রকল্পের বিবরণ' },
+  { id: 'organization_rules', key: 'organizationRules', label: 'সংগঠনের নিয়মাবলি', englishLabel: 'Constitution Rules', category: 'core', description: 'সংগঠনের গঠনতন্ত্র ও আচরণবিধির পয়েন্টসমূহ' },
+  { id: 'user_accounts', key: 'userAccounts', label: 'ইউজার অ্যাকাউন্ট', englishLabel: 'User Accounts', category: 'security', description: 'নিবন্ধিত সদস্য ও অনুমোদিত লগইন প্রোফাইল' },
+  { id: 'security_alerts', key: 'securityAlerts', label: 'সিকিউরিটি অ্যালার্ট', englishLabel: 'Security Alerts', category: 'security', description: 'ডিভাইস বাইন্ডিং ও সন্দেহজনক লগইন সতর্কবার্তা' },
+  { id: 'settings', key: 'settings', label: 'অ্যাপ সেটিংস ও প্রোফাইল', englishLabel: 'Settings & Profile', category: 'system', description: 'সংগঠনের প্রোফাইল, লোগো, পেমেন্ট নম্বর ও ব্যালেন্স' },
+  { id: 'app_collections', key: 'appCollections', label: 'কলেকশন ব্যাকআপ স্টোর', englishLabel: 'Universal Document Store', category: 'system', description: 'সকল ডেটার সার্বজনীন জেসন ব্যাকআপ নিরাপত্তা' }
+];
+
 // Table names mapping (TypeScript key -> Supabase table names to attempt)
 export const TABLE_CANDIDATES_MAP: Record<string, string[]> = {
   members: ['members'],
   donors: ['donors', 'blood_donors'],
   funds: ['funds'],
+  pendingPayments: ['pending_payments', 'pendingPayments'],
   notices: ['notices'],
   supportMembers: ['support_members', 'supportMembers'],
+  supportReports: ['support_reports', 'supportReports'],
   homeSlides: ['home_slides', 'homeSlides'],
   aidDonations: ['aid_donations', 'aidDonations'],
   extraContributions: ['extra_contributions', 'extraContributions'],
+  humanitarianActivities: ['humanitarian_activities', 'humanitarianActivities'],
   organizationRules: ['organization_rules', 'organizationRules'],
-  supportReports: ['support_reports', 'supportReports'],
+  userAccounts: ['user_accounts', 'userAccounts'],
+  securityAlerts: ['security_alerts', 'securityAlerts'],
   settings: ['settings'],
-  pendingPayments: ['pending_payments', 'pendingPayments']
+  appCollections: ['app_collections', 'appCollections']
 };
 
 /**
@@ -322,6 +360,63 @@ CREATE TABLE IF NOT EXISTS public.pending_payments (
   data JSONB
 );
 
+-- 14. Humanitarian Activities (মানবিক কার্যক্রম)
+CREATE TABLE IF NOT EXISTS public.humanitarian_activities (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  description TEXT,
+  date TEXT,
+  location TEXT,
+  amount NUMERIC,
+  recipient_name TEXT,
+  recipientName TEXT,
+  recipient_photo_url TEXT,
+  recipientPhotoUrl TEXT,
+  is_featured BOOLEAN DEFAULT false,
+  isFeatured BOOLEAN DEFAULT false,
+  data JSONB
+);
+
+-- 15. User Accounts & Login Profiles (ইউজার অ্যাকাউন্ট)
+CREATE TABLE IF NOT EXISTS public.user_accounts (
+  id TEXT PRIMARY KEY,
+  member_id TEXT,
+  memberId TEXT,
+  name TEXT,
+  phone TEXT,
+  username TEXT,
+  password TEXT,
+  status TEXT DEFAULT 'pending',
+  designation TEXT,
+  area TEXT,
+  blood_group TEXT,
+  photo_url TEXT,
+  registered_at TEXT,
+  registered_ip TEXT,
+  registered_device TEXT,
+  bound_device_id TEXT,
+  bound_ip TEXT,
+  is_device_locked BOOLEAN DEFAULT false,
+  last_login_at TEXT,
+  data JSONB
+);
+
+-- 16. Security & Multi-Device Alerts (সিকিউরিটি অ্যালার্ট)
+CREATE TABLE IF NOT EXISTS public.security_alerts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  username TEXT,
+  member_name TEXT,
+  phone TEXT,
+  type TEXT,
+  message TEXT,
+  ip TEXT,
+  device TEXT,
+  timestamp TEXT,
+  resolved BOOLEAN DEFAULT false,
+  data JSONB
+);
+
 -- ====================================================================
 -- Enable Row Level Security (RLS) & Allow Open App Access
 -- ====================================================================
@@ -332,8 +427,9 @@ BEGIN
   FOR tbl IN
     SELECT unnest(ARRAY[
       'app_collections', 'members', 'donors', 'funds', 'pending_payments', 'notices',
-      'support_members', 'home_slides', 'aid_donations',
-      'extra_contributions', 'organization_rules', 'support_reports', 'settings'
+      'support_members', 'home_slides', 'aid_donations', 'extra_contributions',
+      'humanitarian_activities', 'organization_rules', 'support_reports', 'settings',
+      'user_accounts', 'security_alerts'
     ])
   LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
@@ -366,7 +462,9 @@ export async function checkSupabaseConnection(): Promise<{ connected: boolean; m
 }
 
 /**
- * Detailed table status verification across all collections
+ * Detailed table status verification across all collections.
+ * Dynamically queries every table defined in APP_SUPABASE_TABLES so any newly added
+ * table automatically gets verified with live status and green checkmark.
  */
 export async function checkSupabaseTableDetails(): Promise<{
   connected: boolean;
@@ -382,20 +480,19 @@ export async function checkSupabaseTableDetails(): Promise<{
     const conn = await checkSupabaseConnection();
     isConnected = conn.connected;
 
-    // Check each primary table
-    const checkList = ['members', 'donors', 'funds', 'pending_payments', 'notices', 'support_members', 'home_slides', 'app_collections', 'settings'];
+    // Dynamically check every single registered table from APP_SUPABASE_TABLES
     await Promise.all(
-      checkList.map(async (tbl) => {
+      APP_SUPABASE_TABLES.map(async (table) => {
         try {
-          const { error } = await supabase.from(tbl).select('id').limit(1);
+          const { error } = await supabase.from(table.id).select('id').limit(1);
           if (!error) {
-            tableStatus[tbl] = true;
+            tableStatus[table.id] = true;
             anyTable = true;
           } else {
-            tableStatus[tbl] = false;
+            tableStatus[table.id] = false;
           }
         } catch {
-          tableStatus[tbl] = false;
+          tableStatus[table.id] = false;
         }
       })
     );
@@ -791,19 +888,10 @@ export async function pushAllDataToSupabase(snapshot: Record<string, any>): Prom
 export async function pullAllDataFromSupabase(): Promise<Record<string, any>> {
   const result: Record<string, any> = {};
 
-  const collectionKeys = [
-    'members',
-    'donors',
-    'funds',
-    'notices',
-    'supportMembers',
-    'homeSlides',
-    'aidDonations',
-    'extraContributions',
-    'organizationRules',
-    'supportReports',
-    'pendingPayments'
-  ];
+  // Dynamically pull all registered collection tables from APP_SUPABASE_TABLES
+  const collectionKeys = APP_SUPABASE_TABLES
+    .map(t => t.key)
+    .filter(k => k !== 'settings' && k !== 'appCollections');
 
   await Promise.all(
     collectionKeys.map(async (key) => {
