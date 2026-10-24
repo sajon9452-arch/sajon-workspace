@@ -18,9 +18,12 @@ import {
   LayoutGrid,
   User,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Download,
+  Loader2,
+  FileCheck
 } from 'lucide-react';
-import { FundRecord, Member, PaymentStatus, PaymentGatewayConfig } from '../types';
+import { FundRecord, Member, PaymentStatus, PaymentGatewayConfig, OrganizationProfile } from '../types';
 import { 
   toBengaliNumber, 
   formatBengaliCurrency, 
@@ -29,6 +32,7 @@ import {
 import { autoSyncMembersToFunds } from '../utils/memberFundLinker';
 import { generateDirectSimPaidSms, generateDirectSimDueSms, triggerDirectSimSms } from '../utils/smsHelper';
 import { PaymentGatewaySection } from './PaymentGatewaySection';
+import { generateAndDownloadReceipt } from '../utils/receiptGenerator';
 
 interface FundScreenProps {
   fundRecords: FundRecord[];
@@ -37,6 +41,7 @@ interface FundScreenProps {
   monthlyExpense?: number;
   extraMoney?: number;
   paymentConfig: PaymentGatewayConfig;
+  profile?: OrganizationProfile;
   isAdmin?: boolean;
   onBack?: () => void;
 }
@@ -48,12 +53,15 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   monthlyExpense = 0,
   extraMoney = 0,
   paymentConfig,
+  profile,
   isAdmin
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentStatus>('all');
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [smsSentNotice, setSmsSentNotice] = useState<string | null>(null);
+  const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
+  const [receiptToast, setReceiptToast] = useState<string | null>(null);
 
   // 1. 100% COMPLETE AUTO-SYNC: All members are automatically populated into Fund Management
   // Name, Mobile Number, and Designation are strictly auto-synced from Member list
@@ -143,8 +151,45 @@ export const FundScreen: React.FC<FundScreenProps> = ({
     setTimeout(() => setSmsSentNotice(null), 3500);
   };
 
+  const handleDownloadReceipt = async (record: FundRecord) => {
+    try {
+      setDownloadingReceiptId(record.id);
+      const member = (record.memberId ? memberMap.get(record.memberId) : undefined) || (record.phone ? memberMap.get(sanitizePhone(record.phone)) : undefined);
+      await generateAndDownloadReceipt(record, member, profile);
+      setReceiptToast(`${record.memberName}-এর ডিজিটাল পেমেন্ট রসিদ আপনার ডিভাইসে সফলভাবে ডাউনলোড হয়েছে`);
+      setTimeout(() => setReceiptToast(null), 4000);
+    } catch (err) {
+      console.error('Failed to generate receipt:', err);
+      setReceiptToast('রসিদ তৈরিতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+      setTimeout(() => setReceiptToast(null), 3500);
+    } finally {
+      setDownloadingReceiptId(null);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-20 sm:pb-8">
+      {/* Toast Notice for SMS */}
+      {smsSentNotice && (
+        <div className="fixed top-20 right-4 z-50 bg-emerald-800 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle2 className="w-5 h-5 text-emerald-300 shrink-0" />
+          <p className="text-xs sm:text-sm font-bold">{smsSentNotice}</p>
+        </div>
+      )}
+
+      {/* Toast Notice for Receipt Download */}
+      {receiptToast && (
+        <div className="fixed top-20 right-4 z-50 bg-emerald-900 text-white px-4 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-500/50 animate-in fade-in slide-in-from-top-2 max-w-sm">
+          <div className="w-8 h-8 rounded-xl bg-emerald-700/80 flex items-center justify-center shrink-0">
+            <FileCheck className="w-4 h-4 text-emerald-200" />
+          </div>
+          <div>
+            <p className="text-xs sm:text-sm font-bold leading-snug">{receiptToast}</p>
+            <p className="text-[10px] text-emerald-300 mt-0.5">ডিভাইসের ডাউনলোড ফোল্ডারে সংরক্ষিত হয়েছে</p>
+          </div>
+        </div>
+      )}
+
       {/* 1. Header & Summary Bar */}
       <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs space-y-5">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -499,7 +544,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                   </div>
                 </div>
 
-                {/* Bottom Actions: Auto-synced Mobile Number & SMS Receipt Button */}
+                {/* Bottom Actions: Auto-synced Mobile Number & Receipt Actions */}
                 <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 flex-wrap">
                   {/* Phone with copy */}
                   {memberPhone ? (
@@ -531,16 +576,40 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                     <span className="text-[11px] text-slate-400 italic">নম্বর সংযুক্ত নেই</span>
                   )}
 
-                  {/* SMS Action */}
-                  {memberPhone && (
+                  {/* Actions: Download Receipt & SMS */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Professional Digital Payment Receipt Download Button */}
                     <button
-                      onClick={() => handleSendSms(record)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs transition cursor-pointer border border-emerald-200 active:scale-95"
+                      type="button"
+                      onClick={() => handleDownloadReceipt(record)}
+                      disabled={downloadingReceiptId === record.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition cursor-pointer border border-emerald-800 active:scale-95 disabled:opacity-50"
+                      title="ডিজিটাল পেমেন্ট রসিদ সরাসরি ফোনে ডাউনলোড করুন"
                     >
-                      <Send className="w-3 h-3 text-emerald-600" />
-                      <span>SMS রসিদ</span>
+                      {downloadingReceiptId === record.id ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>রসিদ প্রস্তুত হচ্ছে...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5" />
+                          <span>রসিদ ডাউনলোড</span>
+                        </>
+                      )}
                     </button>
-                  )}
+
+                    {/* SMS Action */}
+                    {memberPhone && (
+                      <button
+                        onClick={() => handleSendSms(record)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs transition cursor-pointer border border-emerald-200 active:scale-95"
+                      >
+                        <Send className="w-3 h-3 text-emerald-600" />
+                        <span>SMS রসিদ</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );

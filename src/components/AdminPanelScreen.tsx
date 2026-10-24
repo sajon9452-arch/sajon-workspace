@@ -1020,9 +1020,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [establishedDate, setEstablishedDate] = useState(profile.establishedDate);
   const [establishedYear, setEstablishedYear] = useState(profile.establishedYear);
   const [address, setAddress] = useState(profile.address);
-  const [hotline, setHotline] = useState(profile.hotline);
-  const [regNumber, setRegNumber] = useState(profile.regNumber);
-  const [phone, setPhone] = useState(profile.phone);
+  const [hotline, setHotline] = useState(profile.hotline || '');
+  const [emergencyContact, setEmergencyContact] = useState(profile.emergencyContact || '');
+  const [regNumber, setRegNumber] = useState(profile.regNumber || '');
+  const [phone, setPhone] = useState(profile.phone || '');
   const [email, setEmail] = useState(profile.email || '');
   const [facebookUrl, setFacebookUrl] = useState(profile.facebookUrl || '');
   const [youtubeUrl, setYoutubeUrl] = useState(profile.youtubeUrl || '');
@@ -1036,9 +1037,10 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     setEstablishedDate(profile.establishedDate);
     setEstablishedYear(profile.establishedYear);
     setAddress(profile.address);
-    setHotline(profile.hotline);
-    setRegNumber(profile.regNumber);
-    setPhone(profile.phone);
+    setHotline(profile.hotline || '');
+    setEmergencyContact(profile.emergencyContact || '');
+    setRegNumber(profile.regNumber || '');
+    setPhone(profile.phone || '');
     setEmail(profile.email || '');
     setFacebookUrl(profile.facebookUrl || '');
     setYoutubeUrl(profile.youtubeUrl || '');
@@ -1319,20 +1321,21 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     e.preventDefault();
     onUpdateProfile({
       ...profile,
-      name,
-      tagline,
-      establishedDate,
-      establishedYear,
-      address,
-      hotline,
-      regNumber,
-      phone,
-      email: email ? email.trim() : '',
-      facebookUrl: facebookUrl ? facebookUrl.trim() : undefined,
-      youtubeUrl: youtubeUrl ? youtubeUrl.trim() : undefined,
+      name: name.trim(),
+      tagline: tagline.trim(),
+      establishedDate: establishedDate.trim(),
+      establishedYear: establishedYear.trim(),
+      address: address.trim(),
+      hotline: hotline.trim(),
+      emergencyContact: emergencyContact.trim(),
+      regNumber: regNumber.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      facebookUrl: facebookUrl.trim(),
+      youtubeUrl: youtubeUrl.trim(),
       logoUrl: logoUrl.trim() || undefined
     });
-    setNoticeMsg('সংগঠনের প্রোফাইল ও অফিসিয়াল যোগাযোগ তথ্য সফলভাবে আপডেট করা হয়েছে');
+    setNoticeMsg('সংগঠনের প্রোফাইল ও অফিসিয়াল যোগাযোগ তথ্য তাৎক্ষণিক সংরক্ষিত ও আপডেট হয়েছে');
     setTimeout(() => setNoticeMsg(''), 3000);
   };
 
@@ -4006,16 +4009,16 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               </div>
 
               <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
-                {/* Logo Preview */}
-                <div className="w-20 h-20 rounded-2xl bg-white border-2 border-dashed border-emerald-300 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                {/* Logo Preview (Exact original uploaded shape without added borders or padding) */}
+                <div className="flex items-center justify-center shrink-0 min-w-20 min-h-20">
                   {logoUrl ? (
                     <img 
                       src={logoUrl} 
                       alt="Organization Logo" 
-                      className="w-full h-full object-contain p-1"
+                      className="max-h-20 max-w-28 w-auto object-contain"
                     />
                   ) : (
-                    <div className="text-center p-2 text-slate-400">
+                    <div className="w-20 h-20 rounded-2xl bg-white border-2 border-dashed border-emerald-300 flex flex-col items-center justify-center text-center p-2 text-slate-400">
                       <ImageIcon className="w-7 h-7 mx-auto text-slate-300 mb-1" />
                       <span className="text-[9px] block font-semibold leading-tight">লোগো নেই</span>
                     </div>
@@ -4105,14 +4108,26 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">জরুরি হটলাইন</label>
                 <input
                   type="text"
                   value={hotline}
                   onChange={(e) => setHotline(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono"
+                  placeholder="খালি রাখলে হোম পেজে লুকানো থাকবে"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">জরুরি হেল্পলাইন নম্বর</label>
+                <input
+                  type="text"
+                  value={emergencyContact}
+                  onChange={(e) => setEmergencyContact(e.target.value)}
+                  placeholder="জরুরি সমন্বয়কারী নম্বর"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono text-xs"
                 />
               </div>
 
@@ -4122,7 +4137,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                   type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono"
+                  placeholder="খালি রাখলে হোম পেজে লুকানো থাকবে"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono text-xs"
                 />
               </div>
 
@@ -4132,7 +4148,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                   type="text"
                   value={regNumber}
                   onChange={(e) => setRegNumber(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  placeholder="ঐচ্ছিক রেজি: নম্বর"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs"
                 />
               </div>
             </div>
@@ -4141,7 +4158,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
             <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-200/80 space-y-3">
               <h4 className="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
                 <Globe className="w-4 h-4 text-indigo-700" />
-                <span>অফিসিয়াল যোগাযোগ, সোশ্যাল মিডিয়া ও ইমেইল (হোম পেজে প্রদর্শিত)</span>
+                <span>অফিসিয়াল যোগাযোগ, সোশ্যাল মিডিয়া ও ইমেইল (খালি রাখলে হোম পেজ থেকে স্বয়ংক্রিয়ভাবে লুকানো থাকবে)</span>
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
@@ -4150,8 +4167,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="sylhetmanabseva@gmail.com"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white"
+                    placeholder="খালি রাখলে হোম পেজে লুকানো থাকবে"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white text-xs"
                   />
                 </div>
 
@@ -4161,19 +4178,19 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                     type="url"
                     value={facebookUrl}
                     onChange={(e) => setFacebookUrl(e.target.value)}
-                    placeholder="https://facebook.com/yourpage"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white"
+                    placeholder="https://facebook.com/..."
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white text-xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">ইউটিউব / মিডিয়া লিংক (ঐচ্ছিক)</label>
+                  <label className="block font-bold text-slate-700 mb-1">ইউটিউব / মিডিয়া লিংক</label>
                   <input
                     type="url"
                     value={youtubeUrl}
                     onChange={(e) => setYoutubeUrl(e.target.value)}
-                    placeholder="https://youtube.com/@channel"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white"
+                    placeholder="https://youtube.com/..."
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white text-xs"
                   />
                 </div>
               </div>

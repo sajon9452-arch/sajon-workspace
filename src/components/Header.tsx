@@ -99,15 +99,17 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={() => setActiveScreen('home')}
           className="flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none group min-w-0 flex-1 overflow-hidden"
         >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white shadow-md flex items-center justify-center p-1.5 border-2 border-emerald-400 text-emerald-800 shrink-0 group-hover:scale-105 transition-transform duration-300">
+          <div className="flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300">
             {profile.logoUrl ? (
               <img 
                 src={profile.logoUrl} 
                 alt={profile.name} 
-                className="w-full h-full object-cover rounded-xl"
+                className="h-10 sm:h-12 w-auto max-w-[80px] sm:max-w-[120px] object-contain select-none"
               />
             ) : (
-              <HeartHandshake className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-700" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center text-emerald-300">
+                <HeartHandshake className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
+              </div>
             )}
           </div>
           {/* Requirement 1: Header Text Formatting (Strict 3-Line Clean Stack) */}

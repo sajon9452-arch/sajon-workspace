@@ -21,13 +21,13 @@ export const INITIAL_ORG_PROFILE: OrganizationProfile = {
   establishedDate: '১৫/০৮/২০২২ইং',
   establishedYear: '২০২২',
   address: 'পতেঙ্গা, চট্টগ্রাম',
-  hotline: '01886122678',
-  emergencyContact: '01711000000',
-  regNumber: '২০২২/০৮',
-  phone: '01886122678',
-  email: 'sylhetmanabseva@gmail.com',
-  facebookUrl: 'https://facebook.com/sylhetmanabsevasangathan',
-  youtubeUrl: 'https://youtube.com/@sylhetmanabseva',
+  hotline: '',
+  emergencyContact: '',
+  regNumber: '',
+  phone: '',
+  email: '',
+  facebookUrl: '',
+  youtubeUrl: '',
   logoUrl: DEFAULT_TRANSPARENT_LOGO
 };
 

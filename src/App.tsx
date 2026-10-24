@@ -899,6 +899,7 @@ export default function App() {
             monthlyExpense={monthlyExpense}
             extraMoney={extraMoney}
             paymentConfig={paymentConfig}
+            profile={profile}
             isAdmin={effectiveIsAdminForScreens}
             onBack={() => setActiveScreen('home')}
           />
