@@ -98,6 +98,9 @@ export interface OrganizationProfile {
   facebookUrl?: string;
   youtubeUrl?: string;
   logoUrl?: string;
+  presidentName?: string;
+  generalSecretaryName?: string;
+  financeSecretaryName?: string;
 }
 
 export interface PaymentGatewayConfig {

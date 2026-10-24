@@ -177,8 +177,8 @@ export async function generateAndDownloadReceipt(
 
   // 4. Memo No & Date Row
   headerStartY += 55;
-  const cleanId = (record.memberId || record.id || '001').replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase();
-  const voucherNo = `VCH-${cleanId || 'MS-01'}-${new Date().getFullYear()}`;
+  const actualUserId = member?.id || record.memberId || record.id || 'N/A';
+  const voucherNo = `VCH-${actualUserId}-${record.month ? record.month.replace(/\s+/g, '-') : new Date().getFullYear()}`;
   const todayFormatted = new Date().toLocaleDateString('bn-BD', {
     day: 'numeric',
     month: 'long',
@@ -189,7 +189,7 @@ export async function generateAndDownloadReceipt(
   ctx.fillStyle = '#374151';
   ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
   ctx.fillText(`রশিদ নং: `, 50, headerStartY);
-  ctx.font = '600 12px monospace';
+  ctx.font = '700 12px monospace';
   ctx.fillStyle = '#047857';
   ctx.fillText(voucherNo, 105, headerStartY);
 
@@ -229,8 +229,9 @@ export async function generateAndDownloadReceipt(
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   ctx.fillText('সদস্য আইডি:', boxX + 16, headerStartY + 56);
   ctx.fillStyle = '#047857';
-  ctx.font = 'bold 13px monospace';
-  ctx.fillText(record.memberId || member?.id || 'সংযুক্ত নেই', boxX + 105, headerStartY + 56);
+  ctx.font = 'bold 14px monospace';
+  // Actual User ID from database
+  ctx.fillText(actualUserId, boxX + 105, headerStartY + 56);
 
   ctx.fillStyle = '#6B7280';
   ctx.font = '12px system-ui, -apple-system, sans-serif';
@@ -240,33 +241,34 @@ export async function generateAndDownloadReceipt(
   ctx.fillText(record.phone || member?.phone || 'সংযুক্ত নেই', boxX + 105, headerStartY + 82);
 
   // Column 2
-  const col2X = boxX + boxW / 2 + 20;
+  const col2X = boxX + boxW / 2 + 10;
+  const actualDesignation = member?.designation || record.designation || 'সাধারণ সদস্য';
   ctx.fillStyle = '#6B7280';
   ctx.font = '12px system-ui, -apple-system, sans-serif';
-  ctx.fillText('পদবী:', col2X, headerStartY + 28);
+  ctx.fillText('পদবী / পদ:', col2X, headerStartY + 28);
   ctx.fillStyle = '#111827';
   ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-  ctx.fillText(record.designation || member?.designation || 'সম্মানিত সদস্য', col2X + 65, headerStartY + 28);
+  // Actual Designation from database
+  ctx.fillText(actualDesignation, col2X + 75, headerStartY + 28);
 
   ctx.fillStyle = '#6B7280';
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   ctx.fillText('রক্তের গ্রুপ:', col2X, headerStartY + 56);
   ctx.fillStyle = '#DC2626';
   ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-  ctx.fillText(member?.bloodGroup || 'অজানা', col2X + 65, headerStartY + 56);
+  ctx.fillText(member?.bloodGroup || 'অজানা', col2X + 75, headerStartY + 56);
 
   ctx.fillStyle = '#6B7280';
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   ctx.fillText('পেমেন্ট ধরণ:', col2X, headerStartY + 82);
   ctx.fillStyle = '#047857';
   ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
-  ctx.fillText('মাসিক কল্যাণ চাঁদা', col2X + 65, headerStartY + 82);
+  ctx.fillText('মাসিক কল্যাণ চাঁদা (পরিশোধিত)', col2X + 75, headerStartY + 82);
 
   // 6. Payment Breakdown Table
   headerStartY += boxH + 24;
   const tableX = 50;
   const tableW = width - 100;
-  const tableH = 150;
 
   // Table Header
   ctx.fillStyle = '#064E3B';
@@ -346,65 +348,113 @@ export async function generateAndDownloadReceipt(
   ctx.font = '600 12px system-ui, -apple-system, sans-serif';
   ctx.fillText(numberToBengaliWords(paidVal), tableX + 60, headerStartY + 23);
 
-  // 8. Official Verification Seal & Signature
-  headerStartY += 60;
+  // 8. Official Seal & Three Designated Signature and Name Areas
+  // Requirement 7: Must feature three designated signature and name areas at the bottom for:
+  // 1. সভাপতি (President)
+  // 2. সাধারণ সম্পাদক (General Secretary)
+  // 3. অর্থ বিষয়ক সম্পাদক (Finance Secretary)
+  // Populated dynamically with English names edited and saved from the Admin Panel.
+  headerStartY += 65;
 
-  // Left: Official Circular Stamp / Seal
-  const sealCenterX = tableX + 110;
-  const sealCenterY = headerStartY + 60;
-  const sealRadius = 52;
-
-  ctx.save();
-  ctx.strokeStyle = '#059669';
-  ctx.lineWidth = 2.5;
+  // Background subtle verification watermark banner
+  ctx.fillStyle = '#F9FAFB';
   ctx.beginPath();
-  ctx.arc(sealCenterX, sealCenterY, sealRadius, 0, Math.PI * 2);
-  ctx.stroke();
-
+  ctx.roundRect(tableX, headerStartY, tableW, 115, 12);
+  ctx.fill();
+  ctx.strokeStyle = '#E5E7EB';
   ctx.lineWidth = 1;
-  ctx.setLineDash([4, 3]);
-  ctx.beginPath();
-  ctx.arc(sealCenterX, sealCenterY, sealRadius - 5, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.setLineDash([]);
 
-  ctx.fillStyle = '#047857';
-  ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
+  // Signature Coordinates
+  const sigY = headerStartY + 50;
+  const colWidth = tableW / 3;
+  const leftX = tableX + colWidth * 0.5;
+  const midX = tableX + colWidth * 1.5;
+  const rightX = tableX + colWidth * 2.5;
+
+  // Fetch dynamic names from organization profile
+  const presidentName = (profile?.presidentName || '').trim() || 'President';
+  const generalSecretaryName = (profile?.generalSecretaryName || '').trim() || 'General Secretary';
+  const financeSecretaryName = (profile?.financeSecretaryName || '').trim() || 'Finance Secretary';
+
+  // --- Signature Block 1: সভাপতি (President) ---
   ctx.textAlign = 'center';
-  ctx.fillText('সিলেট মানবসেবা সংগঠন', sealCenterX, sealCenterY - 20);
-
-  ctx.fillStyle = '#059669';
-  ctx.font = 'bold 14px system-ui, -apple-system, sans-serif';
-  ctx.fillText('★ ভেরিফাইড ★', sealCenterX, sealCenterY);
-
-  ctx.fillStyle = '#065F46';
-  ctx.font = 'bold 9px monospace';
-  ctx.fillText('OFFICIAL DIGITAL SEAL', sealCenterX, sealCenterY + 16);
-  ctx.fillText('PAID & APPROVED', sealCenterX, sealCenterY + 28);
-  ctx.restore();
-
-  // Right: Signature Area
-  const sigX = tableX + tableW - 160;
-  const sigY = headerStartY + 60;
+  // Digital signature seal glyph
+  ctx.fillStyle = '#047857';
+  ctx.font = 'italic bold 14px "Brush Script MT", cursive, sans-serif';
+  ctx.fillText(presidentName, leftX, sigY - 8);
 
   ctx.strokeStyle = '#9CA3AF';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(sigX - 60, sigY + 20);
-  ctx.lineTo(sigX + 60, sigY + 20);
+  ctx.moveTo(leftX - 85, sigY);
+  ctx.lineTo(leftX + 85, sigY);
   ctx.stroke();
 
   ctx.fillStyle = '#111827';
+  ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+  ctx.fillText(presidentName, leftX, sigY + 18);
+
+  ctx.fillStyle = '#065F46';
   ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('অনুমোদিত কোষাধ্যক্ষ / সভাপতি', sigX, sigY + 36);
+  ctx.fillText('সভাপতি (President)', leftX, sigY + 33);
 
   ctx.fillStyle = '#6B7280';
   ctx.font = '9px system-ui, -apple-system, sans-serif';
-  ctx.fillText('ডিজিটাল অনুমোদন সম্পন্ন', sigX, sigY + 48);
+  ctx.fillText('সিলেট মানবসেবা সংগঠন', leftX, sigY + 46);
+
+  // --- Signature Block 2: সাধারণ সম্পাদক (General Secretary) ---
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#047857';
+  ctx.font = 'italic bold 14px "Brush Script MT", cursive, sans-serif';
+  ctx.fillText(generalSecretaryName, midX, sigY - 8);
+
+  ctx.strokeStyle = '#9CA3AF';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(midX - 85, sigY);
+  ctx.lineTo(midX + 85, sigY);
+  ctx.stroke();
+
+  ctx.fillStyle = '#111827';
+  ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+  ctx.fillText(generalSecretaryName, midX, sigY + 18);
+
+  ctx.fillStyle = '#065F46';
+  ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+  ctx.fillText('সাধারণ সম্পাদক (General Secretary)', midX, sigY + 33);
+
+  ctx.fillStyle = '#6B7280';
+  ctx.font = '9px system-ui, -apple-system, sans-serif';
+  ctx.fillText('সিলেট মানবসেবা সংগঠন', midX, sigY + 46);
+
+  // --- Signature Block 3: অর্থ বিষয়ক সম্পাদক (Finance Secretary) ---
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#047857';
+  ctx.font = 'italic bold 14px "Brush Script MT", cursive, sans-serif';
+  ctx.fillText(financeSecretaryName, rightX, sigY - 8);
+
+  ctx.strokeStyle = '#9CA3AF';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(rightX - 85, sigY);
+  ctx.lineTo(rightX + 85, sigY);
+  ctx.stroke();
+
+  ctx.fillStyle = '#111827';
+  ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+  ctx.fillText(financeSecretaryName, rightX, sigY + 18);
+
+  ctx.fillStyle = '#065F46';
+  ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+  ctx.fillText('অর্থ বিষয়ক সম্পাদক (Finance Secretary)', rightX, sigY + 33);
+
+  ctx.fillStyle = '#6B7280';
+  ctx.font = '9px system-ui, -apple-system, sans-serif';
+  ctx.fillText('সিলেট মানবসেবা সংগঠন', rightX, sigY + 46);
 
   // 9. Bottom Footer Disclaimer Strip
-  const footerY = height - 60;
+  const footerY = height - 55;
   ctx.strokeStyle = '#E5E7EB';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -416,7 +466,7 @@ export async function generateAndDownloadReceipt(
   ctx.fillStyle = '#6B7280';
   ctx.font = '10px system-ui, -apple-system, sans-serif';
   ctx.fillText(
-    'এটি একটি কম্পিউটার-জেনারেটেড ডিজিটাল পেমেন্ট রশিদ। এতে কোনো ম্যানুয়াল সিল বা স্বাক্ষরের প্রয়োজন নেই।',
+    'এটি একটি কম্পিউটার-জেনারেটেড ডিজিটাল পেমেন্ট রশিদ। সংগঠন কর্তৃক অনুমোদিত ও ভেরিফাইড।',
     width / 2,
     footerY + 18
   );

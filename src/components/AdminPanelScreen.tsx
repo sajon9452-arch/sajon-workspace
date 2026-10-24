@@ -47,7 +47,9 @@ import {
   BookOpen,
   Droplet,
   Headphones,
-  Code
+  Code,
+  Download,
+  FileCheck
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
@@ -77,6 +79,7 @@ import {
 } from '../utils/helpers';
 import { autoSyncMembersToFunds } from '../utils/memberFundLinker';
 import { generateDirectSimPaidSms, generateDirectSimDueSms, triggerDirectSimSms } from '../utils/smsHelper';
+import { generateAndDownloadReceipt } from '../utils/receiptGenerator';
 import { saveAdminPin, PMS_SYNC_EVENT, saveFunds, loadFunds } from '../utils/storage';
 import { BkashLogo, NagadLogo, RocketLogo } from './PaymentGatewaySection';
 import { 
@@ -1028,6 +1031,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [facebookUrl, setFacebookUrl] = useState(profile.facebookUrl || '');
   const [youtubeUrl, setYoutubeUrl] = useState(profile.youtubeUrl || '');
   const [logoUrl, setLogoUrl] = useState(profile.logoUrl || '');
+  const [presidentName, setPresidentName] = useState(profile.presidentName || '');
+  const [generalSecretaryName, setGeneralSecretaryName] = useState(profile.generalSecretaryName || '');
+  const [financeSecretaryName, setFinanceSecretaryName] = useState(profile.financeSecretaryName || '');
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   // Sync profile when prop changes
@@ -1045,6 +1051,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     setFacebookUrl(profile.facebookUrl || '');
     setYoutubeUrl(profile.youtubeUrl || '');
     setLogoUrl(profile.logoUrl || '');
+    setPresidentName(profile.presidentName || '');
+    setGeneralSecretaryName(profile.generalSecretaryName || '');
+    setFinanceSecretaryName(profile.financeSecretaryName || '');
   }, [profile]);
 
   // Payment Form
@@ -1333,9 +1342,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       email: email.trim(),
       facebookUrl: facebookUrl.trim(),
       youtubeUrl: youtubeUrl.trim(),
-      logoUrl: logoUrl.trim() || undefined
+      logoUrl: logoUrl.trim() || undefined,
+      presidentName: presidentName.trim(),
+      generalSecretaryName: generalSecretaryName.trim(),
+      financeSecretaryName: financeSecretaryName.trim()
     });
-    setNoticeMsg('সংগঠনের প্রোফাইল ও অফিসিয়াল যোগাযোগ তথ্য তাৎক্ষণিক সংরক্ষিত ও আপডেট হয়েছে');
+    setNoticeMsg('সংগঠনের প্রোফাইল ও রসিদ স্বাক্ষরকারী তথ্য তাৎক্ষণিক সংরক্ষিত ও আপডেট হয়েছে');
     setTimeout(() => setNoticeMsg(''), 3000);
   };
 
@@ -3606,14 +3618,26 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                           {isPaid ? "বকেয়া" : "পরিশোধ"}
                         </button>
 
-                        {/* SMS */}
-                        {memberPhone && (
+                        {/* Clean "রসিদ" button - only for Paid members; completely hidden for Due */}
+                        {isPaid && (
                           <button
-                            onClick={() => handleSendFundSms(record)}
-                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 cursor-pointer transition border border-slate-200"
-                            title="SMS রসিদ পাঠান / কপি করুন"
+                            onClick={async () => {
+                              try {
+                                const targetMember = members.find(m => m.id === record.memberId) || (record.phone ? members.find(m => sanitizePhone(m.phone) === sanitizePhone(record.phone)) : undefined);
+                                await generateAndDownloadReceipt(record, targetMember, profile);
+                                setNoticeMsg(`${record.memberName}-এর ডিজিটাল পেমেন্ট রসিদ সফলভাবে ডাউনলোড হয়েছে`);
+                                setTimeout(() => setNoticeMsg(''), 3000);
+                              } catch (err) {
+                                console.error(err);
+                                setErrorMsg('রসিদ ডাউনলোড করতে সমস্যা হয়েছে');
+                                setTimeout(() => setErrorMsg(''), 3000);
+                              }
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1 active:scale-95 shadow-2xs"
+                            title="ডিজিটাল পেমেন্ট রসিদ সরাসরি ডাউনলোড করুন"
                           >
-                            <Send className="w-3.5 h-3.5 text-emerald-600" />
+                            <Download className="w-3.5 h-3.5" />
+                            <span>রসিদ</span>
                           </button>
                         )}
                       </div>
@@ -4191,6 +4215,56 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                     onChange={(e) => setYoutubeUrl(e.target.value)}
                     placeholder="https://youtube.com/..."
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Requirement 7: Digital Receipt Signatories (English / Bengali names for President, General Secretary, Finance Secretary) */}
+            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/90 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h4 className="font-bold text-emerald-950 text-xs flex items-center gap-1.5">
+                  <FileCheck className="w-4 h-4 text-emerald-700" />
+                  <span>ডিজিটাল পেমেন্ট রসিদ স্বাক্ষরকারী কর্মকর্তাদের নাম (রসিদে স্বয়ংক্রিয়ভাবে মুদ্রিত হবে)</span>
+                </h4>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-full border border-emerald-200">
+                  রসিদ ভেরিফিকেশন
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-800/80">
+                পেমেন্ট রসিদের নিচে ৩টি নির্ধারিত স্বাক্ষর স্থানে এই ৩ জন কর্মকর্তার ইংরেজি/বাংলা নাম স্বয়ংক্রিয়ভাবে প্রদর্শিত হবে।
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1 text-xs">১. সভাপতি (President) নাম</label>
+                  <input
+                    type="text"
+                    value={presidentName}
+                    onChange={(e) => setPresidentName(e.target.value)}
+                    placeholder="e.g. Md. Sajon Ahmed"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium bg-white text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1 text-xs">২. সাধারণ সম্পাদক (General Secretary) নাম</label>
+                  <input
+                    type="text"
+                    value={generalSecretaryName}
+                    onChange={(e) => setGeneralSecretaryName(e.target.value)}
+                    placeholder="e.g. Mahfuzur Rahman"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium bg-white text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1 text-xs">৩. অর্থ বিষয়ক সম্পাদক (Finance Secretary) নাম</label>
+                  <input
+                    type="text"
+                    value={financeSecretaryName}
+                    onChange={(e) => setFinanceSecretaryName(e.target.value)}
+                    placeholder="e.g. Tanvir Hasan"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium bg-white text-xs"
                   />
                 </div>
               </div>

@@ -28,7 +28,10 @@ export const INITIAL_ORG_PROFILE: OrganizationProfile = {
   email: '',
   facebookUrl: '',
   youtubeUrl: '',
-  logoUrl: DEFAULT_TRANSPARENT_LOGO
+  logoUrl: DEFAULT_TRANSPARENT_LOGO,
+  presidentName: '',
+  generalSecretaryName: '',
+  financeSecretaryName: ''
 };
 
 export const INITIAL_PAYMENT_CONFIG: PaymentGatewayConfig = {

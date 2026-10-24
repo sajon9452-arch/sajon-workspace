@@ -9,9 +9,6 @@ import {
   Check, 
   TrendingUp, 
   TrendingDown, 
-  Send,
-  ShieldCheck,
-  Lock,
   Receipt,
   Coins,
   Sparkles,
@@ -21,7 +18,9 @@ import {
   AlertCircle,
   Download,
   Loader2,
-  FileCheck
+  FileCheck,
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
 import { FundRecord, Member, PaymentStatus, PaymentGatewayConfig, OrganizationProfile } from '../types';
 import { 
@@ -30,7 +29,6 @@ import {
   sanitizePhone 
 } from '../utils/helpers';
 import { autoSyncMembersToFunds } from '../utils/memberFundLinker';
-import { generateDirectSimPaidSms, generateDirectSimDueSms, triggerDirectSimSms } from '../utils/smsHelper';
 import { PaymentGatewaySection } from './PaymentGatewaySection';
 import { generateAndDownloadReceipt } from '../utils/receiptGenerator';
 
@@ -59,7 +57,6 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentStatus>('all');
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
-  const [smsSentNotice, setSmsSentNotice] = useState<string | null>(null);
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
   const [receiptToast, setReceiptToast] = useState<string | null>(null);
 
@@ -123,34 +120,6 @@ export const FundScreen: React.FC<FundScreenProps> = ({
     });
   }, [effectiveFundRecords, statusFilter, searchTerm]);
 
-  const handleSendSms = (rec: FundRecord) => {
-    const phone = rec.phone;
-    if (!phone) {
-      alert('এই সদস্যের মোবাইল নম্বর যুক্ত নেই');
-      return;
-    }
-
-    let text = '';
-    if (rec.status === 'Paid') {
-      text = generateDirectSimPaidSms({
-        memberName: rec.memberName,
-        months: rec.paidMonths || rec.month || 'চলতি',
-        money: rec.paidAmount || rec.amount
-      });
-    } else {
-      text = generateDirectSimDueSms({
-        memberName: rec.memberName,
-        money: rec.dueAmount || rec.amount,
-        monthCount: 1
-      });
-    }
-
-    triggerDirectSimSms(phone, text);
-    navigator.clipboard.writeText(text);
-    setSmsSentNotice(`${rec.memberName}-এর জন্য মেসেজ ক্লিপবোর্ডে কপি হয়েছে ও SMS প্রস্তুত`);
-    setTimeout(() => setSmsSentNotice(null), 3500);
-  };
-
   const handleDownloadReceipt = async (record: FundRecord) => {
     try {
       setDownloadingReceiptId(record.id);
@@ -169,14 +138,6 @@ export const FundScreen: React.FC<FundScreenProps> = ({
 
   return (
     <div className="space-y-6 pb-20 sm:pb-8">
-      {/* Toast Notice for SMS */}
-      {smsSentNotice && (
-        <div className="fixed top-20 right-4 z-50 bg-emerald-800 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
-          <CheckCircle2 className="w-5 h-5 text-emerald-300 shrink-0" />
-          <p className="text-xs sm:text-sm font-bold">{smsSentNotice}</p>
-        </div>
-      )}
-
       {/* Toast Notice for Receipt Download */}
       {receiptToast && (
         <div className="fixed top-20 right-4 z-50 bg-emerald-900 text-white px-4 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-500/50 animate-in fade-in slide-in-from-top-2 max-w-sm">
@@ -341,15 +302,6 @@ export const FundScreen: React.FC<FundScreenProps> = ({
           </div>
         </div>
       </div>
-
-      {smsSentNotice && (
-        <div className="p-4 rounded-2xl bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between shadow-xs animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-            <span>{smsSentNotice}</span>
-          </div>
-        </div>
-      )}
 
       {/* 2. Search, Status Filter & View Mode Switcher */}
       <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
@@ -576,40 +528,30 @@ export const FundScreen: React.FC<FundScreenProps> = ({
                     <span className="text-[11px] text-slate-400 italic">নম্বর সংযুক্ত নেই</span>
                   )}
 
-                  {/* Actions: Download Receipt & SMS */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Professional Digital Payment Receipt Download Button */}
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadReceipt(record)}
-                      disabled={downloadingReceiptId === record.id}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition cursor-pointer border border-emerald-800 active:scale-95 disabled:opacity-50"
-                      title="ডিজিটাল পেমেন্ট রসিদ সরাসরি ফোনে ডাউনলোড করুন"
-                    >
-                      {downloadingReceiptId === record.id ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>রসিদ প্রস্তুত হচ্ছে...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Download className="w-3.5 h-3.5" />
-                          <span>রসিদ ডাউনলোড</span>
-                        </>
-                      )}
-                    </button>
-
-                    {/* SMS Action */}
-                    {memberPhone && (
+                  {/* Action: Clean "রসিদ" Download Button - Only for Paid members; completely hidden for Due */}
+                  {isPaid && (
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleSendSms(record)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs transition cursor-pointer border border-emerald-200 active:scale-95"
+                        type="button"
+                        onClick={() => handleDownloadReceipt(record)}
+                        disabled={downloadingReceiptId === record.id}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition cursor-pointer border border-emerald-800 active:scale-95 disabled:opacity-50"
+                        title="ডিজিটাল পেমেন্ট রসিদ সরাসরি ফোনে ডাউনলোড করুন"
                       >
-                        <Send className="w-3 h-3 text-emerald-600" />
-                        <span>SMS রসিদ</span>
+                        {downloadingReceiptId === record.id ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>রসিদ প্রস্তুত হচ্ছে...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3.5 h-3.5" />
+                            <span>রসিদ</span>
+                          </>
+                        )}
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
