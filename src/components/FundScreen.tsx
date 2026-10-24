@@ -30,7 +30,8 @@ import {
 } from '../utils/helpers';
 import { autoSyncMembersToFunds } from '../utils/memberFundLinker';
 import { PaymentGatewaySection } from './PaymentGatewaySection';
-import { generateAndDownloadReceipt } from '../utils/receiptGenerator';
+import { generateReceiptDataUrl } from '../utils/receiptGenerator';
+import { ReceiptPreviewModal } from './ReceiptPreviewModal';
 
 interface FundScreenProps {
   fundRecords: FundRecord[];
@@ -59,6 +60,8 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
   const [receiptToast, setReceiptToast] = useState<string | null>(null);
+  const [previewReceiptUrl, setPreviewReceiptUrl] = useState<string | null>(null);
+  const [previewReceiptRecord, setPreviewReceiptRecord] = useState<FundRecord | null>(null);
 
   // 1. 100% COMPLETE AUTO-SYNC: All members are automatically populated into Fund Management
   // Name, Mobile Number, and Designation are strictly auto-synced from Member list
@@ -124,9 +127,9 @@ export const FundScreen: React.FC<FundScreenProps> = ({
     try {
       setDownloadingReceiptId(record.id);
       const member = (record.memberId ? memberMap.get(record.memberId) : undefined) || (record.phone ? memberMap.get(sanitizePhone(record.phone)) : undefined);
-      await generateAndDownloadReceipt(record, member, profile);
-      setReceiptToast(`${record.memberName}-এর ডিজিটাল পেমেন্ট রসিদ আপনার ডিভাইসে সফলভাবে ডাউনলোড হয়েছে`);
-      setTimeout(() => setReceiptToast(null), 4000);
+      const dataUrl = await generateReceiptDataUrl(record, member, profile);
+      setPreviewReceiptUrl(dataUrl);
+      setPreviewReceiptRecord(record);
     } catch (err) {
       console.error('Failed to generate receipt:', err);
       setReceiptToast('রসিদ তৈরিতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
@@ -570,6 +573,17 @@ export const FundScreen: React.FC<FundScreenProps> = ({
       <PaymentGatewaySection 
         paymentConfig={paymentConfig} 
         members={members} 
+      />
+
+      {/* 5. Safe Modal Preview for Digital Payment Receipt (Crash-Free for AppCreator24 & Android WebViews) */}
+      <ReceiptPreviewModal
+        isOpen={!!previewReceiptUrl}
+        receiptUrl={previewReceiptUrl}
+        record={previewReceiptRecord}
+        onClose={() => {
+          setPreviewReceiptUrl(null);
+          setPreviewReceiptRecord(null);
+        }}
       />
     </div>
   );

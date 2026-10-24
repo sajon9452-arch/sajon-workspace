@@ -79,7 +79,8 @@ import {
 } from '../utils/helpers';
 import { autoSyncMembersToFunds } from '../utils/memberFundLinker';
 import { generateDirectSimPaidSms, generateDirectSimDueSms, triggerDirectSimSms } from '../utils/smsHelper';
-import { generateAndDownloadReceipt } from '../utils/receiptGenerator';
+import { generateReceiptDataUrl } from '../utils/receiptGenerator';
+import { ReceiptPreviewModal } from './ReceiptPreviewModal';
 import { saveAdminPin, PMS_SYNC_EVENT, saveFunds, loadFunds } from '../utils/storage';
 import { BkashLogo, NagadLogo, RocketLogo } from './PaymentGatewaySection';
 import { 
@@ -799,6 +800,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
   // Dedicated Net Balance Modal State
   const [isNetBalanceModalOpen, setIsNetBalanceModalOpen] = useState(false);
+  const [adminPreviewReceiptUrl, setAdminPreviewReceiptUrl] = useState<string | null>(null);
+  const [adminPreviewReceiptRecord, setAdminPreviewReceiptRecord] = useState<FundRecord | null>(null);
 
   // Dedicated Fund Record Edit Modal State (Requirement 4: Admin Control for Dues, Payments, and Months)
   const [editingFundRecord, setEditingFundRecord] = useState<FundRecord | null>(null);
@@ -3624,17 +3627,17 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                             onClick={async () => {
                               try {
                                 const targetMember = members.find(m => m.id === record.memberId) || (record.phone ? members.find(m => sanitizePhone(m.phone) === sanitizePhone(record.phone)) : undefined);
-                                await generateAndDownloadReceipt(record, targetMember, profile);
-                                setNoticeMsg(`${record.memberName}-এর ডিজিটাল পেমেন্ট রসিদ সফলভাবে ডাউনলোড হয়েছে`);
-                                setTimeout(() => setNoticeMsg(''), 3000);
+                                const dataUrl = await generateReceiptDataUrl(record, targetMember, profile);
+                                setAdminPreviewReceiptUrl(dataUrl);
+                                setAdminPreviewReceiptRecord(record);
                               } catch (err) {
                                 console.error(err);
-                                setErrorMsg('রসিদ ডাউনলোড করতে সমস্যা হয়েছে');
+                                setErrorMsg('রসিদ প্রদর্শন করতে সমস্যা হয়েছে');
                                 setTimeout(() => setErrorMsg(''), 3000);
                               }
                             }}
                             className="px-2.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1 active:scale-95 shadow-2xs"
-                            title="ডিজিটাল পেমেন্ট রসিদ সরাসরি ডাউনলোড করুন"
+                            title="ডিজিটাল পেমেন্ট রসিদ দেখুন ও সংরক্ষণ করুন"
                           >
                             <Download className="w-3.5 h-3.5" />
                             <span>রসিদ</span>
@@ -6982,6 +6985,17 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* Safe Modal Preview for Digital Payment Receipt (Crash-Free for AppCreator24 & Android WebViews) */}
+      <ReceiptPreviewModal
+        isOpen={!!adminPreviewReceiptUrl}
+        receiptUrl={adminPreviewReceiptUrl}
+        record={adminPreviewReceiptRecord}
+        onClose={() => {
+          setAdminPreviewReceiptUrl(null);
+          setAdminPreviewReceiptRecord(null);
+        }}
+      />
     </div>
   );
 };

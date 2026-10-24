@@ -49,16 +49,46 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
 }
 
 /**
- * Generates an official digital payment receipt and triggers direct download to device
+ * Wraps text onto multiple lines to fit within a given maxWidth on an HTML5 canvas
  */
-export async function generateAndDownloadReceipt(
+function wrapCanvasText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = words[0] || '';
+
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i];
+    const testLine = currentLine + ' ' + word;
+    const width = ctx.measureText(testLine).width;
+    if (width < maxWidth) {
+      currentLine = testLine;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  return lines;
+}
+
+/**
+ * Generates an official digital payment receipt and returns a Data URL (PNG)
+ * Completely safe for AppCreator24 Android WebViews
+ */
+export async function generateReceiptDataUrl(
   record: FundRecord,
   member?: Member,
   profile?: OrganizationProfile
 ): Promise<string> {
   // Dimensions for high-resolution 2x canvas (Retina clarity)
   const width = 850;
-  const height = 1150;
+  const height = 1260;
   const scale = 2;
 
   const canvas = document.createElement('canvas');
@@ -266,7 +296,7 @@ export async function generateAndDownloadReceipt(
   ctx.fillText('মাসিক কল্যাণ চাঁদা (পরিশোধিত)', col2X + 75, headerStartY + 82);
 
   // 6. Payment Breakdown Table
-  headerStartY += boxH + 24;
+  headerStartY += boxH + 22;
   const tableX = 50;
   const tableW = width - 100;
 
@@ -333,7 +363,7 @@ export async function generateAndDownloadReceipt(
   ctx.fillText(`৳ ${toBengaliNumber(paidVal)}`, tableX + tableW - 16, totalY + 26);
 
   // 7. Amount in Words Box
-  headerStartY = totalY + 54;
+  headerStartY = totalY + 50;
   ctx.fillStyle = '#ECFDF5';
   ctx.fillRect(tableX, headerStartY, tableW, 36);
   ctx.strokeStyle = '#A7F3D0';
@@ -348,25 +378,64 @@ export async function generateAndDownloadReceipt(
   ctx.font = '600 12px system-ui, -apple-system, sans-serif';
   ctx.fillText(numberToBengaliWords(paidVal), tableX + 60, headerStartY + 23);
 
-  // 8. Official Seal & Three Designated Signature and Name Areas
-  // Requirement 7: Must feature three designated signature and name areas at the bottom for:
-  // 1. সভাপতি (President)
-  // 2. সাধারণ সম্পাদক (General Secretary)
-  // 3. অর্থ বিষয়ক সম্পাদক (Finance Secretary)
-  // Populated dynamically with English names edited and saved from the Admin Panel.
-  headerStartY += 65;
+  // 8. Dynamic Personalized Appreciation Message Box in Receipt Footer
+  // Requirement 2:
+  // "আসসালামু আলাইকুম সিলেট মানবসেবা সংগঠন এর প্রিয় সদস্য - [Member Name] ([Designation]), আপনার [Paid Month] মাসের মাসিক চাঁদা মোট- ৳ [Paid Amount] টাকা সফলভাবে পরিশোধ করা হয়েছে। আশা করি আগামী দিনগুলোতেও এভাবে সংগঠনের পাশে থাকবেন। ধন্যবাদ!"
+  headerStartY += 48;
+  const orgName = profile?.name || 'সিলেট মানবসেবা সংগঠন';
+  const memberName = record.memberName || member?.name || 'সম্মানিত সদস্য';
+  const memberDesig = member?.designation || record.designation || 'সদস্য';
+  const paidMonth = record.paidMonths || record.month || 'চলতি';
+  const appreciationMsg = `আসসালামু আলাইকুম ${orgName} এর প্রিয় সদস্য - ${memberName} (${memberDesig}), আপনার ${paidMonth} মাসের মাসিক চাঁদা মোট- ৳ ${toBengaliNumber(paidVal)} টাকা সফলভাবে পরিশোধ করা হয়েছে। আশা করি আগামী দিনগুলোতেও এভাবে সংগঠনের পাশে থাকবেন। ধন্যবাদ!`;
+
+  const appBoxX = tableX;
+  const appBoxW = tableW;
+  const appBoxH = 76;
+
+  // Background gradient card
+  const appGrad = ctx.createLinearGradient(appBoxX, headerStartY, appBoxX + appBoxW, headerStartY + appBoxH);
+  appGrad.addColorStop(0, '#F0FDF4'); // emerald-50
+  appGrad.addColorStop(1, '#ECFDF5'); // teal-50
+  ctx.fillStyle = appGrad;
+  ctx.beginPath();
+  ctx.roundRect(appBoxX, headerStartY, appBoxW, appBoxH, 10);
+  ctx.fill();
+
+  ctx.strokeStyle = '#86EFAC'; // emerald-300
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Draw Appreciation Text with multi-line wrap
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 12.5px system-ui, -apple-system, sans-serif';
+  ctx.fillStyle = '#064E3B';
+
+  const wrappedLines = wrapCanvasText(ctx, appreciationMsg, appBoxW - 44);
+  const lineSpacing = 22;
+  const textStartY = headerStartY + (appBoxH - (wrappedLines.length - 1) * lineSpacing) / 2 + 5;
+
+  wrappedLines.forEach((line, index) => {
+    ctx.fillText(line, width / 2, textStartY + index * lineSpacing);
+  });
+
+  // 9. Official Seal & Three Designated Signature and Name Areas
+  // Requirement 3:
+  // - Remove duplicate name text printed directly underneath the signature lines.
+  // - Keep the signature/name text above the line, and retain only the official designations and organization name below each line.
+  headerStartY += appBoxH + 20;
 
   // Background subtle verification watermark banner
+  const sigBoxH = 110;
   ctx.fillStyle = '#F9FAFB';
   ctx.beginPath();
-  ctx.roundRect(tableX, headerStartY, tableW, 115, 12);
+  ctx.roundRect(tableX, headerStartY, tableW, sigBoxH, 12);
   ctx.fill();
   ctx.strokeStyle = '#E5E7EB';
   ctx.lineWidth = 1;
   ctx.stroke();
 
   // Signature Coordinates
-  const sigY = headerStartY + 50;
+  const sigY = headerStartY + 45;
   const colWidth = tableW / 3;
   const leftX = tableX + colWidth * 0.5;
   const midX = tableX + colWidth * 1.5;
@@ -379,9 +448,9 @@ export async function generateAndDownloadReceipt(
 
   // --- Signature Block 1: সভাপতি (President) ---
   ctx.textAlign = 'center';
-  // Digital signature seal glyph
+  // Digital signature seal glyph (Above the line)
   ctx.fillStyle = '#047857';
-  ctx.font = 'italic bold 14px "Brush Script MT", cursive, sans-serif';
+  ctx.font = 'italic bold 15px "Brush Script MT", cursive, sans-serif';
   ctx.fillText(presidentName, leftX, sigY - 8);
 
   ctx.strokeStyle = '#9CA3AF';
@@ -391,22 +460,20 @@ export async function generateAndDownloadReceipt(
   ctx.lineTo(leftX + 85, sigY);
   ctx.stroke();
 
-  ctx.fillStyle = '#111827';
-  ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
-  ctx.fillText(presidentName, leftX, sigY + 18);
-
+  // Retain only official designation & organization name below line (NO duplicate name)
   ctx.fillStyle = '#065F46';
-  ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-  ctx.fillText('সভাপতি (President)', leftX, sigY + 33);
+  ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+  ctx.fillText('সভাপতি (President)', leftX, sigY + 20);
 
   ctx.fillStyle = '#6B7280';
-  ctx.font = '9px system-ui, -apple-system, sans-serif';
-  ctx.fillText('সিলেট মানবসেবা সংগঠন', leftX, sigY + 46);
+  ctx.font = '10px system-ui, -apple-system, sans-serif';
+  ctx.fillText(orgName, leftX, sigY + 36);
 
   // --- Signature Block 2: সাধারণ সম্পাদক (General Secretary) ---
   ctx.textAlign = 'center';
+  // Digital signature seal glyph (Above the line)
   ctx.fillStyle = '#047857';
-  ctx.font = 'italic bold 14px "Brush Script MT", cursive, sans-serif';
+  ctx.font = 'italic bold 15px "Brush Script MT", cursive, sans-serif';
   ctx.fillText(generalSecretaryName, midX, sigY - 8);
 
   ctx.strokeStyle = '#9CA3AF';
@@ -416,22 +483,20 @@ export async function generateAndDownloadReceipt(
   ctx.lineTo(midX + 85, sigY);
   ctx.stroke();
 
-  ctx.fillStyle = '#111827';
-  ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
-  ctx.fillText(generalSecretaryName, midX, sigY + 18);
-
+  // Retain only official designation & organization name below line (NO duplicate name)
   ctx.fillStyle = '#065F46';
-  ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-  ctx.fillText('সাধারণ সম্পাদক (General Secretary)', midX, sigY + 33);
+  ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+  ctx.fillText('সাধারণ সম্পাদক (General Secretary)', midX, sigY + 20);
 
   ctx.fillStyle = '#6B7280';
-  ctx.font = '9px system-ui, -apple-system, sans-serif';
-  ctx.fillText('সিলেট মানবসেবা সংগঠন', midX, sigY + 46);
+  ctx.font = '10px system-ui, -apple-system, sans-serif';
+  ctx.fillText(orgName, midX, sigY + 36);
 
   // --- Signature Block 3: অর্থ বিষয়ক সম্পাদক (Finance Secretary) ---
   ctx.textAlign = 'center';
+  // Digital signature seal glyph (Above the line)
   ctx.fillStyle = '#047857';
-  ctx.font = 'italic bold 14px "Brush Script MT", cursive, sans-serif';
+  ctx.font = 'italic bold 15px "Brush Script MT", cursive, sans-serif';
   ctx.fillText(financeSecretaryName, rightX, sigY - 8);
 
   ctx.strokeStyle = '#9CA3AF';
@@ -441,19 +506,16 @@ export async function generateAndDownloadReceipt(
   ctx.lineTo(rightX + 85, sigY);
   ctx.stroke();
 
-  ctx.fillStyle = '#111827';
-  ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
-  ctx.fillText(financeSecretaryName, rightX, sigY + 18);
-
+  // Retain only official designation & organization name below line (NO duplicate name)
   ctx.fillStyle = '#065F46';
-  ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-  ctx.fillText('অর্থ বিষয়ক সম্পাদক (Finance Secretary)', rightX, sigY + 33);
+  ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+  ctx.fillText('অর্থ বিষয়ক সম্পাদক (Finance Secretary)', rightX, sigY + 20);
 
   ctx.fillStyle = '#6B7280';
-  ctx.font = '9px system-ui, -apple-system, sans-serif';
-  ctx.fillText('সিলেট মানবসেবা সংগঠন', rightX, sigY + 46);
+  ctx.font = '10px system-ui, -apple-system, sans-serif';
+  ctx.fillText(orgName, rightX, sigY + 36);
 
-  // 9. Bottom Footer Disclaimer Strip
+  // 10. Bottom Footer Disclaimer Strip
   const footerY = height - 55;
   ctx.strokeStyle = '#E5E7EB';
   ctx.lineWidth = 1;
@@ -474,36 +536,56 @@ export async function generateAndDownloadReceipt(
   ctx.fillStyle = '#9CA3AF';
   ctx.font = '9px system-ui, -apple-system, sans-serif';
   ctx.fillText(
-    `কারিগরি সহায়তা: ${profile?.name || 'সিলেট মানবসেবা সংগঠন'} ডিজিটাল সিস্টেম • হেল্পলাইন: ${profile?.hotline || profile?.phone || '01886122678'}`,
+    `কারিগরি সহায়তা: ${orgName} ডিজিটাল সিস্টেম • হেল্পলাইন: ${profile?.hotline || profile?.phone || '01886122678'}`,
     width / 2,
     footerY + 32
   );
 
-  // 10. Generate PNG Data URL and Trigger Download directly to phone/device
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        const dataUrl = canvas.toDataURL('image/png');
-        downloadViaAnchor(dataUrl, record);
-        resolve(dataUrl);
-        return;
-      }
-      const blobUrl = URL.createObjectURL(blob);
-      downloadViaAnchor(blobUrl, record);
-      resolve(blobUrl);
-    }, 'image/png');
-  });
+  // Return base64 Data URL directly (instant and safe for WebViews)
+  return canvas.toDataURL('image/png');
 }
 
-function downloadViaAnchor(url: string, record: FundRecord) {
+/**
+ * Safe download helper for modern browsers and mobile WebViews
+ */
+export function safeDownloadReceipt(dataUrl: string, filename: string): boolean {
+  try {
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = filename;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return true;
+  } catch (err) {
+    console.warn('Anchor download fallback:', err);
+    try {
+      const win = window.open();
+      if (win) {
+        win.document.write(`<img src="${dataUrl}" style="max-width:100%;" />`);
+        return true;
+      }
+    } catch {
+      // Ignored
+    }
+    return false;
+  }
+}
+
+/**
+ * Generates and triggers download (backwards compatible helper)
+ */
+export async function generateAndDownloadReceipt(
+  record: FundRecord,
+  member?: Member,
+  profile?: OrganizationProfile
+): Promise<string> {
+  const dataUrl = await generateReceiptDataUrl(record, member, profile);
   const memberNameClean = (record.memberName || 'Member').replace(/\s+/g, '_');
   const monthClean = (record.paidMonths || record.month || 'Receipt').replace(/\s+/g, '_');
   const filename = `Receipt_${memberNameClean}_${monthClean}.png`;
-
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  safeDownloadReceipt(dataUrl, filename);
+  return dataUrl;
 }
