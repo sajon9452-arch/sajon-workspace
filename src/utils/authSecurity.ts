@@ -1,6 +1,7 @@
 import { UserAccount, SecurityAlert } from '../types';
 import { PMS_SYNC_EVENT, notifyStorageChange } from './storage';
 import { DeviceDetails, normalizeDeviceCompare } from './deviceTracker';
+import { submitToRegistrationQueue, loadRegistrationQueue } from './registrationQueue';
 
 // Hardcoded Master Admin Credentials as strictly requested by user
 export const MASTER_ADMIN_CREDENTIALS = {
@@ -206,7 +207,7 @@ export async function submitMemberRegistration(
 ): Promise<{ success: boolean; account?: UserAccount; message?: string }> {
   const accounts = loadUserAccounts();
 
-  // Check if phone or pending registration already exists
+  // Check if phone or pending registration already exists in accounts
   const existingPhone = accounts.find(
     a => a.phone === data.phone && (a.status === 'approved' || a.status === 'pending')
   );
@@ -224,7 +225,22 @@ export async function submitMemberRegistration(
     };
   }
 
-  // Pending registration: Username is strictly left empty until Admin manually assigns a custom S + 5 digits username
+  // 1. Submit into isolated 17th Supabase table `registration_queue`
+  await submitToRegistrationQueue(
+    {
+      name: data.name,
+      phone: data.phone,
+      email: data.email,
+      area: data.area,
+      designation: data.designation,
+      bloodGroup: data.bloodGroup,
+      password: data.password,
+      photoUrl: data.photoUrl
+    },
+    tracking
+  );
+
+  // 2. Pending account record in user accounts
   const newAccount: UserAccount = {
     id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     name: data.name.trim(),
@@ -253,7 +269,7 @@ export async function submitMemberRegistration(
   return {
     success: true,
     account: newAccount,
-    message: 'নিবন্ধন সফলভাবে জমা হয়েছে। অ্যাডমিন অনুমোদনের পর আপনাকে ইউজারনেম বরাদ্দ দেওয়া হবে।'
+    message: 'নিবন্ধন আবেদন সফলভাবে ১৭তম Supabase কিউ টেবিলে সংরক্ষিত হয়েছে। অ্যাডমিন অনুমোদনের পর আপনাকে ইউজারনেম বরাদ্দ দেওয়া হবে।'
   };
 }
 
@@ -277,6 +293,22 @@ export function authenticateMember(
   );
 
   if (!user) {
+    // Check isolated registration queue
+    const queue = loadRegistrationQueue();
+    const cleanSearch = search.replace(/[^0-9]/g, '');
+    if (cleanSearch) {
+      const inQueue = queue.find(
+        q => q.status === 'pending' && q.phone.replace(/[^0-9]/g, '') === cleanSearch
+      );
+      if (inQueue) {
+        return {
+          success: false,
+          isPending: true,
+          error: 'আপনার নিবন্ধন আবেদনটি অ্যাডমিন অনুমোদনের অপেক্ষায় রয়েছে। অনুমোদন সম্পন্ন হলে আপনাকে ইউনিক ইউজারনেম বরাদ্দ দেওয়া হবে।'
+        };
+      }
+    }
+
     return { success: false, error: 'ইউজারনেম বা মোবাইল নম্বর খুঁজে পাওয়া যায়নি।' };
   }
 

@@ -124,6 +124,7 @@ export const APP_SUPABASE_TABLES: AppTableDefinition[] = [
   { id: 'user_accounts', key: 'userAccounts', label: 'ইউজার অ্যাকাউন্ট', englishLabel: 'User Accounts', category: 'security', description: 'নিবন্ধিত সদস্য ও অনুমোদিত লগইন প্রোফাইল' },
   { id: 'security_alerts', key: 'securityAlerts', label: 'সিকিউরিটি অ্যালার্ট', englishLabel: 'Security Alerts', category: 'security', description: 'ডিভাইস বাইন্ডিং ও সন্দেহজনক লগইন সতর্কবার্তা' },
   { id: 'settings', key: 'settings', label: 'অ্যাপ সেটিংস ও প্রোফাইল', englishLabel: 'Settings & Profile', category: 'system', description: 'সংগঠনের প্রোফাইল, লোগো, পেমেন্ট নম্বর ও ব্যালেন্স' },
+  { id: 'registration_queue', key: 'registrationQueue', label: 'নিবন্ধন অনুমোদন কিউ', englishLabel: 'Registration Queue', category: 'security', description: 'অনলাইন সদস্য নিবন্ধন আবেদন ও অনুমোদন অপেক্ষমান তালিকা (মূল সদস্য তালিকা থেকে সম্পূর্ণ পৃথক)' },
   { id: 'app_collections', key: 'appCollections', label: 'কলেকশন ব্যাকআপ স্টোর', englishLabel: 'Universal Document Store', category: 'system', description: 'সকল ডেটার সার্বজনীন জেসন ব্যাকআপ নিরাপত্তা' }
 ];
 
@@ -143,6 +144,7 @@ export const TABLE_CANDIDATES_MAP: Record<string, string[]> = {
   organizationRules: ['organization_rules', 'organizationRules'],
   userAccounts: ['user_accounts', 'userAccounts'],
   securityAlerts: ['security_alerts', 'securityAlerts'],
+  registrationQueue: ['registration_queue', 'registrationQueue'],
   settings: ['settings'],
   appCollections: ['app_collections', 'appCollections']
 };
@@ -417,6 +419,41 @@ CREATE TABLE IF NOT EXISTS public.security_alerts (
   data JSONB
 );
 
+-- 17. Registration Queue & Approval (অনলাইন সদস্য নিবন্ধন অনুমোদন কিউ - Isolated from Members)
+CREATE TABLE IF NOT EXISTS public.registration_queue (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  phone TEXT,
+  email TEXT,
+  area TEXT,
+  designation TEXT,
+  blood_group TEXT,
+  bloodGroup TEXT,
+  status TEXT DEFAULT 'pending',
+  password TEXT,
+  photo_url TEXT,
+  photoUrl TEXT,
+  registered_at TEXT,
+  registeredAt TEXT,
+  registered_ip TEXT,
+  registeredIp TEXT,
+  registered_device TEXT,
+  registeredDevice TEXT,
+  device_fingerprint TEXT,
+  deviceFingerprint TEXT,
+  reviewed_at TEXT,
+  reviewedAt TEXT,
+  reviewed_by TEXT,
+  reviewedBy TEXT,
+  admin_note TEXT,
+  adminNote TEXT,
+  approved_member_id TEXT,
+  approvedMemberId TEXT,
+  assigned_username TEXT,
+  assignedUsername TEXT,
+  data JSONB
+);
+
 -- ====================================================================
 -- Enable Row Level Security (RLS) & Allow Open App Access
 -- ====================================================================
@@ -429,7 +466,7 @@ BEGIN
       'app_collections', 'members', 'donors', 'funds', 'pending_payments', 'notices',
       'support_members', 'home_slides', 'aid_donations', 'extra_contributions',
       'humanitarian_activities', 'organization_rules', 'support_reports', 'settings',
-      'user_accounts', 'security_alerts'
+      'user_accounts', 'security_alerts', 'registration_queue'
     ])
   LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
@@ -550,6 +587,12 @@ function prepareRecordForSupabase(record: any): any {
   if (record.submittedAt && !record.submitted_at) prepared.submitted_at = record.submittedAt;
   if (record.reviewedAt && !record.reviewed_at) prepared.reviewed_at = record.reviewedAt;
   if (record.reviewedBy && !record.reviewed_by) prepared.reviewed_by = record.reviewedBy;
+  if (record.registeredIp && !record.registered_ip) prepared.registered_ip = record.registeredIp;
+  if (record.registeredDevice && !record.registered_device) prepared.registered_device = record.registeredDevice;
+  if (record.deviceFingerprint && !record.device_fingerprint) prepared.device_fingerprint = record.deviceFingerprint;
+  if (record.adminNote && !record.admin_note) prepared.admin_note = record.adminNote;
+  if (record.approvedMemberId && !record.approved_member_id) prepared.approved_member_id = record.approvedMemberId;
+  if (record.assignedUsername && !record.assigned_username) prepared.assigned_username = record.assignedUsername;
 
   return prepared;
 }

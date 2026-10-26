@@ -234,6 +234,7 @@ export interface UserAccount {
   lastLoginAt?: string;
   lastLoginIp?: string;
   lastLoginDevice?: string;
+  deviceFingerprint?: string;
   isSuspicious?: boolean;
   suspiciousReason?: string;
 }
@@ -269,4 +270,35 @@ export interface PendingPayment {
   reviewedAt?: string;
   reviewedBy?: string;
   notes?: string;
+}
+
+export type RegistrationQueueStatus = 'pending' | 'approved' | 'rejected';
+
+/**
+ * Isolated 17th Supabase Table Data Model: registration_queue
+ * Completely separated from active members table. Holds applicant data,
+ * IP & device tracking, until admin explicitly approves or rejects.
+ */
+export interface RegistrationQueueItem {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  area: string;
+  designation?: string;
+  bloodGroup?: string;
+  password?: string;
+  photoUrl?: string;
+  status: RegistrationQueueStatus;
+  registeredAt: string;
+  registeredIp: string;
+  registeredDevice: string;
+  deviceFingerprint?: string;
+  submittedAt?: string;
+  createdAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  adminNote?: string;
+  approvedMemberId?: string;
+  assignedUsername?: string;
 }

@@ -66,8 +66,17 @@ import {
   ExtraContributionRecord,
   OrganizationRule,
   PendingPayment,
-  SupportTeamMember
+  SupportTeamMember,
+  RegistrationQueueItem,
+  RegistrationQueueStatus
 } from '../types';
+import { 
+  loadRegistrationQueue, 
+  saveRegistrationQueue, 
+  updateRegistrationQueueStatus, 
+  deleteRegistrationQueueItem, 
+  fetchRegistrationQueueFromSupabase 
+} from '../utils/registrationQueue';
 import { 
   toBengaliNumber, 
   sortMembersOldestFirst,
@@ -211,7 +220,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   // User Accounts & Security Tracking State
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>(() => loadUserAccounts());
   const [securityAlerts, setSecurityAlerts] = useState<SecurityAlert[]>(() => loadSecurityAlerts());
-  const [regSubTab, setRegSubTab] = useState<'pending' | 'approved' | 'alerts'>('pending');
+  const [regQueue, setRegQueue] = useState<RegistrationQueueItem[]>(() => loadRegistrationQueue());
+  const [regSubTab, setRegSubTab] = useState<'pending' | 'approved' | 'rejected' | 'alerts'>('pending');
   const [regSearch, setRegSearch] = useState('');
   const [assignedUsernames, setAssignedUsernames] = useState<Record<string, string>>({});
   const [isProcessingApproval, setIsProcessingApproval] = useState<string | null>(null);
@@ -408,24 +418,75 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     }
   };
 
-  // Sync user accounts & security alerts
+  // Sync user accounts, registration queue & security alerts
+  useEffect(() => {
+    fetchRegistrationQueueFromSupabase().then(cloudItems => {
+      if (Array.isArray(cloudItems) && cloudItems.length > 0) {
+        setRegQueue(cloudItems);
+        saveRegistrationQueue(cloudItems);
+      }
+    }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     const handleSync = () => {
       setUserAccounts(loadUserAccounts());
       setSecurityAlerts(loadSecurityAlerts());
+      setRegQueue(loadRegistrationQueue());
     };
     window.addEventListener(PMS_SYNC_EVENT, handleSync);
-    return () => window.removeEventListener(PMS_SYNC_EVENT, handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener(PMS_SYNC_EVENT, handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, []);
 
-  const pendingAccounts = useMemo(() => userAccounts.filter(a => a.status === 'pending'), [userAccounts]);
+  // Isolate registration queue from main members table
+  const pendingQueueItems = useMemo(() => {
+    const fromQueue = regQueue.filter(q => q.status === 'pending');
+    const legacyPending: RegistrationQueueItem[] = userAccounts
+      .filter(a => a.status === 'pending')
+      .filter(a => !fromQueue.some(q => (q.phone && a.phone && sanitizePhone(q.phone) === sanitizePhone(a.phone)) || q.id === a.id))
+      .map(a => ({
+        id: a.id,
+        name: a.name,
+        phone: a.phone,
+        area: a.area || '',
+        bloodGroup: a.bloodGroup,
+        designation: a.designation || 'সাধারণ সদস্য',
+        photoUrl: a.photoUrl,
+        password: a.password || 'sms2022',
+        status: 'pending' as const,
+        registeredAt: a.registeredAt || new Date().toISOString(),
+        submittedAt: a.registeredAt || new Date().toISOString(),
+        registeredIp: a.registeredIp || '103.145.24.82',
+        registeredDevice: a.registeredDevice || 'স্মার্টফোন (Android/iOS)',
+        deviceFingerprint: a.deviceFingerprint,
+        adminNote: ''
+      }));
+    return [...fromQueue, ...legacyPending];
+  }, [regQueue, userAccounts]);
+
+  const approvedQueueItems = useMemo(() => {
+    return regQueue.filter(q => q.status === 'approved');
+  }, [regQueue]);
+
+  const rejectedQueueItems = useMemo(() => {
+    return regQueue.filter(q => q.status === 'rejected');
+  }, [regQueue]);
+
+  const pendingAccounts = pendingQueueItems;
   const approvedAccounts = useMemo(() => userAccounts.filter(a => a.status === 'approved' || a.status === 'blocked'), [userAccounts]);
   const unresolvedAlerts = useMemo(() => securityAlerts.filter(a => !a.resolved), [securityAlerts]);
 
-  // Handle Approve Member Registration & Assign Unique S + 5 Digits Username (e.g. s54776)
-  const handleApproveRegistration = async (account: UserAccount) => {
+  // Handle Approve Member Registration from isolated registration queue & Assign Unique S + 5 Digits Username (e.g. s54776)
+  const handleApproveQueueItem = async (item: RegistrationQueueItem) => {
     // 1. Determine clean unique username strictly following: 's' + 5 digits (no underscores or symbols)
-    let candidateUsername = (assignedUsernames[account.id] || account.username || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    let candidateUsername = (assignedUsernames[item.id] || item.assignedUsername || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!candidateUsername) {
+      candidateUsername = generateS5DigitUsername(undefined, userAccounts, item.id);
+    }
     if (!candidateUsername.startsWith('s')) {
       candidateUsername = 's' + candidateUsername.replace(/\D/g, '');
     }
@@ -439,7 +500,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
     // Verify username uniqueness across other approved accounts
     const usernameTaken = userAccounts.some(
-      a => a.id !== account.id && a.status === 'approved' && a.username && a.username.toLowerCase() === candidateUsername.toLowerCase()
+      a => a.id !== item.id && a.status === 'approved' && a.username && a.username.toLowerCase() === candidateUsername.toLowerCase()
     );
     if (usernameTaken) {
       setErrorMsg(`ইউজারনেম @${candidateUsername} ইতোমধ্যে ব্যবহৃত হয়েছে। অনুগ্রহ করে ভিন্ন একটি ইউনিক ইউজারনেম দিন।`);
@@ -447,25 +508,25 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       return;
     }
 
-    setIsProcessingApproval(account.id);
+    setIsProcessingApproval(item.id);
     setErrorMsg('');
 
     try {
       // 2. Check if a member with this phone or ID already exists in the active member list
-      let targetMemberId = account.memberId || '';
+      let targetMemberId = item.approvedMemberId || '';
       const existingMember = members.find(m => 
-        (account.memberId && m.id === account.memberId) ||
-        (m.phone && account.phone && sanitizePhone(m.phone) === sanitizePhone(account.phone))
+        (item.approvedMemberId && m.id === item.approvedMemberId) ||
+        (m.phone && item.phone && sanitizePhone(m.phone) === sanitizePhone(item.phone))
       );
 
       if (existingMember) {
         targetMemberId = existingMember.id;
-        // Ensure existing member is active and update photo if available
         if (onEditMember) {
           try {
             await onEditMember({
               ...existingMember,
-              photoUrl: account.photoUrl || existingMember.photoUrl,
+              designation: item.designation || existingMember.designation,
+              photoUrl: item.photoUrl || existingMember.photoUrl,
               status: 'সক্রিয়'
             });
           } catch (editErr) {
@@ -484,12 +545,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
         // Add to Member list (sequentially appended to bottom and auto-synced to funds)
         const newMemberData: Omit<Member, 'id'> = {
-          name: account.name.trim(),
-          designation: (account.designation || 'সাধারণ সদস্য').trim(),
-          phone: account.phone.trim(),
-          area: account.area.trim(),
-          bloodGroup: account.bloodGroup,
-          photoUrl: account.photoUrl,
+          name: item.name.trim(),
+          designation: (item.designation || 'সাধারণ সদস্য').trim(),
+          phone: item.phone.trim(),
+          area: item.area.trim(),
+          bloodGroup: item.bloodGroup as any,
+          photoUrl: item.photoUrl,
           status: 'সক্রিয়',
           joinDate: new Date().toISOString().split('T')[0],
           serial: nextSerial,
@@ -512,35 +573,58 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         }
       }
 
-      // 3. Update account to approved with assigned unique S5389 username, memberId and preserved password
-      const updatedAccount: UserAccount = {
-        ...account,
-        status: 'approved',
+      // 3. Update isolated 17th Supabase table `registration_queue`
+      await updateRegistrationQueueStatus(item.id, 'approved', {
+        approvedMemberId: targetMemberId,
+        assignedUsername: candidateUsername,
+        reviewedBy: 'Admin'
+      });
+      setRegQueue(loadRegistrationQueue());
+
+      // 4. Create or update user_accounts entry for member login
+      const freshAccounts = loadUserAccounts();
+      const existingAccIndex = freshAccounts.findIndex(a => 
+        a.id === item.id || 
+        (a.phone && item.phone && sanitizePhone(a.phone) === sanitizePhone(item.phone))
+      );
+
+      const activeUserAccount: UserAccount = {
+        id: existingAccIndex !== -1 ? freshAccounts[existingAccIndex].id : item.id,
         username: candidateUsername,
+        name: item.name.trim(),
+        phone: item.phone.trim(),
+        area: item.area.trim(),
+        bloodGroup: item.bloodGroup as any,
+        designation: (item.designation || 'সাধারণ সদস্য').trim(),
+        photoUrl: item.photoUrl,
+        password: item.password || 'sms2022',
+        status: 'approved',
         memberId: targetMemberId,
-        password: account.password || 'sms2022' // Ensure user password is saved safely
+        registeredAt: item.registeredAt || item.submittedAt || new Date().toISOString(),
+        registeredIp: item.registeredIp,
+        registeredDevice: item.registeredDevice,
+        deviceFingerprint: item.deviceFingerprint
       };
 
-      const freshAccounts = loadUserAccounts();
-      const updatedList = freshAccounts.map(a => a.id === account.id ? updatedAccount : a);
-      if (!updatedList.some(a => a.id === account.id)) {
-        updatedList.unshift(updatedAccount);
+      if (existingAccIndex !== -1) {
+        freshAccounts[existingAccIndex] = activeUserAccount;
+      } else {
+        freshAccounts.unshift(activeUserAccount);
       }
+      saveUserAccounts(freshAccounts);
+      setUserAccounts(freshAccounts);
 
-      saveUserAccounts(updatedList);
-      setUserAccounts(updatedList);
-
-      // Clean up temporary assignedUsernames entry
+      // Clean up assigned username state
       setAssignedUsernames(prev => {
         const next = { ...prev };
-        delete next[account.id];
+        delete next[item.id];
         return next;
       });
 
-      setNoticeMsg(`সদস্য "${account.name}" এর আবেদন সফলভাবে অনুমোদিত হয়েছে এবং ইউনিক ইউজারনেম "@${candidateUsername}" বরাদ্দ দেওয়া হয়েছে।`);
+      setNoticeMsg(`সদস্য "${item.name}" এর আবেদন সফলভাবে অনুমোদিত হয়েছে। মূল সদস্য তালিকায় যুক্ত হয়েছে এবং ইউনিক ইউজারনেম "@${candidateUsername}" বরাদ্দ দেওয়া হয়েছে।`);
       setTimeout(() => setNoticeMsg(''), 4500);
     } catch (err) {
-      console.error('Member approval error:', err);
+      console.error('Registration approval error:', err);
       setErrorMsg('সদস্য অনুমোদন প্রক্রিয়ায় সমস্যা হয়েছে। পুনরায় চেষ্টা করুন।');
       setTimeout(() => setErrorMsg(''), 4000);
     } finally {
@@ -548,13 +632,49 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     }
   };
 
-  // Handle Reject Member Registration
-  const handleRejectRegistration = (account: UserAccount) => {
-    const updated = userAccounts.map(a => a.id === account.id ? { ...a, status: 'rejected' as const } : a);
-    setUserAccounts(updated);
-    saveUserAccounts(updated);
-    setNoticeMsg(`"${account.name}" এর নিবন্ধন আবেদন প্রত্যাখ্যান করা হয়েছে`);
-    setTimeout(() => setNoticeMsg(''), 3000);
+  const handleRejectQueueItem = async (item: RegistrationQueueItem) => {
+    const reason = prompt(`"${item.name}" এর আবেদন প্রত্যাখ্যানের কারণ (ঐচ্ছিক):`, 'তথ্য অসম্পূর্ণ বা অনুপযুক্ত') || 'প্রত্যাখ্যাত';
+    try {
+      await updateRegistrationQueueStatus(item.id, 'rejected', {
+        adminNote: reason,
+        reviewedBy: 'Admin'
+      });
+      setRegQueue(loadRegistrationQueue());
+
+      const freshAccounts = loadUserAccounts();
+      const accIdx = freshAccounts.findIndex(a => a.id === item.id || (a.phone && item.phone && sanitizePhone(a.phone) === sanitizePhone(item.phone)));
+      if (accIdx !== -1) {
+        freshAccounts[accIdx].status = 'rejected';
+        saveUserAccounts(freshAccounts);
+        setUserAccounts(freshAccounts);
+      }
+
+      setNoticeMsg(`"${item.name}" এর নিবন্ধন আবেদন প্রত্যাখ্যান করা হয়েছে। মূল সদস্য তালিকা সম্পূর্ণ অপরিবর্তিত রয়েছে।`);
+      setTimeout(() => setNoticeMsg(''), 3500);
+    } catch {
+      setErrorMsg('প্রত্যাখ্যান প্রক্রিয়ায় সমস্যা হয়েছে');
+      setTimeout(() => setErrorMsg(''), 3000);
+    }
+  };
+
+  const handleDeleteQueueItem = async (item: RegistrationQueueItem) => {
+    if (!confirm(`আপনি কি নিশ্চিত যে "${item.name}" এর আবেদন কিউ থেকে স্থায়ীভাবে মুছে ফেলতে চান?`)) {
+      return;
+    }
+    try {
+      await deleteRegistrationQueueItem(item.id);
+      setRegQueue(loadRegistrationQueue());
+
+      const freshAccounts = loadUserAccounts().filter(a => a.id !== item.id);
+      saveUserAccounts(freshAccounts);
+      setUserAccounts(freshAccounts);
+
+      setNoticeMsg(`আবেদনটি কিউ থেকে সফলভাবে মুছে ফেলা হয়েছে`);
+      setTimeout(() => setNoticeMsg(''), 3000);
+    } catch {
+      setErrorMsg('মুছতে সমস্যা হয়েছে');
+      setTimeout(() => setErrorMsg(''), 3000);
+    }
   };
 
   // Handle Toggle Block User (Instant Admin Block / Unblock)
@@ -2521,7 +2641,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         </div>
       )}
 
-      {/* 2. Member Registrations, Admin Approvals & IP/Device Tracking Tab */}
+      {/* 2. Member Registrations, Admin Approvals & IP/Device Tracking Tab (Isolated 17th Supabase Table: registration_queue) */}
       {activeTab === 'registrations' && (
         <div className="space-y-6 animate-in fade-in">
           {/* Header Card */}
@@ -2532,33 +2652,51 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                   <ShieldAlert className="w-6 h-6 text-emerald-300" />
                 </div>
                 <div>
-                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                    <span>সদস্য নিবন্ধন ও আবেদন অনুমোদন ব্যবস্থাপনা</span>
+                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2 flex-wrap">
+                    <span>সদস্য নিবন্ধন ও অনুমোদন কিউ (Registration Queue)</span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-400/20 text-emerald-200 border border-emerald-400/30">
-                      অ্যাডমিন কনসোল
+                      ১৭তম স্বতন্ত্র ডাটাবেজ টেবিল
                     </span>
                   </h3>
                   <p className="text-xs text-emerald-200/80 mt-0.5 max-w-xl">
-                    অনলাইন সদস্য আবেদন পর্যালোচনা, আপলোডকৃত ছবি ও তথ্য যাচাই, ইউনিক ইউজারনেম বরাদ্দ, অনুমোদন এবং ডিভাইস বাইন্ডিং নিয়ন্ত্রণ।
+                    অনলাইন সদস্য আবেদনসমূহ মূল সদস্য তালিকা থেকে সম্পূর্ণ পৃথক <span className="font-mono text-emerald-300">registration_queue</span> টেবিলে জমা হয়। অ্যাডমিনের অনুমোদনের পরেই কেবল সদস্য হিসেবে প্রোমোট হয়।
                   </p>
                 </div>
               </div>
 
               {/* Quick metrics */}
-              <div className="grid grid-cols-3 gap-2 w-full sm:w-auto">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full sm:w-auto">
                 <div className="px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-center">
                   <div className="text-[10px] text-emerald-200 font-bold">অপেক্ষমাণ</div>
-                  <div className="text-base font-black text-amber-300">{toBengaliNumber(pendingAccounts.length)}</div>
+                  <div className="text-base font-black text-amber-300">{toBengaliNumber(pendingQueueItems.length)}</div>
                 </div>
                 <div className="px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-center">
                   <div className="text-[10px] text-emerald-200 font-bold">অনুমোদিত</div>
                   <div className="text-base font-black text-emerald-300">{toBengaliNumber(approvedAccounts.length)}</div>
                 </div>
                 <div className="px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-center">
+                  <div className="text-[10px] text-emerald-200 font-bold">প্রত্যাখ্যাত</div>
+                  <div className="text-base font-black text-slate-300">{toBengaliNumber(rejectedQueueItems.length)}</div>
+                </div>
+                <div className="px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-center">
                   <div className="text-[10px] text-emerald-200 font-bold">সতর্কতা</div>
                   <div className="text-base font-black text-rose-300">{toBengaliNumber(unresolvedAlerts.length)}</div>
                 </div>
               </div>
+            </div>
+
+            {/* 17th Table Isolation Info Banner */}
+            <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
+              <div className="flex items-center gap-2">
+                <Cloud className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-slate-200 text-[11px]">
+                  <strong>স্বতন্ত্র ডাটাবেজ আর্কিটেকচার:</strong> <code className="bg-emerald-950/80 px-1.5 py-0.5 rounded text-emerald-300 font-mono text-[10px]">registration_queue</code> টেবিলের সাথে <code className="bg-emerald-950/80 px-1.5 py-0.5 rounded text-emerald-300 font-mono text-[10px]">members</code> টেবিলের কোনো সরাসরি মিশ্রণ নেই।
+                </span>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-500/30 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Isolated 17th Table Live</span>
+              </span>
             </div>
 
             {/* Sub-tab pills */}
@@ -2573,7 +2711,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 }`}
               >
                 <Clock className="w-3.5 h-3.5" />
-                <span>অনুমোদন অপেক্ষমাণ আবেদন ({toBengaliNumber(pendingAccounts.length)})</span>
+                <span>অনুমোদন অপেক্ষমাণ আবেদন ({toBengaliNumber(pendingQueueItems.length)})</span>
               </button>
 
               <button
@@ -2587,6 +2725,19 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               >
                 <Users className="w-3.5 h-3.5" />
                 <span>অনুমোদিত অ্যাকাউন্ট ও ডিভাইস নিয়ন্ত্রণ ({toBengaliNumber(approvedAccounts.length)})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRegSubTab('rejected')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                  regSubTab === 'rejected'
+                    ? 'bg-slate-300 text-slate-950 shadow-xs font-black'
+                    : 'bg-white/10 text-white hover:bg-white/20'
+                }`}
+              >
+                <UserX className="w-3.5 h-3.5" />
+                <span>প্রত্যাখ্যাত আবেদন ({toBengaliNumber(rejectedQueueItems.length)})</span>
               </button>
 
               <button
@@ -2614,28 +2765,28 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                     <span>নতুন সদস্য নিবন্ধন অনুমোদনের কিউ (Approval Queue)</span>
                   </h4>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    আবেদনকারীর তথ্য ও আইপি/ডিভাইস যাচাই করে একটি ইউনিক ইউজারনেম বরাদ্দ করুন ও অনুমোদন দিন
+                    ১৭তম স্বতন্ত্র <span className="font-mono text-emerald-700">registration_queue</span> টেবিলের আবেদনসমূহ যাচাই করে ইউনিক ইউজারনেম বরাদ্দ করুন ও অনুমোদন দিন
                   </p>
                 </div>
                 <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold">
-                  মোট অপেক্ষমাণ: {toBengaliNumber(pendingAccounts.length)}
+                  মোট অপেক্ষমাণ: {toBengaliNumber(pendingQueueItems.length)}
                 </span>
               </div>
 
-              {pendingAccounts.length === 0 ? (
+              {pendingQueueItems.length === 0 ? (
                 <div className="bg-white rounded-3xl p-10 border border-slate-200 text-center shadow-xs">
                   <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-2" />
                   <h5 className="text-sm font-bold text-slate-800">কোনো অপেক্ষমাণ নিবন্ধন আবেদন নেই</h5>
                   <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                    ব্যবহারকারীরা প্রধান পাতা থেকে নিবন্ধনের আবেদন জমা দিলে তা এখানে অনুমোদনের জন্য প্রদর্শিত হবে।
+                    ব্যবহারকারীরা প্রধান পাতা থেকে নিবন্ধনের আবেদন জমা দিলে তা এই স্বতন্ত্র কিউতে জমা হবে এবং পর্যালোচনার জন্য প্রদর্শিত হবে।
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {pendingAccounts.map((account) => {
+                  {pendingQueueItems.map((account) => {
                     const currentUsername = assignedUsernames[account.id] !== undefined 
                       ? assignedUsernames[account.id] 
-                      : (account.username || '');
+                      : (account.assignedUsername || '');
 
                     return (
                       <div 
@@ -2685,7 +2836,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                                 )}
                                 <span className="px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 text-[10px] font-bold border border-teal-200 flex items-center gap-1">
                                   <ShieldCheck className="w-3 h-3 text-teal-600" />
-                                  <span>ছবি আপলোড ভেরিফাইড</span>
+                                  <span>ছবি ভেরিফাইড</span>
                                 </span>
                               </div>
                               <p className="text-xs text-slate-600 mt-1 flex items-center gap-2.5 flex-wrap">
@@ -2705,8 +2856,8 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                           </div>
 
                           <div className="text-right text-[11px] text-slate-500 shrink-0">
-                            <div>আবেদনের তারিখ: {new Date(account.registeredAt).toLocaleDateString('bn-BD')}</div>
-                            <div className="font-mono text-[10px] text-slate-400">{new Date(account.registeredAt).toLocaleTimeString()}</div>
+                            <div>আবেদনের তারিখ: {new Date(account.registeredAt || account.submittedAt || Date.now()).toLocaleDateString('bn-BD')}</div>
+                            <div className="font-mono text-[10px] text-slate-400">{new Date(account.registeredAt || account.submittedAt || Date.now()).toLocaleTimeString()}</div>
                           </div>
                         </div>
 
@@ -2715,14 +2866,14 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                           <div className="flex items-center justify-between font-bold text-slate-700 text-[11px]">
                             <span className="flex items-center gap-1.5 text-slate-800">
                               <Globe className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>নিবন্ধন ক্রেডেনশিয়াল, আইপি ও ডিভাইস ট্র্যাকিং ডেটা:</span>
+                              <span>নিবন্ধন ক্রেডেনশিয়াল, আইপি ও ডিভাইস ট্র্যাকিং ডেটা (Queue Snapshot):</span>
                             </span>
-                            <span className="text-emerald-700 font-mono text-[11px]">নিরাপদ ট্র্যাকিং রেকর্ড</span>
+                            <span className="text-emerald-700 font-mono text-[11px]">আইসোলেটেড রেকর্ড</span>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-600 text-[11px]">
                             <div className="flex items-center gap-1.5 bg-amber-50/90 p-2 rounded-xl border border-amber-300">
                               <KeyRound className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                              <span className="text-amber-900 font-bold shrink-0">নিবন্ধন পাসওয়ার্ড:</span>
+                              <span className="text-amber-900 font-bold shrink-0">পাসওয়ার্ড:</span>
                               <span className="font-mono font-black text-amber-950 bg-white px-2 py-0.5 rounded-md border border-amber-300 select-all shadow-2xs">
                                 {account.password || 'sms2022'}
                               </span>
@@ -2736,7 +2887,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                             </div>
                             <div className="flex items-center gap-1.5 truncate p-2 bg-white rounded-xl border border-slate-200">
                               <Smartphone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span className="text-slate-400 font-medium shrink-0">ডিভাইস ও ব্রাউজার:</span>
+                              <span className="text-slate-400 font-medium shrink-0">ডিভাইস:</span>
                               <span className="font-medium text-slate-800 truncate" title={account.registeredDevice}>
                                 {account.registeredDevice || 'স্মার্টফোন (Android • Chrome)'}
                               </span>
@@ -2765,7 +2916,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                                     val = val.slice(0, 6);
                                     setAssignedUsernames(prev => ({ ...prev, [account.id]: val }));
                                   }}
-                                  placeholder="সরাসরি টাইপ করুন (যেমন: s54776)"
+                                  placeholder="যেমন: s54776 (স্বয়ংক্রিয় তৈরি হবে)"
                                   className="w-full pl-7 pr-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                 />
                               </div>
@@ -2775,11 +2926,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end flex-wrap">
                             <button
                               type="button"
-                              onClick={() => handleRejectRegistration(account)}
+                              onClick={() => handleRejectQueueItem(account)}
                               className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-rose-700 hover:bg-rose-50 border border-rose-200 transition cursor-pointer"
+                              title="আবেদন প্রত্যাখ্যান করুন"
                             >
                               <UserX className="w-3.5 h-3.5 inline mr-1" />
                               <span>প্রত্যাখ্যান</span>
@@ -2787,18 +2939,17 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
                             <button
                               type="button"
-                              onClick={() => handleToggleBlockUser(account)}
-                              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-800 text-white hover:bg-rose-900 transition cursor-pointer"
-                              title="ভুয়া বা সন্দেহজনক আবেদন তাৎক্ষণিক ব্লক করুন"
+                              onClick={() => handleDeleteQueueItem(account)}
+                              className="p-2 rounded-xl text-xs font-bold bg-white text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition cursor-pointer"
+                              title="কিউ থেকে সম্পূর্ণ মুছে ফেলুন"
                             >
-                              <Ban className="w-3.5 h-3.5 inline mr-1" />
-                              <span>ব্লক</span>
+                              <Trash2 className="w-4 h-4" />
                             </button>
 
                             <button
                               type="button"
                               disabled={isProcessingApproval === account.id}
-                              onClick={() => handleApproveRegistration(account)}
+                              onClick={() => handleApproveQueueItem(account)}
                               className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                             >
                               <UserCheck className="w-4 h-4" />
@@ -2809,6 +2960,93 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sub-Tab 3: Rejected Applications Queue */}
+          {regSubTab === 'rejected' && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex justify-between items-center gap-2">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <UserX className="w-4 h-4 text-rose-600" />
+                    <span>প্রত্যাখ্যাত সদস্য আবেদন তালিকা (Rejected Queue)</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    যেসব আবেদন বাতিল করা হয়েছে তা এখানে সংরক্ষিত রয়েছে। প্রয়োজন অনুযায়ী পুনরায় বিবেচনা বা স্থায়ীভাবে মুছে ফেলতে পারেন।
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-900 text-xs font-bold">
+                  মোট প্রত্যাখ্যাত: {toBengaliNumber(rejectedQueueItems.length)}
+                </span>
+              </div>
+
+              {rejectedQueueItems.length === 0 ? (
+                <div className="bg-white rounded-3xl p-10 border border-slate-200 text-center shadow-xs">
+                  <CheckCircle2 className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                  <h5 className="text-sm font-bold text-slate-700">কোনো প্রত্যাখ্যাত আবেদন নেই</h5>
+                  <p className="text-xs text-slate-400 mt-1">বাতিলকৃত আবেদনসমূহ এই তালিকায় প্রদর্শিত হবে।</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {rejectedQueueItems.map((item) => (
+                    <div 
+                      key={item.id} 
+                      className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-rose-200 transition"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center justify-center font-bold text-base shrink-0">
+                          <UserX className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-bold text-slate-900">{item.name}</h4>
+                            <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-800 text-[10px] font-bold border border-rose-200">
+                              প্রত্যাখ্যাত
+                            </span>
+                            {item.designation && (
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium">
+                                {item.designation}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1 flex items-center gap-2 flex-wrap">
+                            <span>মোবাইল: <strong className="font-mono text-slate-800">{item.phone}</strong></span>
+                            <span className="text-slate-300">•</span>
+                            <span>ঠিকানা: {item.area}</span>
+                            {item.adminNote && (
+                              <>
+                                <span className="text-slate-300">•</span>
+                                <span className="text-rose-600 font-medium">কারণ: {item.adminNote}</span>
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handleApproveQueueItem(item)}
+                          className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 transition cursor-pointer flex items-center gap-1"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>পুনরায় বিবেচনা / অনুমোদন</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteQueueItem(item)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                          title="স্থায়ীভাবে মুছুন"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

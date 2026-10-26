@@ -56,6 +56,7 @@ export const LIVE_SYNC_STORAGE_KEYS = {
   MONTHLY_EXPENSE: 'pms_monthly_expense',
   EXTRA_MONEY: 'pms_extra_money',
   USER_ACCOUNTS: 'pms_user_accounts_v2',
+  REGISTRATION_QUEUE: 'pms_registration_queue',
   PERMANENTLY_DELETED: 'pms_permanently_deleted_records'
 } as const;
 
@@ -76,6 +77,7 @@ const KEY_TO_STORAGE_MAP: Record<string, string> = {
   monthlyExpense: LIVE_SYNC_STORAGE_KEYS.MONTHLY_EXPENSE,
   extraMoney: LIVE_SYNC_STORAGE_KEYS.EXTRA_MONEY,
   userAccounts: LIVE_SYNC_STORAGE_KEYS.USER_ACCOUNTS,
+  registrationQueue: LIVE_SYNC_STORAGE_KEYS.REGISTRATION_QUEUE,
   permanentlyDeleted: LIVE_SYNC_STORAGE_KEYS.PERMANENTLY_DELETED
 };
 

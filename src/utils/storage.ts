@@ -48,6 +48,7 @@ const STORAGE_KEYS = {
   MONTHLY_EXPENSE: 'pms_monthly_expense',
   EXTRA_MONEY: 'pms_extra_money',
   ADMIN_PIN: 'pms_admin_pin',
+  REGISTRATION_QUEUE: 'pms_registration_queue',
   PERMANENTLY_DELETED: 'pms_permanently_deleted_records'
 };
 
