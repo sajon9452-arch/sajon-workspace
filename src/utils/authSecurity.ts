@@ -2,6 +2,7 @@ import { UserAccount, SecurityAlert } from '../types';
 import { PMS_SYNC_EVENT, notifyStorageChange } from './storage';
 import { DeviceDetails, normalizeDeviceCompare } from './deviceTracker';
 import { submitToRegistrationQueue, loadRegistrationQueue } from './registrationQueue';
+import { fetchSupabaseCollection, safeSyncToSupabase } from './supabaseClient';
 
 // Hardcoded Master Admin Credentials as strictly requested by user
 export const MASTER_ADMIN_CREDENTIALS = {
@@ -37,6 +38,48 @@ export function saveUserAccounts(accounts: UserAccount[]) {
   } catch (e) {
     console.error('Error saving user accounts:', e);
   }
+}
+
+/**
+ * Dynamically fetches all user accounts from Supabase cloud database
+ */
+export async function fetchUserAccountsFromSupabase(): Promise<UserAccount[] | null> {
+  try {
+    const data = await fetchSupabaseCollection<UserAccount>('userAccounts');
+    if (Array.isArray(data)) {
+      return data;
+    }
+  } catch (err) {
+    console.warn('Error fetching user accounts from Supabase:', err);
+  }
+  return null;
+}
+
+/**
+ * Union-merges local and cloud user accounts by unique ID and phone so no user account is ever lost
+ */
+export function mergeUserAccounts(localAccounts: UserAccount[], cloudAccounts: UserAccount[]): UserAccount[] {
+  const map = new Map<string, UserAccount>();
+
+  // 1. Add cloud accounts
+  cloudAccounts.forEach(acc => {
+    if (acc && acc.id) {
+      map.set(acc.id, acc);
+    }
+  });
+
+  // 2. Add local accounts if not already present
+  localAccounts.forEach(acc => {
+    if (acc && acc.id && !map.has(acc.id)) {
+      map.set(acc.id, acc);
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => {
+    const timeA = new Date(a.registeredAt || 0).getTime();
+    const timeB = new Date(b.registeredAt || 0).getTime();
+    return timeB - timeA;
+  });
 }
 
 // 2. Security Alerts Storage
@@ -205,11 +248,14 @@ export async function submitMemberRegistration(
   },
   tracking: DeviceDetails
 ): Promise<{ success: boolean; account?: UserAccount; message?: string }> {
-  const accounts = loadUserAccounts();
+  // 1. Fetch latest cloud accounts first to ensure we never overwrite or conflict
+  const cloudAccounts = await fetchUserAccountsFromSupabase().catch(() => null);
+  const accounts = mergeUserAccounts(loadUserAccounts(), cloudAccounts || []);
+  const cleanPhone = data.phone.trim().replace(/[^0-9]/g, '');
 
   // Check if phone or pending registration already exists in accounts
   const existingPhone = accounts.find(
-    a => a.phone === data.phone && (a.status === 'approved' || a.status === 'pending')
+    a => a.phone.replace(/[^0-9]/g, '') === cleanPhone && (a.status === 'approved' || a.status === 'pending')
   );
 
   if (existingPhone) {
@@ -240,9 +286,10 @@ export async function submitMemberRegistration(
     tracking
   );
 
-  // 2. Pending account record in user accounts
+  // 2. Guaranteed collision-free unique ID for new user account
+  const uniqueId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${Math.floor(Math.random() * 10000)}`;
   const newAccount: UserAccount = {
-    id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    id: uniqueId,
     name: data.name.trim(),
     phone: data.phone.trim(),
     area: data.area.trim(),
@@ -257,6 +304,7 @@ export async function submitMemberRegistration(
     registeredAt: new Date().toISOString(),
     registeredIp: tracking.ip,
     registeredDevice: tracking.deviceString,
+    deviceFingerprint: tracking.deviceId,
     boundDeviceId: undefined,
     boundIp: undefined,
     isDeviceLocked: false,
@@ -265,6 +313,13 @@ export async function submitMemberRegistration(
 
   const updated = [newAccount, ...accounts];
   saveUserAccounts(updated);
+
+  // 3. Immediately sync to Supabase user_accounts table
+  try {
+    await safeSyncToSupabase('userAccounts', newAccount);
+  } catch (syncErr) {
+    console.warn('Supabase sync warning for user account:', syncErr);
+  }
 
   return {
     success: true,
@@ -429,6 +484,7 @@ export function authenticateMember(
   const updatedAccounts = accounts.map(a => a.id === user.id ? updatedUser : a);
   saveUserAccounts(updatedAccounts);
   saveLoggedInUser(updatedUser);
+  safeSyncToSupabase('userAccounts', updatedUser).catch(() => {});
 
   return {
     success: true,
@@ -454,6 +510,7 @@ export function resetMemberDeviceBinding(userId: string): boolean {
   };
 
   saveUserAccounts(accounts.map(a => a.id === userId ? updated : a));
+  safeSyncToSupabase('userAccounts', updated).catch(() => {});
   return true;
 }
 
@@ -490,5 +547,6 @@ export function updateMemberCredentials(
   };
 
   saveUserAccounts(accounts.map(a => a.id === userId ? updated : a));
+  safeSyncToSupabase('userAccounts', updated).catch(() => {});
   return { success: true };
 }

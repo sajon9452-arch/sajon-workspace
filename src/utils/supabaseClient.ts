@@ -585,6 +585,7 @@ function prepareRecordForSupabase(record: any): any {
   if (record.senderPhone && !record.sender_phone) prepared.sender_phone = record.senderPhone;
   if (record.trxId && !record.trx_id) prepared.trx_id = record.trxId;
   if (record.submittedAt && !record.submitted_at) prepared.submitted_at = record.submittedAt;
+  if (record.registeredAt && !record.registered_at) prepared.registered_at = record.registeredAt;
   if (record.reviewedAt && !record.reviewed_at) prepared.reviewed_at = record.reviewedAt;
   if (record.reviewedBy && !record.reviewed_by) prepared.reviewed_by = record.reviewedBy;
   if (record.registeredIp && !record.registered_ip) prepared.registered_ip = record.registeredIp;
@@ -593,6 +594,13 @@ function prepareRecordForSupabase(record: any): any {
   if (record.adminNote && !record.admin_note) prepared.admin_note = record.adminNote;
   if (record.approvedMemberId && !record.approved_member_id) prepared.approved_member_id = record.approvedMemberId;
   if (record.assignedUsername && !record.assigned_username) prepared.assigned_username = record.assignedUsername;
+  if (record.boundDeviceId && !record.bound_device_id) prepared.bound_device_id = record.boundDeviceId;
+  if (record.boundIp && !record.bound_ip) prepared.bound_ip = record.boundIp;
+  if (record.isDeviceLocked !== undefined && record.is_device_locked === undefined) prepared.is_device_locked = record.isDeviceLocked;
+  if (record.lastLoginAt && !record.last_login_at) prepared.last_login_at = record.lastLoginAt;
+  if (record.lastLoginIp && !record.last_login_ip) prepared.last_login_ip = record.lastLoginIp;
+  if (record.lastLoginDevice && !record.last_login_device) prepared.last_login_device = record.lastLoginDevice;
+  if (record.isSuspicious !== undefined && record.is_suspicious === undefined) prepared.is_suspicious = record.isSuspicious;
 
   return prepared;
 }
@@ -706,14 +714,43 @@ export async function fetchSupabaseCollection<T>(collectionKey: string): Promise
   // 1. Try dedicated tables
   for (const table of candidateTables) {
     try {
-      const { data, error } = await supabase.from(table).select('*');
+      const { data, error } = await supabase.from(table).select('*').limit(5000);
       if (!error && Array.isArray(data) && data.length > 0) {
-        // Unpack: if item has 'data' jsonb column, merge it
+        // Unpack: if item has 'data' jsonb column, merge it and normalize snake_case
         const normalized = data.map((item: any) => {
-          if (item && item.data && typeof item.data === 'object') {
-            return { ...item.data, ...item };
-          }
-          return item;
+          const base = (item && item.data && typeof item.data === 'object') 
+            ? { ...item.data, ...item } 
+            : { ...item };
+
+          // Comprehensive snake_case to camelCase mapping
+          if (base.registered_at && !base.registeredAt) base.registeredAt = base.registered_at;
+          if (base.registered_ip && !base.registeredIp) base.registeredIp = base.registered_ip;
+          if (base.registered_device && !base.registeredDevice) base.registeredDevice = base.registered_device;
+          if (base.device_fingerprint && !base.deviceFingerprint) base.deviceFingerprint = base.device_fingerprint;
+          if (base.admin_note && !base.adminNote) base.adminNote = base.admin_note;
+          if (base.approved_member_id && !base.approvedMemberId) base.approvedMemberId = base.approved_member_id;
+          if (base.assigned_username && !base.assignedUsername) base.assignedUsername = base.assigned_username;
+          if (base.photo_url && !base.photoUrl) base.photoUrl = base.photo_url;
+          if (base.blood_group && !base.bloodGroup) base.bloodGroup = base.blood_group;
+          if (base.member_id && !base.memberId) base.memberId = base.member_id;
+          if (base.member_name && !base.memberName) base.memberName = base.member_name;
+          if (base.user_name && !base.userName) base.userName = base.user_name;
+          if (base.sender_phone && !base.senderPhone) base.senderPhone = base.sender_phone;
+          if (base.trx_id && !base.trxId) base.trxId = base.trx_id;
+          if (base.transaction_id && !base.transactionId) base.transactionId = base.transaction_id;
+          if (base.paid_amount !== undefined && base.paidAmount === undefined) base.paidAmount = base.paid_amount;
+          if (base.due_amount !== undefined && base.dueAmount === undefined) base.dueAmount = base.due_amount;
+          if (base.payment_method && !base.paymentMethod) base.paymentMethod = base.payment_method;
+          if (base.submitted_at && !base.submittedAt) base.submittedAt = base.submitted_at;
+          if (base.bound_device_id && !base.boundDeviceId) base.boundDeviceId = base.bound_device_id;
+          if (base.bound_ip && !base.boundIp) base.boundIp = base.bound_ip;
+          if (base.is_device_locked !== undefined && base.isDeviceLocked === undefined) base.isDeviceLocked = base.is_device_locked;
+          if (base.last_login_at && !base.lastLoginAt) base.lastLoginAt = base.last_login_at;
+          if (base.last_login_ip && !base.lastLoginIp) base.lastLoginIp = base.last_login_ip;
+          if (base.last_login_device && !base.lastLoginDevice) base.lastLoginDevice = base.last_login_device;
+          if (base.is_suspicious !== undefined && base.isSuspicious === undefined) base.isSuspicious = base.is_suspicious;
+
+          return base;
         });
         return normalized as T[];
       }

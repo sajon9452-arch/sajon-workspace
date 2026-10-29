@@ -59,8 +59,11 @@ import {
   saveLoggedInUser, 
   loadIsAdminSession, 
   saveIsAdminSession,
-  loadUserAccounts 
+  loadUserAccounts,
+  saveUserAccounts,
+  mergeUserAccounts
 } from './utils/authSecurity';
+import { loadRegistrationQueue, saveRegistrationQueue, mergeRegistrationQueues } from './utils/registrationQueue';
 import { sortMembersOldestFirst } from './utils/helpers';
 import { autoSyncMembersToFunds } from './utils/memberFundLinker';
 import { 
@@ -375,6 +378,18 @@ export default function App() {
           if (typeof cloudData.extraMoney === 'number') {
             setExtraMoney(cloudData.extraMoney);
             saveExtraMoney(cloudData.extraMoney);
+          }
+
+          // 11. User Accounts (Supabase Live Multi-User Sync)
+          if (Array.isArray(cloudData.userAccounts) && cloudData.userAccounts.length > 0) {
+            const mergedAccs = mergeUserAccounts(loadUserAccounts(), cloudData.userAccounts);
+            saveUserAccounts(mergedAccs);
+          }
+
+          // 12. Registration Queue (17th Supabase Table)
+          if (Array.isArray(cloudData.registrationQueue) && cloudData.registrationQueue.length > 0) {
+            const mergedQueue = mergeRegistrationQueues(loadRegistrationQueue(), cloudData.registrationQueue);
+            saveRegistrationQueue(mergedQueue);
           }
         }
       } catch (err) {

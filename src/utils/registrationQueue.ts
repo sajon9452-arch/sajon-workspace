@@ -38,6 +38,36 @@ export function saveRegistrationQueue(items: RegistrationQueueItem[]): void {
 }
 
 /**
+ * Union-merges local and cloud registration queues by unique ID so no user application is lost or overwritten
+ */
+export function mergeRegistrationQueues(
+  localQueue: RegistrationQueueItem[],
+  cloudQueue: RegistrationQueueItem[]
+): RegistrationQueueItem[] {
+  const map = new Map<string, RegistrationQueueItem>();
+
+  // 1. Add cloud items
+  cloudQueue.forEach(item => {
+    if (item && item.id) {
+      map.set(item.id, item);
+    }
+  });
+
+  // 2. Add local items if not already in cloud map
+  localQueue.forEach(item => {
+    if (item && item.id && !map.has(item.id)) {
+      map.set(item.id, item);
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => {
+    const timeA = new Date(a.registeredAt || a.submittedAt || 0).getTime();
+    const timeB = new Date(b.registeredAt || b.submittedAt || 0).getTime();
+    return timeB - timeA;
+  });
+}
+
+/**
  * Submits a new online registration into the isolated 17th Supabase table (`registration_queue`).
  * Keeps applicant completely separate from the active 'members' table.
  */
@@ -54,7 +84,9 @@ export async function submitToRegistrationQueue(
   },
   tracking: DeviceDetails
 ): Promise<{ success: boolean; item?: RegistrationQueueItem; message: string }> {
-  const currentQueue = loadRegistrationQueue();
+  // 1. Fetch latest registration queue from cloud first to ensure multi-user isolation
+  const cloudQueue = await fetchRegistrationQueueFromSupabase().catch(() => null);
+  const currentQueue = mergeRegistrationQueues(loadRegistrationQueue(), cloudQueue || []);
   const cleanPhone = formData.phone.trim().replace(/[^0-9]/g, '');
 
   // Check if this phone number already has a pending application in the queue
@@ -69,8 +101,10 @@ export async function submitToRegistrationQueue(
     };
   }
 
+  // 2. Guaranteed collision-free unique record ID for isolated 17th Supabase table
+  const uniqueId = `reg_q_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${Math.floor(Math.random() * 10000)}`;
   const newItem: RegistrationQueueItem = {
-    id: `reg-queue-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    id: uniqueId,
     name: formData.name.trim(),
     phone: formData.phone.trim(),
     email: formData.email?.trim() || undefined,
@@ -81,6 +115,7 @@ export async function submitToRegistrationQueue(
     photoUrl: formData.photoUrl || undefined,
     status: 'pending',
     registeredAt: new Date().toISOString(),
+    submittedAt: new Date().toISOString(),
     registeredIp: tracking.ip || '103.145.24.82',
     registeredDevice: tracking.deviceString || 'স্মার্টফোন (Android/iOS)',
     deviceFingerprint: tracking.deviceId || undefined
@@ -89,7 +124,7 @@ export async function submitToRegistrationQueue(
   const updatedQueue = [newItem, ...currentQueue];
   saveRegistrationQueue(updatedQueue);
 
-  // Sync to isolated 17th Supabase table `registration_queue`
+  // 3. Sync to isolated 17th Supabase table `registration_queue`
   try {
     await safeSyncToSupabase('registrationQueue', newItem);
   } catch (syncErr) {

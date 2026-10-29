@@ -49,7 +49,9 @@ import {
   Headphones,
   Code,
   Download,
-  FileCheck
+  FileCheck,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
@@ -75,7 +77,8 @@ import {
   saveRegistrationQueue, 
   updateRegistrationQueueStatus, 
   deleteRegistrationQueueItem, 
-  fetchRegistrationQueueFromSupabase 
+  fetchRegistrationQueueFromSupabase,
+  mergeRegistrationQueues
 } from '../utils/registrationQueue';
 import { 
   toBengaliNumber, 
@@ -101,7 +104,9 @@ import {
   updateMemberCredentials,
   generateS5389Username,
   generateS5DigitUsername,
-  isValidS5DigitUsername
+  isValidS5DigitUsername,
+  fetchUserAccountsFromSupabase,
+  mergeUserAccounts
 } from '../utils/authSecurity';
 import { 
   checkSupabaseConnection, 
@@ -226,6 +231,12 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [assignedUsernames, setAssignedUsernames] = useState<Record<string, string>>({});
   const [isProcessingApproval, setIsProcessingApproval] = useState<string | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null);
+  const [isRefreshingCloudAccounts, setIsRefreshingCloudAccounts] = useState(false);
+  const [pendingQueueSearch, setPendingQueueSearch] = useState('');
+  const [approvedPage, setApprovedPage] = useState(1);
+  const [approvedPerPage, setApprovedPerPage] = useState<number>(20);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [pendingPerPage, setPendingPerPage] = useState<number>(20);
 
   // Digital Payment Gateway Verification State (Requirement 2 & 3)
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
@@ -418,15 +429,37 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     }
   };
 
-  // Sync user accounts, registration queue & security alerts
-  useEffect(() => {
-    fetchRegistrationQueueFromSupabase().then(cloudItems => {
-      if (Array.isArray(cloudItems) && cloudItems.length > 0) {
-        setRegQueue(cloudItems);
-        saveRegistrationQueue(cloudItems);
+  // Sync user accounts, registration queue & security alerts directly from Supabase
+  const loadCloudAccountsAndQueue = useCallback(async () => {
+    setIsRefreshingCloudAccounts(true);
+    try {
+      const [cloudQueue, cloudAccounts] = await Promise.all([
+        fetchRegistrationQueueFromSupabase(),
+        fetchUserAccountsFromSupabase()
+      ]);
+      
+      if (Array.isArray(cloudQueue)) {
+        const localQ = loadRegistrationQueue();
+        const mergedQ = mergeRegistrationQueues(localQ, cloudQueue);
+        setRegQueue(mergedQ);
+        saveRegistrationQueue(mergedQ);
       }
-    }).catch(() => {});
+      if (Array.isArray(cloudAccounts)) {
+        const localA = loadUserAccounts();
+        const mergedA = mergeUserAccounts(localA, cloudAccounts);
+        setUserAccounts(mergedA);
+        saveUserAccounts(mergedA);
+      }
+    } catch (e) {
+      console.warn('Failed to refresh accounts from cloud:', e);
+    } finally {
+      setIsRefreshingCloudAccounts(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadCloudAccountsAndQueue();
+  }, [loadCloudAccountsAndQueue]);
 
   useEffect(() => {
     const handleSync = () => {
@@ -477,8 +510,93 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   }, [regQueue]);
 
   const pendingAccounts = pendingQueueItems;
-  const approvedAccounts = useMemo(() => userAccounts.filter(a => a.status === 'approved' || a.status === 'blocked'), [userAccounts]);
+
+  // Combine direct accounts from userAccounts and synthesize any active members from members list
+  const approvedAccounts = useMemo(() => {
+    const directApproved = userAccounts.filter(a => a.status === 'approved' || a.status === 'blocked');
+    const list = [...directApproved];
+
+    // Synthesize display accounts for members in members table who do not have an explicit UserAccount
+    members.forEach((m, idx) => {
+      const cleanPhone = m.phone ? sanitizePhone(m.phone) : '';
+      const exists = list.some(a => 
+        (a.memberId && a.memberId === m.id) ||
+        (cleanPhone && a.phone && sanitizePhone(a.phone) === cleanPhone) ||
+        a.id === m.id
+      );
+      if (!exists) {
+        list.push({
+          id: `member_acc_${m.id}`,
+          memberId: m.id,
+          username: `s${String(50000 + (m.serial || idx + 1)).padStart(5, '0').slice(-5)}`,
+          name: m.name,
+          phone: m.phone || 'N/A',
+          area: m.area || 'সিলেট',
+          bloodGroup: m.bloodGroup,
+          designation: m.designation || 'সাধারণ সদস্য',
+          photoUrl: m.photoUrl,
+          password: 'sms' + (m.phone ? m.phone.slice(-4) : '2022'),
+          status: 'approved',
+          registeredAt: m.createdAt || m.joinDate || new Date().toISOString(),
+          registeredIp: '103.145.24.82',
+          registeredDevice: 'সদস্য তালিকা হতে সংগৃহীত',
+          isDeviceLocked: false
+        });
+      }
+    });
+
+    return list;
+  }, [userAccounts, members]);
+
   const unresolvedAlerts = useMemo(() => securityAlerts.filter(a => !a.resolved), [securityAlerts]);
+
+  // Filtered & Paginated Approved Accounts
+  const filteredApprovedAccounts = useMemo(() => {
+    let list = approvedAccounts;
+    if (regSearch.trim()) {
+      const q = regSearch.trim().toLowerCase();
+      list = list.filter(acc => 
+        (acc.name || '').toLowerCase().includes(q) ||
+        (acc.username || '').toLowerCase().includes(q) ||
+        (acc.phone || '').includes(q) ||
+        (acc.area || '').toLowerCase().includes(q) ||
+        (acc.registeredIp || '').includes(q) ||
+        (acc.lastLoginIp || '').includes(q) ||
+        (acc.designation || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [approvedAccounts, regSearch]);
+
+  const totalApprovedPages = Math.max(1, Math.ceil(filteredApprovedAccounts.length / (approvedPerPage || 20)));
+  const paginatedApprovedAccounts = useMemo(() => {
+    if (approvedPerPage >= 9999) return filteredApprovedAccounts;
+    const start = (approvedPage - 1) * approvedPerPage;
+    return filteredApprovedAccounts.slice(start, start + approvedPerPage);
+  }, [filteredApprovedAccounts, approvedPage, approvedPerPage]);
+
+  // Filtered & Paginated Pending Queue
+  const filteredPendingQueue = useMemo(() => {
+    let list = pendingQueueItems;
+    if (pendingQueueSearch.trim()) {
+      const q = pendingQueueSearch.trim().toLowerCase();
+      list = list.filter(item => 
+        (item.name || '').toLowerCase().includes(q) ||
+        (item.phone || '').includes(q) ||
+        (item.area || '').toLowerCase().includes(q) ||
+        (item.bloodGroup || '').toLowerCase().includes(q) ||
+        (item.designation || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [pendingQueueItems, pendingQueueSearch]);
+
+  const totalPendingPages = Math.max(1, Math.ceil(filteredPendingQueue.length / (pendingPerPage || 20)));
+  const paginatedPendingQueue = useMemo(() => {
+    if (pendingPerPage >= 9999) return filteredPendingQueue;
+    const start = (pendingPage - 1) * pendingPerPage;
+    return filteredPendingQueue.slice(start, start + pendingPerPage);
+  }, [filteredPendingQueue, pendingPage, pendingPerPage]);
 
   // Handle Approve Member Registration from isolated registration queue & Assign Unique S + 5 Digits Username (e.g. s54776)
   const handleApproveQueueItem = async (item: RegistrationQueueItem) => {
@@ -614,6 +732,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       saveUserAccounts(freshAccounts);
       setUserAccounts(freshAccounts);
 
+      // Instantly sync approved account to Supabase user_accounts table
+      await safeSyncToSupabase('userAccounts', activeUserAccount);
+
       // Clean up assigned username state
       setAssignedUsernames(prev => {
         const next = { ...prev };
@@ -647,6 +768,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         freshAccounts[accIdx].status = 'rejected';
         saveUserAccounts(freshAccounts);
         setUserAccounts(freshAccounts);
+        await safeSyncToSupabase('userAccounts', freshAccounts[accIdx]);
       }
 
       setNoticeMsg(`"${item.name}" এর নিবন্ধন আবেদন প্রত্যাখ্যান করা হয়েছে। মূল সদস্য তালিকা সম্পূর্ণ অপরিবর্তিত রয়েছে।`);
@@ -668,6 +790,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       const freshAccounts = loadUserAccounts().filter(a => a.id !== item.id);
       saveUserAccounts(freshAccounts);
       setUserAccounts(freshAccounts);
+      await safeDeleteFromSupabase('userAccounts', item.id);
 
       setNoticeMsg(`আবেদনটি কিউ থেকে সফলভাবে মুছে ফেলা হয়েছে`);
       setTimeout(() => setNoticeMsg(''), 3000);
@@ -678,12 +801,14 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   };
 
   // Handle Toggle Block User (Instant Admin Block / Unblock)
-  const handleToggleBlockUser = (account: UserAccount) => {
+  const handleToggleBlockUser = async (account: UserAccount) => {
     const isNowBlocked = account.status === 'blocked';
     const nextStatus: 'approved' | 'blocked' = isNowBlocked ? 'approved' : 'blocked';
-    const updated = userAccounts.map(a => a.id === account.id ? { ...a, status: nextStatus, isSuspicious: isNowBlocked ? false : a.isSuspicious } : a);
+    const updatedAcc = { ...account, status: nextStatus, isSuspicious: isNowBlocked ? false : account.isSuspicious };
+    const updated = userAccounts.map(a => a.id === account.id ? updatedAcc : a);
     setUserAccounts(updated);
     saveUserAccounts(updated);
+    await safeSyncToSupabase('userAccounts', updatedAcc);
 
     if (!isNowBlocked) {
       setNoticeMsg(`ব্যবহারকারী @${account.username} (${account.name}) তাৎক্ষণিকভাবে ব্লক করা হয়েছে`);
@@ -694,10 +819,14 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   };
 
   // Handle Delete User Account
-  const handleDeleteUserAccount = (accountId: string, username: string) => {
+  const handleDeleteUserAccount = async (accountId: string, username: string) => {
+    if (!confirm(`ব্যবহারকারী @${username} এর অ্যাকাউন্ট স্থায়ীভাবে মুছে ফেলতে চান?`)) {
+      return;
+    }
     const updated = userAccounts.filter(a => a.id !== accountId);
     setUserAccounts(updated);
     saveUserAccounts(updated);
+    await safeDeleteFromSupabase('userAccounts', accountId);
     setNoticeMsg(`ব্যবহারকারী @${username} এর রেকর্ড স্থায়ীভাবে মুছে ফেলা হয়েছে`);
     setTimeout(() => setNoticeMsg(''), 3000);
   };
@@ -2685,7 +2814,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
               </div>
             </div>
 
-            {/* 17th Table Isolation Info Banner */}
+            {/* 17th Table Isolation Info Banner & Live Cloud Sync */}
             <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
               <div className="flex items-center gap-2">
                 <Cloud className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -2693,10 +2822,22 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                   <strong>স্বতন্ত্র ডাটাবেজ আর্কিটেকচার:</strong> <code className="bg-emerald-950/80 px-1.5 py-0.5 rounded text-emerald-300 font-mono text-[10px]">registration_queue</code> টেবিলের সাথে <code className="bg-emerald-950/80 px-1.5 py-0.5 rounded text-emerald-300 font-mono text-[10px]">members</code> টেবিলের কোনো সরাসরি মিশ্রণ নেই।
                 </span>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-500/30 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Isolated 17th Table Live</span>
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  disabled={isRefreshingCloudAccounts}
+                  onClick={loadCloudAccountsAndQueue}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/30 hover:bg-emerald-500/40 text-emerald-100 font-bold text-xs border border-emerald-400/40 transition cursor-pointer disabled:opacity-50 active:scale-95"
+                  title="Supabase ক্লাউড ডাটাবেজ থেকে সমস্ত অপেক্ষমাণ ও অনুমোদিত অ্যাকাউন্ট সিঙ্ক করুন"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingCloudAccounts ? 'animate-spin' : ''}`} />
+                  <span>{isRefreshingCloudAccounts ? 'সিঙ্ক হচ্ছে...' : 'ক্লাউড লাইভ রিফ্রেশ'}</span>
+                </button>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>Isolated 17th Table Live</span>
+                </span>
+              </div>
             </div>
 
             {/* Sub-tab pills */}
@@ -2758,7 +2899,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
           {/* Sub-Tab 1: Pending Registrations Queue */}
           {regSubTab === 'pending' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex justify-between items-center gap-2">
+              <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                 <div>
                   <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                     <Clock className="w-4 h-4 text-amber-600" />
@@ -2768,22 +2909,64 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                     ১৭তম স্বতন্ত্র <span className="font-mono text-emerald-700">registration_queue</span> টেবিলের আবেদনসমূহ যাচাই করে ইউনিক ইউজারনেম বরাদ্দ করুন ও অনুমোদন দিন
                   </p>
                 </div>
-                <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold">
-                  মোট অপেক্ষমাণ: {toBengaliNumber(pendingQueueItems.length)}
-                </span>
+                
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <div className="relative flex-1 md:w-56">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={pendingQueueSearch}
+                      onChange={(e) => {
+                        setPendingQueueSearch(e.target.value);
+                        setPendingPage(1);
+                      }}
+                      placeholder="নাম, ফোন বা এলাকা খুঁজুন..."
+                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                    />
+                  </div>
+
+                  <select
+                    value={pendingPerPage}
+                    onChange={(e) => {
+                      setPendingPerPage(Number(e.target.value));
+                      setPendingPage(1);
+                    }}
+                    className="px-2.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none shrink-0"
+                    title="প্রতি পৃষ্ঠায় প্রদর্শনের সংখ্যা"
+                  >
+                    <option value={10}>১০টি করে</option>
+                    <option value={20}>২০টি করে</option>
+                    <option value={50}>৫০টি করে</option>
+                    <option value={9999}>সকল ({toBengaliNumber(pendingQueueItems.length)})</option>
+                  </select>
+
+                  <span className="px-3 py-1.5 rounded-xl bg-amber-100 text-amber-900 text-xs font-black shrink-0">
+                    মোট: {toBengaliNumber(filteredPendingQueue.length)}
+                  </span>
+                </div>
               </div>
 
-              {pendingQueueItems.length === 0 ? (
+              {filteredPendingQueue.length === 0 ? (
                 <div className="bg-white rounded-3xl p-10 border border-slate-200 text-center shadow-xs">
-                  <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-2" />
-                  <h5 className="text-sm font-bold text-slate-800">কোনো অপেক্ষমাণ নিবন্ধন আবেদন নেই</h5>
-                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                    ব্যবহারকারীরা প্রধান পাতা থেকে নিবন্ধনের আবেদন জমা দিলে তা এই স্বতন্ত্র কিউতে জমা হবে এবং পর্যালোচনার জন্য প্রদর্শিত হবে।
-                  </p>
+                  {pendingQueueItems.length === 0 ? (
+                    <>
+                      <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-2" />
+                      <h5 className="text-sm font-bold text-slate-800">কোনো অপেক্ষমাণ নিবন্ধন আবেদন নেই</h5>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        ব্যবহারকারীরা প্রধান পাতা থেকে নিবন্ধনের আবেদন জমা দিলে তা এই স্বতন্ত্র কিউতে জমা হবে এবং পর্যালোচনার জন্য প্রদর্শিত হবে।
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+                      <h5 className="text-sm font-bold text-slate-800">সন্ধানের সাথে কোনো আবেদন মেলেনি</h5>
+                      <p className="text-xs text-slate-500 mt-1">ভিন্ন নাম বা ফোন নম্বর দিয়ে অনুসন্ধান করুন</p>
+                    </>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {pendingQueueItems.map((account) => {
+                <div className="space-y-4 max-h-[750px] overflow-y-auto pr-1">
+                  {paginatedPendingQueue.map((account) => {
                     const currentUsername = assignedUsernames[account.id] !== undefined 
                       ? assignedUsernames[account.id] 
                       : (account.assignedUsername || '');
@@ -2962,6 +3145,40 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                   })}
                 </div>
               )}
+
+              {/* Pagination controls for Pending Queue */}
+              {totalPendingPages > 1 && (
+                <div className="bg-white rounded-2xl p-3 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-2xs">
+                  <span className="text-slate-500">
+                    মোট <strong>{toBengaliNumber(filteredPendingQueue.length)}</strong> টি আবেদনের মধ্যে{' '}
+                    <strong>{toBengaliNumber((pendingPage - 1) * pendingPerPage + 1)}</strong> -{' '}
+                    <strong>{toBengaliNumber(Math.min(pendingPage * pendingPerPage, filteredPendingQueue.length))}</strong> দেখানো হচ্ছে
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={pendingPage <= 1}
+                      onClick={() => setPendingPage(p => Math.max(1, p - 1))}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-bold transition cursor-pointer"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>পূর্ববর্তী</span>
+                    </button>
+                    <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-900 font-bold border border-amber-200">
+                      {toBengaliNumber(pendingPage)} / {toBengaliNumber(totalPendingPages)}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={pendingPage >= totalPendingPages}
+                      onClick={() => setPendingPage(p => Math.min(totalPendingPages, p + 1))}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-bold transition cursor-pointer"
+                    >
+                      <span>পরবর্তী</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -3055,7 +3272,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
           {/* Sub-Tab 2: Approved Accounts & Device Tracking List */}
           {regSubTab === 'approved' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                 <div>
                   <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                     <Users className="w-4 h-4 text-emerald-700" />
@@ -3066,39 +3283,62 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                   </p>
                 </div>
 
-                <div className="relative w-full sm:w-64">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    value={regSearch}
-                    onChange={(e) => setRegSearch(e.target.value)}
-                    placeholder="নাম, ইউজারনেম বা আইপি খুঁজুন..."
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <div className="relative flex-1 md:w-56">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={regSearch}
+                      onChange={(e) => {
+                        setRegSearch(e.target.value);
+                        setApprovedPage(1);
+                      }}
+                      placeholder="নাম, ইউজারনেম বা আইপি খুঁজুন..."
+                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+
+                  <select
+                    value={approvedPerPage}
+                    onChange={(e) => {
+                      setApprovedPerPage(Number(e.target.value));
+                      setApprovedPage(1);
+                    }}
+                    className="px-2.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none shrink-0"
+                    title="প্রতি পৃষ্ঠায় প্রদর্শনের সংখ্যা"
+                  >
+                    <option value={10}>১০ জন করে</option>
+                    <option value={20}>২০ জন করে</option>
+                    <option value={50}>৫০ জন করে</option>
+                    <option value={100}>১০০ জন করে</option>
+                    <option value={9999}>সকল সদস্য ({toBengaliNumber(approvedAccounts.length)})</option>
+                  </select>
+
+                  <span className="px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-900 text-xs font-black shrink-0">
+                    মোট: {toBengaliNumber(filteredApprovedAccounts.length)}
+                  </span>
                 </div>
               </div>
 
-              {approvedAccounts.length === 0 ? (
+              {filteredApprovedAccounts.length === 0 ? (
                 <div className="bg-white rounded-3xl p-10 border border-slate-200 text-center shadow-xs">
-                  <Users className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-                  <h5 className="text-sm font-bold text-slate-700">কোনো অনুমোদিত অ্যাকাউন্ট নেই</h5>
-                  <p className="text-xs text-slate-400 mt-1">অপেক্ষমাণ আবেদন অনুমোদন করলে অ্যাকাউন্টসমূহ এখানে যুক্ত হবে।</p>
+                  {approvedAccounts.length === 0 ? (
+                    <>
+                      <Users className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                      <h5 className="text-sm font-bold text-slate-700">কোনো অনুমোদিত অ্যাকাউন্ট নেই</h5>
+                      <p className="text-xs text-slate-400 mt-1">অপেক্ষমাণ আবেদন অনুমোদন করলে অ্যাকাউন্টসমূহ এখানে যুক্ত হবে।</p>
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+                      <h5 className="text-sm font-bold text-slate-700">সন্ধানের সাথে কোনো অ্যাকাউন্ট মেলেনি</h5>
+                      <p className="text-xs text-slate-400 mt-1">ভিন্ন নাম বা ইউজারনেম দিয়ে অনুসন্ধান করুন</p>
+                    </>
+                  )}
                 </div>
               ) : (
-                <div className="bg-white rounded-3xl border border-slate-200 divide-y divide-slate-100 overflow-hidden shadow-xs">
-                  {approvedAccounts
-                    .filter(acc => {
-                      if (!regSearch.trim()) return true;
-                      const q = regSearch.toLowerCase();
-                      return (
-                        acc.name.toLowerCase().includes(q) ||
-                        acc.username.toLowerCase().includes(q) ||
-                        acc.phone.includes(q) ||
-                        (acc.registeredIp || '').includes(q) ||
-                        (acc.lastLoginIp || '').includes(q)
-                      );
-                    })
-                    .map((acc) => {
+                <div className="bg-white rounded-3xl border border-slate-200 divide-y divide-slate-100 overflow-hidden shadow-xs max-h-[750px] overflow-y-auto">
+                  {paginatedApprovedAccounts.map((acc) => {
                       const isBlocked = acc.status === 'blocked';
                       const isFlagged = acc.isSuspicious;
 
@@ -3265,6 +3505,40 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                         </div>
                       );
                     })}
+                </div>
+              )}
+
+              {/* Pagination controls for Approved Accounts */}
+              {totalApprovedPages > 1 && (
+                <div className="bg-white rounded-2xl p-3 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-2xs">
+                  <span className="text-slate-500">
+                    মোট <strong>{toBengaliNumber(filteredApprovedAccounts.length)}</strong> জন সদস্য/অ্যাকাউন্টের মধ্যে{' '}
+                    <strong>{toBengaliNumber((approvedPage - 1) * approvedPerPage + 1)}</strong> -{' '}
+                    <strong>{toBengaliNumber(Math.min(approvedPage * approvedPerPage, filteredApprovedAccounts.length))}</strong> দেখানো হচ্ছে
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={approvedPage <= 1}
+                      onClick={() => setApprovedPage(p => Math.max(1, p - 1))}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-bold transition cursor-pointer"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>পূর্ববর্তী</span>
+                    </button>
+                    <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-900 font-bold border border-emerald-200">
+                      {toBengaliNumber(approvedPage)} / {toBengaliNumber(totalApprovedPages)}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={approvedPage >= totalApprovedPages}
+                      onClick={() => setApprovedPage(p => Math.min(totalApprovedPages, p + 1))}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-bold transition cursor-pointer"
+                    >
+                      <span>পরবর্তী</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
