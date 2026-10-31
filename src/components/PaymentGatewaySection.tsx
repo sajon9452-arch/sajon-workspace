@@ -9,9 +9,11 @@ import {
   Sparkles, 
   CheckCircle2, 
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  Landmark,
+  Wallet
 } from 'lucide-react';
-import { PaymentGatewayConfig, Member, FundRecord, PendingPayment } from '../types';
+import { PaymentGatewayConfig, PaymentGatewayItem, Member, FundRecord, PendingPayment } from '../types';
 import { safeSyncToSupabase } from '../utils/supabaseClient';
 import { PMS_SYNC_EVENT } from '../utils/storage';
 
@@ -69,13 +71,32 @@ export interface PaymentGatewaySectionProps {
   }) => void;
 }
 
+interface DisplayGatewayMethod {
+  id: string;
+  name: string;
+  nameEn: string;
+  number: string;
+  type: string;
+  instructions: string;
+  gradient: string;
+  borderHover: string;
+  badgeBg: string;
+  btnBg: string;
+  logoType: 'bkash' | 'nagad' | 'rocket' | 'bank' | 'wallet';
+  isBank: boolean;
+  bankName?: string;
+  branchName?: string;
+  routingNumber?: string;
+  accountHolder?: string;
+}
+
 export const PaymentGatewaySection: React.FC<PaymentGatewaySectionProps> = ({
   paymentConfig,
   members = [],
   onDepositSuccess
 }) => {
-  // Modal state: null when closed, or 'bkash' | 'nagad' | 'rocket'
-  const [activeModalGateway, setActiveModalGateway] = useState<'bkash' | 'nagad' | 'rocket' | null>(null);
+  // Modal state: null when closed, or gateway id string
+  const [activeModalGatewayId, setActiveModalGatewayId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -89,60 +110,148 @@ export const PaymentGatewaySection: React.FC<PaymentGatewaySectionProps> = ({
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const methods = [
-    {
-      id: 'bkash' as const,
-      name: 'বিকাশ',
-      nameEn: 'bKash',
-      number: paymentConfig.bkashNumber || '০১৮XXXXXXXX',
-      type: paymentConfig.bkashType || 'Personal',
-      instructions: paymentConfig.bkashInstructions || 'আপনার বিকাশ অ্যাপ থেকে সেন্ড মানি (Send Money) করে ট্রানজেকশন আইডি (TrxID) নিচে প্রদান করুন।',
-      gradient: 'from-[#E2136E] to-[#C2185B]',
-      borderHover: 'hover:border-[#E2136E]/60',
-      badgeBg: 'bg-[#E2136E]/15 text-[#FF66A3] border-[#E2136E]/30',
-      btnBg: 'bg-[#E2136E] hover:bg-[#C2185B]',
-      logo: BkashLogo
-    },
-    {
-      id: 'nagad' as const,
-      name: 'নগদ',
-      nameEn: 'Nagad',
-      number: paymentConfig.nagadNumber || '০১৬XXXXXXXX',
-      type: paymentConfig.nagadType || 'Personal',
-      instructions: paymentConfig.nagadInstructions || 'নগদ অ্যাপ থেকে সেন্ড মানি করে TrxID ও প্রেরক নম্বর নিচে এন্ট্রি করুন।',
-      gradient: 'from-[#EA1D25] to-[#F7931E]',
-      borderHover: 'hover:border-[#EA1D25]/60',
-      badgeBg: 'bg-[#EA1D25]/15 text-[#FFA07A] border-[#EA1D25]/30',
-      btnBg: 'bg-gradient-to-r from-[#EA1D25] to-[#F7931E] hover:opacity-95',
-      logo: NagadLogo
-    },
-    {
-      id: 'rocket' as const,
-      name: 'রকেট',
-      nameEn: 'Rocket',
-      number: paymentConfig.rocketNumber || '০১৭XXXXXXXX',
-      type: paymentConfig.rocketType || 'Personal',
-      instructions: paymentConfig.rocketInstructions || 'রকেট অ্যাপ থেকে সেন্ড মানি করে ট্রানজেকশন রেফারেন্স নিশ্চিত করুন।',
-      gradient: 'from-[#8C3494] to-[#5C2366]',
-      borderHover: 'hover:border-[#8C3494]/60',
-      badgeBg: 'bg-[#8C3494]/15 text-[#DDA0DD] border-[#8C3494]/30',
-      btnBg: 'bg-[#8C3494] hover:bg-[#6F2C91]',
-      logo: RocketLogo
+  // Build dynamic gateways list with priority to paymentConfig.gateways
+  const methods = React.useMemo<DisplayGatewayMethod[]>(() => {
+    if (paymentConfig.gateways && paymentConfig.gateways.length > 0) {
+      const activeList = paymentConfig.gateways.filter(g => g.isActive !== false);
+      if (activeList.length > 0) {
+        return activeList.map((item): DisplayGatewayMethod => {
+          let gradient = 'from-slate-700 to-slate-900';
+          let borderHover = 'hover:border-slate-500';
+          let badgeBg = 'bg-slate-500/15 text-slate-300 border-slate-500/30';
+          let btnBg = 'bg-slate-700 hover:bg-slate-800';
+          let logoType: 'bkash' | 'nagad' | 'rocket' | 'bank' | 'wallet' = 'wallet';
+
+          const gType = (item.gatewayType || '').toLowerCase();
+          const gName = (item.gatewayName || '').toLowerCase();
+
+          if (gType === 'bkash' || gName.includes('বিকাশ') || gName.includes('bkash')) {
+            gradient = 'from-[#E2136E] to-[#C2185B]';
+            borderHover = 'hover:border-[#E2136E]/60';
+            badgeBg = 'bg-[#E2136E]/15 text-[#FF66A3] border-[#E2136E]/30';
+            btnBg = 'bg-[#E2136E] hover:bg-[#C2185B]';
+            logoType = 'bkash';
+          } else if (gType === 'nagad' || gName.includes('নগদ') || gName.includes('nagad')) {
+            gradient = 'from-[#EA1D25] to-[#F7931E]';
+            borderHover = 'hover:border-[#EA1D25]/60';
+            badgeBg = 'bg-[#EA1D25]/15 text-[#FFA07A] border-[#EA1D25]/30';
+            btnBg = 'bg-gradient-to-r from-[#EA1D25] to-[#F7931E] hover:opacity-95';
+            logoType = 'nagad';
+          } else if (gType === 'rocket' || gName.includes('রকেট') || gName.includes('rocket')) {
+            gradient = 'from-[#8C3494] to-[#5C2366]';
+            borderHover = 'hover:border-[#8C3494]/60';
+            badgeBg = 'bg-[#8C3494]/15 text-[#DDA0DD] border-[#8C3494]/30';
+            btnBg = 'bg-[#8C3494] hover:bg-[#6F2C91]';
+            logoType = 'rocket';
+          } else if (gType === 'bank' || item.bankName) {
+            gradient = 'from-blue-700 to-indigo-900';
+            borderHover = 'hover:border-blue-400';
+            badgeBg = 'bg-blue-500/15 text-blue-300 border-blue-500/30';
+            btnBg = 'bg-blue-600 hover:bg-blue-700';
+            logoType = 'bank';
+          } else if (gType === 'upay' || gName.includes('উপায়') || gName.includes('upay')) {
+            gradient = 'from-amber-600 to-amber-800';
+            borderHover = 'hover:border-amber-400';
+            badgeBg = 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+            btnBg = 'bg-amber-600 hover:bg-amber-700';
+            logoType = 'wallet';
+          }
+
+          return {
+            id: item.id,
+            name: item.gatewayName,
+            nameEn: item.gatewayType.toUpperCase(),
+            number: item.accountNumber,
+            type: item.accountType,
+            instructions: item.instructions || 'পেমেন্ট সম্পন্ন করে নিচের ফর্মে ট্রানজেকশন আইডি (TrxID) প্রদান করুন।',
+            gradient,
+            borderHover,
+            badgeBg,
+            btnBg,
+            logoType,
+            bankName: item.bankName,
+            branchName: item.branchName,
+            routingNumber: item.routingNumber,
+            accountHolder: item.accountHolder,
+            isBank: Boolean(item.bankName || gType === 'bank')
+          };
+        });
+      }
     }
-  ];
 
-  const currentMethod = methods.find(m => m.id === activeModalGateway) || methods[0];
-  const CurrentLogo = currentMethod.logo;
+    // Default 3 standard gateways if not yet migrated or empty
+    return [
+      {
+        id: 'bkash',
+        name: 'বিকাশ',
+        nameEn: 'bKash',
+        number: paymentConfig.bkashNumber || '০১৮XXXXXXXX',
+        type: paymentConfig.bkashType || 'Personal',
+        instructions: paymentConfig.bkashInstructions || 'আপনার বিকাশ অ্যাপ থেকে সেন্ড মানি (Send Money) করে ট্রানজেকশন আইডি (TrxID) নিচে প্রদান করুন।',
+        gradient: 'from-[#E2136E] to-[#C2185B]',
+        borderHover: 'hover:border-[#E2136E]/60',
+        badgeBg: 'bg-[#E2136E]/15 text-[#FF66A3] border-[#E2136E]/30',
+        btnBg: 'bg-[#E2136E] hover:bg-[#C2185B]',
+        logoType: 'bkash' as const,
+        isBank: false
+      },
+      {
+        id: 'nagad',
+        name: 'নগদ',
+        nameEn: 'Nagad',
+        number: paymentConfig.nagadNumber || '০১৬XXXXXXXX',
+        type: paymentConfig.nagadType || 'Personal',
+        instructions: paymentConfig.nagadInstructions || 'নগদ অ্যাপ থেকে সেন্ড মানি করে TrxID ও প্রেরক নম্বর নিচে এন্ট্রি করুন।',
+        gradient: 'from-[#EA1D25] to-[#F7931E]',
+        borderHover: 'hover:border-[#EA1D25]/60',
+        badgeBg: 'bg-[#EA1D25]/15 text-[#FFA07A] border-[#EA1D25]/30',
+        btnBg: 'bg-gradient-to-r from-[#EA1D25] to-[#F7931E] hover:opacity-95',
+        logoType: 'nagad' as const,
+        isBank: false
+      },
+      {
+        id: 'rocket',
+        name: 'রকেট',
+        nameEn: 'Rocket',
+        number: paymentConfig.rocketNumber || '০১৭XXXXXXXX',
+        type: paymentConfig.rocketType || 'Personal',
+        instructions: paymentConfig.rocketInstructions || 'রকেট অ্যাপ থেকে সেন্ড মানি করে ট্রানজেকশন রেফারেন্স নিশ্চিত করুন।',
+        gradient: 'from-[#8C3494] to-[#5C2366]',
+        borderHover: 'hover:border-[#8C3494]/60',
+        badgeBg: 'bg-[#8C3494]/15 text-[#DDA0DD] border-[#8C3494]/30',
+        btnBg: 'bg-[#8C3494] hover:bg-[#6F2C91]',
+        logoType: 'rocket' as const,
+        isBank: false
+      }
+    ];
+  }, [paymentConfig]);
 
-  const handleOpenGatewayModal = (gateway: 'bkash' | 'nagad' | 'rocket') => {
-    setActiveModalGateway(gateway);
+  const currentMethod = methods.find(m => m.id === activeModalGatewayId) || methods[0];
+
+  const renderLogo = (type: string, className = "w-6 h-6") => {
+    switch (type) {
+      case 'bkash':
+        return <BkashLogo className={className} />;
+      case 'nagad':
+        return <NagadLogo className={className} />;
+      case 'rocket':
+        return <RocketLogo className={className} />;
+      case 'bank':
+        return <Landmark className={`${className} text-blue-600`} />;
+      default:
+        return <Wallet className={`${className} text-emerald-600`} />;
+    }
+  };
+
+  const handleOpenGatewayModal = (gatewayId: string) => {
+    setActiveModalGatewayId(gatewayId);
     setErrorMsg('');
     setSuccessMsg('');
     setCopied(false);
   };
 
   const handleCloseModal = () => {
-    setActiveModalGateway(null);
+    setActiveModalGatewayId(null);
     setErrorMsg('');
     setSuccessMsg('');
     setCopied(false);
@@ -267,10 +376,9 @@ export const PaymentGatewaySection: React.FC<PaymentGatewaySectionProps> = ({
         </div>
       </div>
 
-      {/* Colorful & Interactive Gateway Cards (Static number box removed as requested) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+      {/* Colorful & Interactive Gateway Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
         {methods.map((method) => {
-          const LogoComp = method.logo;
           return (
             <button
               key={method.id}
@@ -281,14 +389,14 @@ export const PaymentGatewaySection: React.FC<PaymentGatewaySectionProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-xl bg-white shadow-md p-1.5 flex items-center justify-center shrink-0 border border-slate-100 group-hover:scale-110 transition-transform">
-                    <LogoComp className="w-full h-full" />
+                    {renderLogo(method.logoType, "w-full h-full")}
                   </div>
                   <div>
                     <span className="text-sm font-black text-white block">
                       {method.name}
                     </span>
                     <span className="text-[11px] font-mono text-slate-300 font-bold block">
-                      {method.nameEn}
+                      {method.bankName ? method.bankName : method.nameEn}
                     </span>
                   </div>
                 </div>
@@ -310,21 +418,21 @@ export const PaymentGatewaySection: React.FC<PaymentGatewaySectionProps> = ({
       </div>
 
       {/* Dedicated Popup Window / Form for the Selected Gateway */}
-      {activeModalGateway && (
+      {activeModalGatewayId && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 text-slate-800 animate-in fade-in zoom-in-95 duration-200 my-8">
             {/* 1. Branded Header */}
             <div className={`p-5 bg-gradient-to-r ${currentMethod.gradient} text-white flex items-center justify-between`}>
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-white p-2 shadow-md flex items-center justify-center shrink-0">
-                  <CurrentLogo className="w-full h-full" />
+                  {renderLogo(currentMethod.logoType, "w-full h-full")}
                 </div>
                 <div>
                   <h3 className="text-lg font-black flex items-center gap-2">
                     <span>{currentMethod.name} ({currentMethod.nameEn}) গেটওয়ে</span>
                   </h3>
                   <p className="text-xs text-white/90">
-                    নির্ধারিত নম্বরে টাকা পাঠিয়ে TrxID তথ্য সাবমিট করুন
+                    {currentMethod.isBank ? 'নির্ধারিত ব্যাংক অ্যাকাউন্টে টাকা পাঠিয়ে ডিপোজিট তথ্য সাবমিট করুন' : 'নির্ধারিত নম্বরে টাকা পাঠিয়ে TrxID তথ্য সাবমিট করুন'}
                   </p>
                 </div>
               </div>
@@ -339,41 +447,112 @@ export const PaymentGatewaySection: React.FC<PaymentGatewaySectionProps> = ({
             </div>
 
             <div className="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-              {/* 2. Top Box: Admin-configured payment number with Copy option */}
-              <div className="p-4 rounded-2xl bg-slate-50 border-2 border-slate-200/90 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-600 flex items-center gap-1.5">
-                    <Smartphone className="w-4 h-4 text-slate-500" />
-                    <span>{currentMethod.name} পেমেন্ট নম্বর ({currentMethod.type}):</span>
-                  </span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-700">
-                    {currentMethod.type}
-                  </span>
-                </div>
+              {/* 2. Top Box: Admin-configured payment number or Bank info with Copy option */}
+              <div className="p-4 rounded-2xl bg-slate-50 border-2 border-slate-200/90 space-y-3">
+                {currentMethod.isBank ? (
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-600 flex items-center gap-1.5">
+                        <Landmark className="w-4 h-4 text-blue-600" />
+                        <span>ব্যাংক হিসাবের বিবরণী:</span>
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-800">
+                        {currentMethod.type}
+                      </span>
+                    </div>
 
-                <div className="flex items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200">
-                  <span className="font-mono text-xl sm:text-2xl font-black text-slate-900 tracking-wider">
-                    {currentMethod.number}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(currentMethod.number)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95 shrink-0"
-                    title="নম্বর কপি করুন"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        <span>কপি হয়েছে!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>কপি করুন</span>
-                      </>
+                    {currentMethod.bankName && (
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex justify-between items-center">
+                        <span className="text-slate-500 text-[11px]">ব্যাংকের নাম:</span>
+                        <strong className="text-slate-800 font-bold text-sm">{currentMethod.bankName}</strong>
+                      </div>
                     )}
-                  </button>
-                </div>
+
+                    {currentMethod.branchName && (
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex justify-between items-center">
+                        <span className="text-slate-500 text-[11px]">শাখা (Branch):</span>
+                        <strong className="text-slate-800 font-bold text-xs">{currentMethod.branchName}</strong>
+                      </div>
+                    )}
+
+                    {currentMethod.accountHolder && (
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex justify-between items-center">
+                        <span className="text-slate-500 text-[11px]">অ্যাকাউন্ট হোল্ডার:</span>
+                        <strong className="text-slate-800 font-bold text-xs">{currentMethod.accountHolder}</strong>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-bold">অ্যাকাউন্ট নম্বর:</span>
+                        <span className="font-mono text-lg sm:text-xl font-black text-slate-900 tracking-wider">
+                          {currentMethod.number}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(currentMethod.number)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95 shrink-0"
+                        title="অ্যাকাউন্ট নম্বর কপি করুন"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>কপি হয়েছে!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>কপি করুন</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {currentMethod.routingNumber && (
+                      <div className="flex items-center justify-between gap-3 bg-white p-2 rounded-xl border border-slate-200">
+                        <span className="text-slate-500 text-[11px]">রাউটিং নম্বর:</span>
+                        <span className="font-mono font-bold text-slate-800">{currentMethod.routingNumber}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-600 flex items-center gap-1.5">
+                        <Smartphone className="w-4 h-4 text-slate-500" />
+                        <span>{currentMethod.name} পেমেন্ট নম্বর ({currentMethod.type}):</span>
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-700">
+                        {currentMethod.type}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200">
+                      <span className="font-mono text-xl sm:text-2xl font-black text-slate-900 tracking-wider">
+                        {currentMethod.number}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(currentMethod.number)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95 shrink-0"
+                        title="নম্বর কপি করুন"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>কপি হয়েছে!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>কপি করুন</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </>
+                )}
 
                 <p className="text-[11px] text-slate-500 leading-relaxed">
                   {currentMethod.instructions}

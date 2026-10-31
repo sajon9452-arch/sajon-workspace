@@ -51,7 +51,8 @@ import {
   Download,
   FileCheck,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Landmark
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
@@ -61,6 +62,7 @@ import {
   FundRecord,
   PaymentStatus,
   PaymentGatewayConfig,
+  PaymentGatewayItem,
   UserAccount,
   SecurityAlert,
   HomeSlide,
@@ -93,7 +95,8 @@ import { autoSyncMembersToFunds } from '../utils/memberFundLinker';
 import { generateDirectSimPaidSms, generateDirectSimDueSms, triggerDirectSimSms } from '../utils/smsHelper';
 import { generateReceiptDataUrl } from '../utils/receiptGenerator';
 import { ReceiptPreviewModal } from './ReceiptPreviewModal';
-import { saveAdminPin, PMS_SYNC_EVENT, saveFunds, loadFunds } from '../utils/storage';
+import { saveAdminPin, PMS_SYNC_EVENT, saveFunds, loadFunds, loadPaymentGateways, savePaymentGateways } from '../utils/storage';
+import { INITIAL_PAYMENT_GATEWAYS } from '../data/initialData';
 import { BkashLogo, NagadLogo, RocketLogo } from './PaymentGatewaySection';
 import { 
   loadUserAccounts, 
@@ -120,7 +123,11 @@ import {
   fetchSupabaseCollection,
   safeSyncToSupabase,
   safeDeleteFromSupabase,
-  APP_SUPABASE_TABLES
+  APP_SUPABASE_TABLES,
+  syncOrgProfileToSupabase,
+  syncPaymentGatewaysToSupabase,
+  fetchOrgProfileFromSupabase,
+  fetchPaymentGatewaysFromSupabase
 } from '../utils/supabaseClient';
 import { triggerFullCloudSync, getLocalSyncSnapshot } from '../utils/liveSync';
 import { compressImageFile } from '../utils/imageCompressor';
@@ -1272,6 +1279,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   // Profile Form
   const [name, setName] = useState(profile.name);
   const [tagline, setTagline] = useState(profile.tagline);
+  const [description, setDescription] = useState(profile.description || '');
   const [establishedDate, setEstablishedDate] = useState(profile.establishedDate);
   const [establishedYear, setEstablishedYear] = useState(profile.establishedYear);
   const [address, setAddress] = useState(profile.address);
@@ -1287,11 +1295,14 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [generalSecretaryName, setGeneralSecretaryName] = useState(profile.generalSecretaryName || '');
   const [financeSecretaryName, setFinanceSecretaryName] = useState(profile.financeSecretaryName || '');
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isRefreshingCloudProfile, setIsRefreshingCloudProfile] = useState(false);
 
   // Sync profile when prop changes
   useEffect(() => {
     setName(profile.name);
     setTagline(profile.tagline);
+    setDescription(profile.description || '');
     setEstablishedDate(profile.establishedDate);
     setEstablishedYear(profile.establishedYear);
     setAddress(profile.address);
@@ -1308,7 +1319,35 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     setFinanceSecretaryName(profile.financeSecretaryName || '');
   }, [profile]);
 
-  // Payment Form
+  // Payment Form & Dynamic Gateways Management
+  const [gatewaysList, setGatewaysList] = useState<PaymentGatewayItem[]>(() => {
+    if (paymentConfig.gateways && Array.isArray(paymentConfig.gateways) && paymentConfig.gateways.length > 0) {
+      return paymentConfig.gateways;
+    }
+    return loadPaymentGateways();
+  });
+  const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
+  const [editingGateway, setEditingGateway] = useState<PaymentGatewayItem | null>(null);
+  const [gwName, setGwName] = useState('বিকাশ (bKash)');
+  const [gwType, setGwType] = useState<'mobile' | 'bank'>('mobile');
+  const [gwNumber, setGwNumber] = useState('');
+  const [gwAccountType, setGwAccountType] = useState('Personal');
+  const [gwInstructions, setGwInstructions] = useState('');
+  const [gwBankName, setGwBankName] = useState('');
+  const [gwBranchName, setGwBranchName] = useState('');
+  const [gwRoutingNumber, setGwRoutingNumber] = useState('');
+  const [gwAccountHolder, setGwAccountHolder] = useState('');
+  const [gwIsActive, setGwIsActive] = useState(true);
+  const [gwSearch, setGwSearch] = useState('');
+  const [isSavingGateway, setIsSavingGateway] = useState(false);
+  const [isRefreshingCloudGateways, setIsRefreshingCloudGateways] = useState(false);
+
+  useEffect(() => {
+    if (paymentConfig.gateways && Array.isArray(paymentConfig.gateways)) {
+      setGatewaysList(paymentConfig.gateways);
+    }
+  }, [paymentConfig.gateways]);
+
   const [bkashNumber, setBkashNumber] = useState(paymentConfig.bkashNumber);
   const [bkashType, setBkashType] = useState(paymentConfig.bkashType);
   const [nagadNumber, setNagadNumber] = useState(paymentConfig.nagadNumber);
@@ -1578,12 +1617,15 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     }
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateProfile({
+    setIsSavingProfile(true);
+    const updatedProfile: OrganizationProfile = {
       ...profile,
+      id: profile.id || 'org_main_profile',
       name: name.trim(),
       tagline: tagline.trim(),
+      description: description.trim(),
       establishedDate: establishedDate.trim(),
       establishedYear: establishedYear.trim(),
       address: address.trim(),
@@ -1597,25 +1639,229 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       logoUrl: logoUrl.trim() || undefined,
       presidentName: presidentName.trim(),
       generalSecretaryName: generalSecretaryName.trim(),
-      financeSecretaryName: financeSecretaryName.trim()
-    });
-    setNoticeMsg('সংগঠনের প্রোফাইল ও রসিদ স্বাক্ষরকারী তথ্য তাৎক্ষণিক সংরক্ষিত ও আপডেট হয়েছে');
+      financeSecretaryName: financeSecretaryName.trim(),
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      onUpdateProfile(updatedProfile);
+      await syncOrgProfileToSupabase(updatedProfile);
+      setNoticeMsg('সংগঠনের প্রোফাইল ক্লাউড ডাটাবেজে তাৎক্ষণিক সংরক্ষিত ও আপডেট হয়েছে');
+      setTimeout(() => setNoticeMsg(''), 3500);
+    } catch {
+      setErrorMsg('প্রোফাইল সংরক্ষণে সমস্যা হয়েছে');
+      setTimeout(() => setErrorMsg(''), 3000);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleRefreshCloudProfile = async () => {
+    setIsRefreshingCloudProfile(true);
+    try {
+      const cloud = await fetchOrgProfileFromSupabase();
+      if (cloud && cloud.name) {
+        onUpdateProfile(cloud);
+        setName(cloud.name);
+        setTagline(cloud.tagline || '');
+        setDescription(cloud.description || '');
+        setEstablishedDate(cloud.establishedDate || '');
+        setEstablishedYear(cloud.establishedYear || '');
+        setAddress(cloud.address || '');
+        setHotline(cloud.hotline || '');
+        setEmergencyContact(cloud.emergencyContact || '');
+        setRegNumber(cloud.regNumber || '');
+        setPhone(cloud.phone || '');
+        setEmail(cloud.email || '');
+        setFacebookUrl(cloud.facebookUrl || '');
+        setYoutubeUrl(cloud.youtubeUrl || '');
+        setLogoUrl(cloud.logoUrl || '');
+        setPresidentName(cloud.presidentName || '');
+        setGeneralSecretaryName(cloud.generalSecretaryName || '');
+        setFinanceSecretaryName(cloud.financeSecretaryName || '');
+        setNoticeMsg('ক্লাউড ডাটাবেজ থেকে সর্বশেষ প্রোফাইল লোড হয়েছে');
+      } else {
+        setNoticeMsg('ক্লাউড ডাটাবেজে কোনো পৃথক প্রোফাইল নেই, বর্তমান ডাটা অক্ষুণ্ণ রয়েছে');
+      }
+    } catch {
+      setErrorMsg('ক্লাউড থেকে প্রোফাইল রিফ্রেশে সমস্যা হয়েছে');
+    } finally {
+      setIsRefreshingCloudProfile(false);
+      setTimeout(() => {
+        setNoticeMsg('');
+        setErrorMsg('');
+      }, 3500);
+    }
+  };
+
+  // Payment Gateways Management Handlers
+  const handleOpenAddGateway = () => {
+    setEditingGateway(null);
+    setGwName('বিকাশ (bKash)');
+    setGwType('mobile');
+    setGwNumber('');
+    setGwAccountType('Personal');
+    setGwInstructions('সেন্ড মানি করে TrxID প্রদান করুন।');
+    setGwBankName('');
+    setGwBranchName('');
+    setGwRoutingNumber('');
+    setGwAccountHolder('');
+    setGwIsActive(true);
+    setIsGatewayModalOpen(true);
+  };
+
+  const handleOpenEditGateway = (gw: PaymentGatewayItem) => {
+    setEditingGateway(gw);
+    setGwName(gw.gatewayName || '');
+    setGwType((gw.gatewayType as any) || 'mobile');
+    setGwNumber(gw.accountNumber || '');
+    setGwAccountType(gw.accountType || 'Personal');
+    setGwInstructions(gw.instructions || '');
+    setGwBankName(gw.bankName || '');
+    setGwBranchName(gw.branchName || '');
+    setGwRoutingNumber(gw.routingNumber || '');
+    setGwAccountHolder(gw.accountHolder || '');
+    setGwIsActive(gw.isActive !== false);
+    setIsGatewayModalOpen(true);
+  };
+
+  const handleSaveGateway = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gwNumber.trim()) {
+      setErrorMsg('অ্যাকাউন্ট / মোবাইল নম্বর প্রদান করা আবশ্যক');
+      setTimeout(() => setErrorMsg(''), 3000);
+      return;
+    }
+
+    setIsSavingGateway(true);
+    try {
+      const now = new Date().toISOString();
+      let updatedList: PaymentGatewayItem[];
+
+      if (editingGateway) {
+        const updatedItem: PaymentGatewayItem = {
+          ...editingGateway,
+          gatewayName: gwName.trim(),
+          gatewayType: gwType,
+          accountNumber: gwNumber.trim(),
+          accountType: gwAccountType,
+          instructions: gwInstructions.trim(),
+          bankName: gwType === 'bank' ? gwBankName.trim() : undefined,
+          branchName: gwType === 'bank' ? gwBranchName.trim() : undefined,
+          routingNumber: gwType === 'bank' ? gwRoutingNumber.trim() : undefined,
+          accountHolder: gwType === 'bank' ? gwAccountHolder.trim() : undefined,
+          isActive: gwIsActive,
+          updatedAt: now
+        };
+        updatedList = gatewaysList.map(g => g.id === editingGateway.id ? updatedItem : g);
+        await safeSyncToSupabase('paymentGateways', updatedItem);
+      } else {
+        const newItem: PaymentGatewayItem = {
+          id: `gw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          gatewayName: gwName.trim(),
+          gatewayType: gwType,
+          accountNumber: gwNumber.trim(),
+          accountType: gwAccountType,
+          instructions: gwInstructions.trim(),
+          bankName: gwType === 'bank' ? gwBankName.trim() : undefined,
+          branchName: gwType === 'bank' ? gwBranchName.trim() : undefined,
+          routingNumber: gwType === 'bank' ? gwRoutingNumber.trim() : undefined,
+          accountHolder: gwType === 'bank' ? gwAccountHolder.trim() : undefined,
+          isActive: gwIsActive,
+          orderIndex: gatewaysList.length + 1,
+          createdAt: now,
+          updatedAt: now
+        };
+        updatedList = [...gatewaysList, newItem];
+        await safeSyncToSupabase('paymentGateways', newItem);
+      }
+
+      setGatewaysList(updatedList);
+      savePaymentGateways(updatedList);
+
+      // Keep legacy config in sync
+      const updatedConfig: PaymentGatewayConfig = {
+        ...paymentConfig,
+        gateways: updatedList
+      };
+      const foundBkash = updatedList.find(g => g.gatewayName.toLowerCase().includes('bkash') || g.gatewayName.includes('বিকাশ'));
+      if (foundBkash) {
+        updatedConfig.bkashNumber = foundBkash.accountNumber;
+        updatedConfig.bkashType = foundBkash.accountType;
+        if (foundBkash.instructions) updatedConfig.bkashInstructions = foundBkash.instructions;
+      }
+      const foundNagad = updatedList.find(g => g.gatewayName.toLowerCase().includes('nagad') || g.gatewayName.includes('নগদ'));
+      if (foundNagad) {
+        updatedConfig.nagadNumber = foundNagad.accountNumber;
+        updatedConfig.nagadType = foundNagad.accountType;
+        if (foundNagad.instructions) updatedConfig.nagadInstructions = foundNagad.instructions;
+      }
+      const foundRocket = updatedList.find(g => g.gatewayName.toLowerCase().includes('rocket') || g.gatewayName.includes('রকেট'));
+      if (foundRocket) {
+        updatedConfig.rocketNumber = foundRocket.accountNumber;
+        updatedConfig.rocketType = foundRocket.accountType;
+        if (foundRocket.instructions) updatedConfig.rocketInstructions = foundRocket.instructions;
+      }
+
+      onUpdatePaymentConfig(updatedConfig);
+      await syncPaymentGatewaysToSupabase(updatedList);
+
+      setIsGatewayModalOpen(false);
+      setNoticeMsg(editingGateway ? 'পেমেন্ট গেটওয়ে সফলভাবে আপডেট হয়েছে' : 'নতুন পেমেন্ট গেটওয়ে সফলভাবে যুক্ত হয়েছে');
+      setTimeout(() => setNoticeMsg(''), 3500);
+    } catch {
+      setErrorMsg('পেমেন্ট গেটওয়ে সংরক্ষণে সমস্যা হয়েছে');
+      setTimeout(() => setErrorMsg(''), 3000);
+    } finally {
+      setIsSavingGateway(false);
+    }
+  };
+
+  const handleToggleGatewayActive = async (gw: PaymentGatewayItem) => {
+    const updated = gatewaysList.map(g => g.id === gw.id ? { ...g, isActive: !g.isActive, updatedAt: new Date().toISOString() } : g);
+    setGatewaysList(updated);
+    savePaymentGateways(updated);
+    onUpdatePaymentConfig({ ...paymentConfig, gateways: updated });
+    await syncPaymentGatewaysToSupabase(updated);
+    setNoticeMsg(`পেমেন্ট নম্বর "${gw.gatewayName}" ${!gw.isActive ? 'সক্রিয়' : 'নিষ্ক্রিয়'} করা হয়েছে`);
+    setTimeout(() => setNoticeMsg(''), 2500);
+  };
+
+  const handleDeleteGateway = async (id: string, name: string) => {
+    if (!window.confirm(`আপনি কি নিশ্চিত যে "${name}" পেমেন্ট নম্বরটি স্থায়ীভাবে মুছে ফেলতে চান?`)) {
+      return;
+    }
+    const updated = gatewaysList.filter(g => g.id !== id);
+    setGatewaysList(updated);
+    savePaymentGateways(updated);
+    onUpdatePaymentConfig({ ...paymentConfig, gateways: updated });
+    await safeDeleteFromSupabase('paymentGateways', id);
+    await syncPaymentGatewaysToSupabase(updated);
+    setNoticeMsg(`পেমেন্ট নম্বর "${name}" স্থায়ীভাবে মুছে ফেলা হয়েছে`);
     setTimeout(() => setNoticeMsg(''), 3000);
   };
 
-  const handleSavePayments = (e: React.FormEvent) => {
-    e.preventDefault();
-    onUpdatePaymentConfig({
-      ...paymentConfig,
-      bkashNumber,
-      bkashType,
-      nagadNumber,
-      nagadType,
-      rocketNumber,
-      rocketType
-    });
-    setNoticeMsg('পেমেন্ট গেটওয়ে নম্বরসমূহ সফলভাবে সংরক্ষিত হয়েছে');
-    setTimeout(() => setNoticeMsg(''), 3000);
+  const handleRefreshCloudGateways = async () => {
+    setIsRefreshingCloudGateways(true);
+    try {
+      const cloud = await fetchPaymentGatewaysFromSupabase();
+      if (Array.isArray(cloud) && cloud.length > 0) {
+        setGatewaysList(cloud);
+        savePaymentGateways(cloud);
+        onUpdatePaymentConfig({ ...paymentConfig, gateways: cloud });
+        setNoticeMsg(`ক্লাউড থেকে ${cloud.length} টি পেমেন্ট গেটওয়ে নম্বর সফলভাবে লোড হয়েছে`);
+      } else {
+        setNoticeMsg('ক্লাউডে কোনো রেকর্ড পাওয়া যায়নি, বর্তমান তথ্য অক্ষুণ্ণ রয়েছে');
+      }
+    } catch {
+      setErrorMsg('ক্লাউড থেকে রিফ্রেশ ব্যর্থ হয়েছে');
+    } finally {
+      setIsRefreshingCloudGateways(false);
+      setTimeout(() => {
+        setNoticeMsg('');
+        setErrorMsg('');
+      }, 3500);
+    }
   };
 
   const handleSavePin = (e: React.FormEvent) => {
@@ -4516,397 +4762,921 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       )}
 
       {/* 3. Profile Form Tab */}
+      {/* 3. Organization Profile Management Tab */}
       {activeTab === 'profile' && (
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
-          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <Building className="w-5 h-5 text-emerald-700" />
-            <span>সংগঠনের সার্বিক তথ্য সম্পাদন</span>
-          </h3>
+        <div className="space-y-5">
+          {/* Header & Cloud Refresh */}
+          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Building className="w-5 h-5 text-emerald-700" />
+                <span>সংগঠনের প্রোফাইল ও পরিচিতি ব্যবস্থাপনা</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                সংগঠনের নাম, স্লোগান, লোগো, পূর্ণাঙ্গ পরিচিতি বিবরণ ও অফিসিয়াল যোগাযোগের তথ্য পরিচালনা করুন
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={isRefreshingCloudProfile}
+              onClick={handleRefreshCloudProfile}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition border border-emerald-200 cursor-pointer disabled:opacity-50"
+              title="Supabase ডাটাবেজ থেকে সর্বশেষ প্রোফাইল তথ্য লোড করুন"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingCloudProfile ? 'animate-spin' : ''}`} />
+              <span>{isRefreshingCloudProfile ? 'রিফ্রেশ হচ্ছে...' : 'ক্লাউড থেকে রিফ্রেশ'}</span>
+            </button>
+          </div>
 
-          <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
-            {/* Dynamic Organization Logo Management */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                    <ImageIcon className="w-4 h-4 text-emerald-700" />
-                    <span>সংগঠনের অফিসিয়াল লোগো পরিচালনা</span>
-                  </h4>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    এখানে নির্ধারিত লোগোটি স্বয়ংক্রিয়ভাবে অথেনটিকেশন গেটের শীর্ষে এবং পুরো সিস্টেমে প্রদর্শিত হবে
-                  </p>
-                </div>
-                {logoUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setLogoUrl('')}
-                    className="text-[11px] text-rose-600 hover:text-rose-700 font-bold hover:underline cursor-pointer"
-                  >
-                    লোগো অপসারণ
-                  </button>
+          {/* Feature 1: Live Profile Preview Card */}
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 rounded-3xl p-5 sm:p-6 text-white border border-emerald-500/30 shadow-lg space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 flex-wrap gap-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <span>সংগঠনের বর্তমান প্রোফাইল লাইভ প্রিভিউ</span>
+              </span>
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                Supabase ডাটাবেজ বাইন্ডেড
+              </span>
+            </div>
+
+            <div className="flex flex-col md:flex-row items-center md:items-start gap-4 sm:gap-5 text-center md:text-left">
+              {/* Logo in its exact original uploaded shape and aspect ratio without borders or padding */}
+              <div className="shrink-0 flex items-center justify-center min-w-24 min-h-24">
+                {logoUrl ? (
+                  <img 
+                    src={logoUrl} 
+                    alt={name} 
+                    className="max-h-24 max-w-32 w-auto object-contain"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-2xl bg-white/10 flex items-center justify-center text-white/50 border border-white/10">
+                    <Building className="w-8 h-8" />
+                  </div>
                 )}
               </div>
 
-              <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
-                {/* Logo Preview (Exact original uploaded shape without added borders or padding) */}
-                <div className="flex items-center justify-center shrink-0 min-w-20 min-h-20">
-                  {logoUrl ? (
-                    <img 
-                      src={logoUrl} 
-                      alt="Organization Logo" 
-                      className="max-h-20 max-w-28 w-auto object-contain"
-                    />
-                  ) : (
-                    <div className="w-20 h-20 rounded-2xl bg-white border-2 border-dashed border-emerald-300 flex flex-col items-center justify-center text-center p-2 text-slate-400">
-                      <ImageIcon className="w-7 h-7 mx-auto text-slate-300 mb-1" />
-                      <span className="text-[9px] block font-semibold leading-tight">লোগো নেই</span>
-                    </div>
+              <div className="flex-1 min-w-0 space-y-1.5">
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
+                  <h4 className="text-lg sm:text-xl font-black text-white">{name || 'সংগঠনের নাম'}</h4>
+                  {regNumber && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-white/10 text-emerald-200 border border-white/15">
+                      রেজি: {regNumber}
+                    </span>
+                  )}
+                </div>
+                {tagline && (
+                  <p className="text-xs text-emerald-300 font-medium italic">"{tagline}"</p>
+                )}
+                {description && (
+                  <p className="text-xs text-slate-300 leading-relaxed pt-1 whitespace-pre-line bg-white/5 p-3 rounded-2xl border border-white/10">
+                    {description}
+                  </p>
+                )}
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-1 text-[11px] text-slate-300">
+                  {establishedDate && (
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>প্রতিষ্ঠা: {establishedDate} ({establishedYear})</span>
+                    </span>
+                  )}
+                  {address && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                      <span>{address}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Contacts Preview */}
+            {(hotline || phone || email || emergencyContact || facebookUrl || youtubeUrl) && (
+              <div className="pt-3 border-t border-white/10 flex flex-wrap gap-2 text-[11px]">
+                {hotline && (
+                  <span className="px-2.5 py-1 rounded-xl bg-teal-500/20 text-teal-200 border border-teal-500/30 font-mono">
+                    হটলাইন: {hotline}
+                  </span>
+                )}
+                {phone && phone !== hotline && (
+                  <span className="px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-200 border border-emerald-500/30 font-mono">
+                    মোবাইল: {phone}
+                  </span>
+                )}
+                {emergencyContact && emergencyContact !== hotline && (
+                  <span className="px-2.5 py-1 rounded-xl bg-rose-500/20 text-rose-200 border border-rose-500/30 font-mono">
+                    জরুরি: {emergencyContact}
+                  </span>
+                )}
+                {email && (
+                  <span className="px-2.5 py-1 rounded-xl bg-indigo-500/20 text-indigo-200 border border-indigo-500/30 font-mono">
+                    ইমেইল: {email}
+                  </span>
+                )}
+                {facebookUrl && (
+                  <span className="px-2.5 py-1 rounded-xl bg-blue-500/20 text-blue-200 border border-blue-500/30">
+                    ফেসবুক পেজ যুক্ত আছে
+                  </span>
+                )}
+                {youtubeUrl && (
+                  <span className="px-2.5 py-1 rounded-xl bg-red-500/20 text-red-200 border border-red-500/30">
+                    ইউটিউব চ্যানেল যুক্ত আছে
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Edit Form */}
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
+            <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 pb-2 border-b border-slate-100">
+              <Edit className="w-4 h-4 text-emerald-700" />
+              <span>প্রোফাইল তথ্য সম্পাদন ফর্ম</span>
+            </h4>
+
+            <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
+              {/* Dynamic Organization Logo Management */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h5 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-emerald-700" />
+                      <span>সংগঠনের অফিসিয়াল লোগো পরিচালনা</span>
+                    </h5>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      নির্ধারিত লোগোটি মূল রেজোলিউশন ও আসল আকারে স্বয়ংক্রিয়ভাবে হোম ও অথেনটিকেশন গেটে প্রদর্শিত হবে
+                    </p>
+                  </div>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setLogoUrl('')}
+                      className="text-[11px] text-rose-600 hover:text-rose-700 font-bold hover:underline cursor-pointer"
+                    >
+                      লোগো অপসারণ
+                    </button>
                   )}
                 </div>
 
-                <div className="flex-1 w-full space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition cursor-pointer">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{isUploadingLogo ? 'প্রক্রিয়াধীন...' : 'ডিভাইস থেকে লোগো আপলোড'}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleLogoUpload}
-                        disabled={isUploadingLogo}
-                        className="hidden"
+                <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
+                  {/* Logo Preview (Exact original shape without added borders or padding) */}
+                  <div className="flex items-center justify-center shrink-0 min-w-20 min-h-20">
+                    {logoUrl ? (
+                      <img 
+                        src={logoUrl} 
+                        alt="Organization Logo" 
+                        className="max-h-20 max-w-28 w-auto object-contain"
                       />
-                    </label>
-                    <span className="text-[10px] text-slate-400">সর্বোচ্চ ১০ এমবি (PNG / JPG / WEBP)</span>
+                    ) : (
+                      <div className="w-20 h-20 rounded-2xl bg-white border-2 border-dashed border-emerald-300 flex flex-col items-center justify-center text-center p-2 text-slate-400">
+                        <ImageIcon className="w-7 h-7 mx-auto text-slate-300 mb-1" />
+                        <span className="text-[9px] block font-semibold leading-tight">লোগো নেই</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 w-full space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition cursor-pointer">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{isUploadingLogo ? 'প্রক্রিয়াধীন...' : 'ডিভাইস থেকে লোগো আপলোড'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          disabled={isUploadingLogo}
+                          className="hidden"
+                        />
+                      </label>
+                      <span className="text-[10px] text-slate-400">সর্বোচ্চ ১০ এমবি (PNG / JPG / WEBP)</span>
+                    </div>
+
+                    <div>
+                      <input
+                        type="text"
+                        value={logoUrl}
+                        onChange={(e) => setLogoUrl(e.target.value)}
+                        placeholder="অথবা সরাসরি লোগো ওয়েব লিঙ্ক (URL) পেস্ট করুন..."
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Name & Slogan */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">সংগঠনের নাম *</label>
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">স্লোগান / ট্যাগলাইন</label>
+                  <input
+                    type="text"
+                    value={tagline}
+                    onChange={(e) => setTagline(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+              </div>
+
+              {/* Feature 1: Description / সংগঠনের পূর্ণাঙ্গ পরিচিতি */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  সংগঠনের পরিচিতি ও বিবরণ (Description)
+                </label>
+                <textarea
+                  rows={4}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="সংগঠনের লক্ষ্য, উদ্দেশ্য ও সমাজসেবামূলক কার্যক্রমের পূর্ণাঙ্গ বিবরণ লিখুন..."
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 leading-relaxed text-xs"
+                />
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  এটি সংগঠনের পরিচিতি হিসেবে ডাটাবেজে স্থায়ীভাবে সংরক্ষিত থাকবে।
+                </span>
+              </div>
+
+              {/* Est Date & Year */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">প্রতিষ্ঠার তারিখ</label>
+                  <input
+                    type="text"
+                    value={establishedDate}
+                    onChange={(e) => setEstablishedDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">প্রতিষ্ঠার বছর</label>
+                  <input
+                    type="text"
+                    value={establishedYear}
+                    onChange={(e) => setEstablishedYear(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">কার্যালয়ের ঠিকানা</label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">জরুরি হটলাইন</label>
+                  <input
+                    type="text"
+                    value={hotline}
+                    onChange={(e) => setHotline(e.target.value)}
+                    placeholder="খালি রাখলে হোম পেজে লুকানো থাকবে"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">জরুরি হেল্পলাইন নম্বর</label>
+                  <input
+                    type="text"
+                    value={emergencyContact}
+                    onChange={(e) => setEmergencyContact(e.target.value)}
+                    placeholder="জরুরি সমন্বয়কারী নম্বর"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">মোবাইল নম্বর</label>
+                  <input
+                    type="text"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="খালি রাখলে হোম পেজে লুকানো থাকবে"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">রেজিস্ট্রেশন নম্বর</label>
+                  <input
+                    type="text"
+                    value={regNumber}
+                    onChange={(e) => setRegNumber(e.target.value)}
+                    placeholder="ঐচ্ছিক রেজি: নম্বর"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Official Links & Contact for Home Page Footer */}
+              <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-200/80 space-y-3">
+                <h5 className="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
+                  <Globe className="w-4 h-4 text-indigo-700" />
+                  <span>অফিসিয়াল যোগাযোগ, সোশ্যাল মিডিয়া ও ইমেইল (খালি রাখলে হোম পেজ থেকে স্বয়ংক্রিয়ভাবে লুকানো থাকবে)</span>
+                </h5>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">অফিসিয়াল ইমেইল এড্রেস</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="খালি রাখলে হোম পেজে লুকানো থাকবে"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white text-xs"
+                    />
                   </div>
 
                   <div>
+                    <label className="block font-bold text-slate-700 mb-1">অফিসিয়াল ফেসবুক পেজ লিংক</label>
                     <input
-                      type="text"
-                      value={logoUrl}
-                      onChange={(e) => setLogoUrl(e.target.value)}
-                      placeholder="অথবা সরাসরি লোগো ওয়েব লিঙ্ক (URL) পেস্ট করুন..."
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                      type="url"
+                      value={facebookUrl}
+                      onChange={(e) => setFacebookUrl(e.target.value)}
+                      placeholder="https://facebook.com/..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">ইউটিউব / মিডিয়া লিংক</label>
+                    <input
+                      type="url"
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      placeholder="https://youtube.com/..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white text-xs"
                     />
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">সংগঠনের নাম</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">স্লোগান / ট্যাগলাইন</label>
-                <input
-                  type="text"
-                  value={tagline}
-                  onChange={(e) => setTagline(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">প্রতিষ্ঠার তারিখ</label>
-                <input
-                  type="text"
-                  value={establishedDate}
-                  onChange={(e) => setEstablishedDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">প্রতিষ্ঠার বছর</label>
-                <input
-                  type="text"
-                  value={establishedYear}
-                  onChange={(e) => setEstablishedYear(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">কার্যালয়ের ঠিকানা</label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">জরুরি হটলাইন</label>
-                <input
-                  type="text"
-                  value={hotline}
-                  onChange={(e) => setHotline(e.target.value)}
-                  placeholder="খালি রাখলে হোম পেজে লুকানো থাকবে"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">জরুরি হেল্পলাইন নম্বর</label>
-                <input
-                  type="text"
-                  value={emergencyContact}
-                  onChange={(e) => setEmergencyContact(e.target.value)}
-                  placeholder="জরুরি সমন্বয়কারী নম্বর"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">মোবাইল নম্বর</label>
-                <input
-                  type="text"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="খালি রাখলে হোম পেজে লুকানো থাকবে"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">রেজিস্ট্রেশন নম্বর</label>
-                <input
-                  type="text"
-                  value={regNumber}
-                  onChange={(e) => setRegNumber(e.target.value)}
-                  placeholder="ঐচ্ছিক রেজি: নম্বর"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Official Links & Contact for Home Page Footer */}
-            <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-200/80 space-y-3">
-              <h4 className="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
-                <Globe className="w-4 h-4 text-indigo-700" />
-                <span>অফিসিয়াল যোগাযোগ, সোশ্যাল মিডিয়া ও ইমেইল (খালি রাখলে হোম পেজ থেকে স্বয়ংক্রিয়ভাবে লুকানো থাকবে)</span>
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">অফিসিয়াল ইমেইল এড্রেস</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="খালি রাখলে হোম পেজে লুকানো থাকবে"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white text-xs"
-                  />
+              {/* Requirement: Digital Receipt Signatories */}
+              <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/90 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h5 className="font-bold text-emerald-950 text-xs flex items-center gap-1.5">
+                    <FileCheck className="w-4 h-4 text-emerald-700" />
+                    <span>ডিজিটাল পেমেন্ট রসিদ স্বাক্ষরকারী কর্মকর্তাদের নাম (রসিদে স্বয়ংক্রিয়ভাবে মুদ্রিত হবে)</span>
+                  </h5>
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-full border border-emerald-200">
+                    রসিদ ভেরিফিকেশন
+                  </span>
                 </div>
+                <p className="text-[11px] text-emerald-800/80">
+                  পেমেন্ট রসিদের নিচে ৩টি নির্ধারিত স্বাক্ষর স্থানে এই ৩ জন কর্মকর্তার নাম স্বয়ংক্রিয়ভাবে প্রদর্শিত হবে।
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">১. সভাপতি (President) নাম</label>
+                    <input
+                      type="text"
+                      value={presidentName}
+                      onChange={(e) => setPresidentName(e.target.value)}
+                      placeholder="e.g. Md. Sajon Ahmed"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium bg-white text-xs"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">অফিসিয়াল ফেসবুক পেজ লিংক</label>
-                  <input
-                    type="url"
-                    value={facebookUrl}
-                    onChange={(e) => setFacebookUrl(e.target.value)}
-                    placeholder="https://facebook.com/..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white text-xs"
-                  />
-                </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">২. সাধারণ সম্পাদক (General Secretary) নাম</label>
+                    <input
+                      type="text"
+                      value={generalSecretaryName}
+                      onChange={(e) => setGeneralSecretaryName(e.target.value)}
+                      placeholder="e.g. Mahfuzur Rahman"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium bg-white text-xs"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">ইউটিউব / মিডিয়া লিংক</label>
-                  <input
-                    type="url"
-                    value={youtubeUrl}
-                    onChange={(e) => setYoutubeUrl(e.target.value)}
-                    placeholder="https://youtube.com/..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono bg-white text-xs"
-                  />
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">৩. অর্থ বিষয়ক সম্পাদক (Finance Secretary) নাম</label>
+                    <input
+                      type="text"
+                      value={financeSecretaryName}
+                      onChange={(e) => setFinanceSecretaryName(e.target.value)}
+                      placeholder="e.g. Tanvir Hasan"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium bg-white text-xs"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Requirement 7: Digital Receipt Signatories (English / Bengali names for President, General Secretary, Finance Secretary) */}
-            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/90 space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <h4 className="font-bold text-emerald-950 text-xs flex items-center gap-1.5">
-                  <FileCheck className="w-4 h-4 text-emerald-700" />
-                  <span>ডিজিটাল পেমেন্ট রসিদ স্বাক্ষরকারী কর্মকর্তাদের নাম (রসিদে স্বয়ংক্রিয়ভাবে মুদ্রিত হবে)</span>
-                </h4>
-                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-full border border-emerald-200">
-                  রসিদ ভেরিফিকেশন
-                </span>
+              {/* Instant Save Button */}
+              <div className="pt-2 flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow-md transition cursor-pointer active:scale-95 disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSavingProfile ? 'সংরক্ষণ ও ক্লাউড সিঙ্ক হচ্ছে...' : 'প্রোফাইল পরিবর্তন সংরক্ষণ (Instant Save)'}</span>
+                </button>
               </div>
-              <p className="text-[11px] text-emerald-800/80">
-                পেমেন্ট রসিদের নিচে ৩টি নির্ধারিত স্বাক্ষর স্থানে এই ৩ জন কর্মকর্তার ইংরেজি/বাংলা নাম স্বয়ংক্রিয়ভাবে প্রদর্শিত হবে।
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1 text-xs">১. সভাপতি (President) নাম</label>
-                  <input
-                    type="text"
-                    value={presidentName}
-                    onChange={(e) => setPresidentName(e.target.value)}
-                    placeholder="e.g. Md. Sajon Ahmed"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium bg-white text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1 text-xs">২. সাধারণ সম্পাদক (General Secretary) নাম</label>
-                  <input
-                    type="text"
-                    value={generalSecretaryName}
-                    onChange={(e) => setGeneralSecretaryName(e.target.value)}
-                    placeholder="e.g. Mahfuzur Rahman"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium bg-white text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1 text-xs">৩. অর্থ বিষয়ক সম্পাদক (Finance Secretary) নাম</label>
-                  <input
-                    type="text"
-                    value={financeSecretaryName}
-                    onChange={(e) => setFinanceSecretaryName(e.target.value)}
-                    placeholder="e.g. Tanvir Hasan"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium bg-white text-xs"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <button
-                type="submit"
-                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow transition cursor-pointer active:scale-95"
-              >
-                <Save className="w-4 h-4" />
-                <span>প্রোফাইল পরিবর্তন সংরক্ষণ</span>
-              </button>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* 3. Payments Form Tab */}
+      {/* Feature 2: Payments Gateways & Bank Numbers Management Tab */}
       {activeTab === 'payments' && (
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
-          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-emerald-700" />
-            <span>অফিসিয়াল পেমেন্ট নম্বর ও সেটিংস</span>
-          </h3>
-
-          <form onSubmit={handleSavePayments} className="space-y-4 text-xs">
-            {/* bKash */}
-            <div className="p-4 rounded-2xl bg-pink-50/50 border border-pink-200 space-y-3">
-              <h4 className="font-bold text-pink-900 flex items-center gap-1.5 text-xs">
-                <span>বিকাশ (bKash) সেটিংস</span>
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">বিকাশ নম্বর</label>
-                  <input
-                    type="text"
-                    value={bkashNumber}
-                    onChange={(e) => setBkashNumber(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">অ্যাকাউন্টের ধরন</label>
-                  <select
-                    value={bkashType}
-                    onChange={(e) => setBkashType(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
-                  >
-                    <option value="Personal">Personal (ব্যক্তিগত)</option>
-                    <option value="Merchant">Merchant (মার্চেন্ট)</option>
-                    <option value="Agent">Agent (এজেন্ট)</option>
-                  </select>
-                </div>
-              </div>
+        <div className="space-y-5">
+          {/* Header & Actions */}
+          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-emerald-700" />
+                <span>পেমেন্ট গেটওয়ে নম্বর ও ব্যাংক হিসাব পরিচালনা</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                বিকাশ, নগদ, রকেট, সেলফিন, উপায় ও ব্যাংক হিসাব নম্বর যোগ, সম্পাদনা ও নিয়ন্ত্রণ করুন
+              </p>
             </div>
-
-            {/* Nagad */}
-            <div className="p-4 rounded-2xl bg-orange-50/50 border border-orange-200 space-y-3">
-              <h4 className="font-bold text-orange-900 flex items-center gap-1.5 text-xs">
-                <span>নগদ (Nagad) সেটিংস</span>
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">নগদ নম্বর</label>
-                  <input
-                    type="text"
-                    value={nagadNumber}
-                    onChange={(e) => setNagadNumber(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">অ্যাকাউন্টের ধরন</label>
-                  <select
-                    value={nagadType}
-                    onChange={(e) => setNagadType(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
-                  >
-                    <option value="Personal">Personal (ব্যক্তিগত)</option>
-                    <option value="Merchant">Merchant (মার্চেন্ট)</option>
-                    <option value="Agent">Agent (এজেন্ট)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Rocket */}
-            <div className="p-4 rounded-2xl bg-purple-50/50 border border-purple-200 space-y-3">
-              <h4 className="font-bold text-purple-900 flex items-center gap-1.5 text-xs">
-                <span>রকেট (Rocket) সেটিংস</span>
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">রকেট নম্বর</label>
-                  <input
-                    type="text"
-                    value={rocketNumber}
-                    onChange={(e) => setRocketNumber(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">অ্যাকাউন্টের ধরন</label>
-                  <select
-                    value={rocketType}
-                    onChange={(e) => setRocketType(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
-                  >
-                    <option value="Personal">Personal (ব্যক্তিগত)</option>
-                    <option value="Merchant">Merchant (মার্চেন্ট)</option>
-                    <option value="Agent">Agent (এজেন্ট)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
-                type="submit"
-                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow transition cursor-pointer active:scale-95"
+                type="button"
+                disabled={isRefreshingCloudGateways}
+                onClick={handleRefreshCloudGateways}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                title="ক্লাউড থেকে রিফ্রেশ করুন"
               >
-                <Save className="w-4 h-4" />
-                <span>পেমেন্ট সেটিংস সংরক্ষণ</span>
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingCloudGateways ? 'animate-spin' : ''}`} />
+                <span>রিফ্রেশ</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenAddGateway}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 whitespace-nowrap"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>নতুন পেমেন্ট নম্বর / ব্যাংক যোগ করুন</span>
               </button>
             </div>
-          </form>
+          </div>
+
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold block">মোট গেটওয়ে</span>
+                <span className="text-base font-black text-slate-900">{toBengaliNumber(gatewaysList.length)} টি</span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                <CreditCard className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold block">বর্তমানে সক্রিয়</span>
+                <span className="text-base font-black text-emerald-600">
+                  {toBengaliNumber(gatewaysList.filter(g => g.isActive !== false).length)} টি
+                </span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold block">মোবাইল ব্যাংকিং</span>
+                <span className="text-base font-black text-pink-600">
+                  {toBengaliNumber(gatewaysList.filter(g => g.gatewayType !== 'bank').length)} টি
+                </span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-pink-50 text-pink-700 flex items-center justify-center">
+                <Smartphone className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold block">ব্যাংক অ্যাকাউন্ট</span>
+                <span className="text-base font-black text-indigo-600">
+                  {toBengaliNumber(gatewaysList.filter(g => g.gatewayType === 'bank').length)} টি
+                </span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center">
+                <Landmark className="w-4 h-4" />
+              </div>
+            </div>
+          </div>
+
+          {/* Search Box */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={gwSearch}
+              onChange={(e) => setGwSearch(e.target.value)}
+              placeholder="গেটওয়ের নাম, অ্যাকাউন্ট নম্বর বা ব্যাংকের নাম দিয়ে খুঁজুন..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            />
+            {gwSearch && (
+              <button
+                type="button"
+                onClick={() => setGwSearch('')}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Gateways Grid */}
+          {gatewaysList.filter(g => {
+            if (!gwSearch.trim()) return true;
+            const q = gwSearch.trim().toLowerCase();
+            return (
+              (g.gatewayName || '').toLowerCase().includes(q) ||
+              (g.accountNumber || '').includes(q) ||
+              (g.bankName || '').toLowerCase().includes(q) ||
+              (g.accountType || '').toLowerCase().includes(q)
+            );
+          }).length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {gatewaysList
+                .filter(g => {
+                  if (!gwSearch.trim()) return true;
+                  const q = gwSearch.trim().toLowerCase();
+                  return (
+                    (g.gatewayName || '').toLowerCase().includes(q) ||
+                    (g.accountNumber || '').includes(q) ||
+                    (g.bankName || '').toLowerCase().includes(q) ||
+                    (g.accountType || '').toLowerCase().includes(q)
+                  );
+                })
+                .map((gw) => {
+                  const isBank = gw.gatewayType === 'bank';
+                  const isBkash = gw.gatewayName.toLowerCase().includes('bkash') || gw.gatewayName.includes('বিকাশ');
+                  const isNagad = gw.gatewayName.toLowerCase().includes('nagad') || gw.gatewayName.includes('নগদ');
+                  const isRocket = gw.gatewayName.toLowerCase().includes('rocket') || gw.gatewayName.includes('রকেট');
+
+                  return (
+                    <div
+                      key={gw.id}
+                      className={`bg-white rounded-3xl p-5 border transition-all duration-300 flex flex-col justify-between space-y-3.5 shadow-xs hover:shadow-md ${
+                        gw.isActive !== false ? 'border-slate-200' : 'border-slate-200 opacity-60 bg-slate-50/60'
+                      }`}
+                    >
+                      <div>
+                        {/* Top Provider Header */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200">
+                              {isBkash ? (
+                                <BkashLogo className="w-6 h-6" />
+                              ) : isNagad ? (
+                                <NagadLogo className="w-6 h-6" />
+                              ) : isRocket ? (
+                                <RocketLogo className="w-6 h-6" />
+                              ) : isBank ? (
+                                <Landmark className="w-5 h-5 text-indigo-700" />
+                              ) : (
+                                <Smartphone className="w-5 h-5 text-emerald-700" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-sm font-black text-slate-900 truncate">
+                                {gw.gatewayName}
+                              </h4>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                                {gw.accountType || (isBank ? 'Savings' : 'Personal')}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Active / Inactive Toggle Switch */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleGatewayActive(gw)}
+                            className={`px-2.5 py-1 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 shrink-0 ${
+                              gw.isActive !== false
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-rose-100 text-rose-800 border border-rose-300'
+                            }`}
+                            title={gw.isActive !== false ? 'ক্লিক করে নিষ্ক্রিয় করুন' : 'ক্লিক করে সক্রিয় করুন'}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${gw.isActive !== false ? 'bg-emerald-600' : 'bg-rose-600'}`} />
+                            <span>{gw.isActive !== false ? 'সক্রিয়' : 'নিষ্ক্রিয়'}</span>
+                          </button>
+                        </div>
+
+                        {/* Account Number Display with Copy Button */}
+                        <div className="mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-200/90 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">
+                              {isBank ? 'অ্যাকাউন্ট নম্বর' : 'মোবাইল নম্বর'}
+                            </span>
+                            <span className="font-mono text-sm sm:text-base font-black text-slate-900 tracking-wide select-all block truncate">
+                              {gw.accountNumber}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(gw.accountNumber);
+                              setNoticeMsg(`নম্বর "${gw.accountNumber}" কপি করা হয়েছে`);
+                              setTimeout(() => setNoticeMsg(''), 2500);
+                            }}
+                            className="p-1.5 rounded-xl bg-white hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 border border-slate-200 transition cursor-pointer shrink-0 shadow-2xs"
+                            title="কপি করুন"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Bank specific details */}
+                        {isBank && (gw.bankName || gw.branchName || gw.accountHolder) && (
+                          <div className="mt-2.5 p-2.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/70 text-[11px] space-y-1 text-slate-700">
+                            {gw.bankName && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-400 font-medium">ব্যাংক:</span>
+                                <strong className="text-indigo-950 font-bold">{gw.bankName}</strong>
+                              </div>
+                            )}
+                            {gw.branchName && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-400 font-medium">শাখা:</span>
+                                <strong className="text-indigo-950 font-bold">{gw.branchName}</strong>
+                              </div>
+                            )}
+                            {gw.accountHolder && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-400 font-medium">হিসাবের নাম:</span>
+                                <strong className="text-indigo-950 font-bold">{gw.accountHolder}</strong>
+                              </div>
+                            )}
+                            {gw.routingNumber && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-400 font-medium">রাউটিং:</span>
+                                <span className="font-mono font-bold text-slate-800">{gw.routingNumber}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Instructions */}
+                        {gw.instructions && (
+                          <p className="text-[11px] text-slate-500 mt-2 bg-slate-50/80 p-2 rounded-xl border border-slate-100 leading-relaxed">
+                            {gw.instructions}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Card Footer Actions */}
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditGateway(gw)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 text-xs font-bold transition cursor-pointer border border-slate-200"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>সম্পাদনা</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteGateway(gw.id, gw.gatewayName)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 text-xs font-bold transition cursor-pointer border border-slate-200"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>মুছুন</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-3">
+              <CreditCard className="w-10 h-10 text-slate-300 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-700">কোনো পেমেন্ট গেটওয়ে নম্বর পাওয়া যায়নি</h4>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                সংগঠনের বিকাশ, নগদ, রকেট বা ব্যাংক অ্যাকাউন্ট যোগ করতে উপরের বাটনে চাপুন।
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal: Add / Edit Payment Gateway Number */}
+      {isGatewayModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-emerald-700" />
+                <span>{editingGateway ? 'পেমেন্ট গেটওয়ে নম্বর সম্পাদন' : 'নতুন পেমেন্ট গেটওয়ে / ব্যাংক নম্বর যোগ'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsGatewayModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveGateway} className="space-y-3.5 text-xs">
+              {/* Quick Presets */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">দ্রুত প্রিসেট নির্বাচন করুন:</label>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { label: 'বিকাশ (bKash)', type: 'mobile' as const, accType: 'Personal', inst: 'বিকাশ অ্যাপ থেকে সেন্ড মানি করে TrxID প্রদান করুন।' },
+                    { label: 'নগদ (Nagad)', type: 'mobile' as const, accType: 'Personal', inst: 'নগদ অ্যাপ থেকে সেন্ড মানি করে TrxID প্রদান করুন।' },
+                    { label: 'রকেট (Rocket)', type: 'mobile' as const, accType: 'Personal', inst: 'রকেট অ্যাপ থেকে সেন্ড মানি করে ট্রানজেকশন নিশ্চিত করুন।' },
+                    { label: 'উপায় (Upay)', type: 'mobile' as const, accType: 'Personal', inst: 'উপায় অ্যাপ থেকে সেন্ড মানি করুন।' },
+                    { label: 'সেলফিন (Cellfin)', type: 'mobile' as const, accType: 'Personal', inst: 'সেলফিন ট্রান্সফার করে ট্রানজেকশন রেফারেন্স দিন।' },
+                    { label: 'ব্যাংক অ্যাকাউন্ট', type: 'bank' as const, accType: 'Savings', inst: 'ব্যাংক অ্যাকাউন্টে টাকা পাঠিয়ে ডিপোজিট স্লিপ বা রেফারেন্স জানান।' }
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setGwName(preset.label);
+                        setGwType(preset.type);
+                        setGwAccountType(preset.accType);
+                        if (!gwInstructions) setGwInstructions(preset.inst);
+                      }}
+                      className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 text-[11px] font-bold transition border border-slate-200 cursor-pointer"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Gateway Name & Type */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">প্রোভাইডার / গেটওয়ের নাম *</label>
+                  <input
+                    type="text"
+                    required
+                    value={gwName}
+                    onChange={(e) => setGwName(e.target.value)}
+                    placeholder="যেমন: বিকাশ (bKash) / ইসলামী ব্যাংক"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">গেটওয়ের ধরন</label>
+                  <select
+                    value={gwType}
+                    onChange={(e) => setGwType(e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-bold"
+                  >
+                    <option value="mobile">মোবাইল ব্যাংকিং (Mobile Banking)</option>
+                    <option value="bank">ব্যাংক একাউন্ট (Bank Account)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Account Number & Account Type */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    {gwType === 'bank' ? 'ব্যাংক একাউন্ট নম্বর *' : 'মোবাইল নম্বর *'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={gwNumber}
+                    onChange={(e) => setGwNumber(e.target.value)}
+                    placeholder={gwType === 'bank' ? 'যেমন: 2050XXXXXXXXXXXXX' : 'যেমন: 01886122678'}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">অ্যাকাউন্টের ধরন</label>
+                  <select
+                    value={gwAccountType}
+                    onChange={(e) => setGwAccountType(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                  >
+                    <option value="Personal">Personal (ব্যক্তিগত)</option>
+                    <option value="Merchant">Merchant (মার্চেন্ট)</option>
+                    <option value="Agent">Agent (এজেন্ট)</option>
+                    <option value="Savings">Savings (সঞ্চয়ী হিসাব)</option>
+                    <option value="Current">Current (চলতি হিসাব)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Conditional Bank Fields */}
+              {gwType === 'bank' && (
+                <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/80 space-y-3">
+                  <span className="text-[11px] font-bold text-indigo-900 block">ব্যাংক বিস্তারিত তথ্য:</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">ব্যাংকের নাম</label>
+                      <input
+                        type="text"
+                        value={gwBankName}
+                        onChange={(e) => setGwBankName(e.target.value)}
+                        placeholder="যেমন: ইসলামী ব্যাংক বাংলাদেশ লিমিটেড"
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">শাখার নাম (Branch)</label>
+                      <input
+                        type="text"
+                        value={gwBranchName}
+                        onChange={(e) => setGwBranchName(e.target.value)}
+                        placeholder="যেমন: পতেঙ্গা শাখা, চট্টগ্রাম"
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">হিসাবধারীর নাম (Account Holder)</label>
+                      <input
+                        type="text"
+                        value={gwAccountHolder}
+                        onChange={(e) => setGwAccountHolder(e.target.value)}
+                        placeholder="যেমন: সিলেট মানবসেবা সংগঠন"
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-white font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">রাউটিং নম্বর (Routing No)</label>
+                      <input
+                        type="text"
+                        value={gwRoutingNumber}
+                        onChange={(e) => setGwRoutingNumber(e.target.value)}
+                        placeholder="যেমন: 125150993"
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-white font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Instructions */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">টাকা পাঠানোর নির্দেশিকা (Instructions)</label>
+                <textarea
+                  rows={2}
+                  value={gwInstructions}
+                  onChange={(e) => setGwInstructions(e.target.value)}
+                  placeholder="ব্যবহারকারীদের জন্য টাকা পাঠানো এবং TrxID নিশ্চিতকরণের নির্দেশনা..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              {/* Active Toggle */}
+              <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="gwActiveCheck"
+                  checked={gwIsActive}
+                  onChange={(e) => setGwIsActive(e.target.checked)}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                />
+                <label htmlFor="gwActiveCheck" className="font-bold text-slate-800 cursor-pointer select-none">
+                  বর্তমানে এই পেমেন্ট নম্বরটি সক্রিয় রাখুন (পেমেন্ট সেকশনে প্রদর্শিত হবে)
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsGatewayModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold cursor-pointer"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingGateway}
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5 active:scale-95"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSavingGateway ? 'সংরক্ষণ হচ্ছে...' : (editingGateway ? 'আপডেট করুন' : 'নম্বর সংরক্ষণ করুন')}</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

@@ -85,8 +85,10 @@ export interface Notice {
 }
 
 export interface OrganizationProfile {
+  id?: string;
   name: string;
   tagline: string;
+  description?: string;
   establishedDate: string;
   establishedYear: string;
   address: string;
@@ -101,6 +103,25 @@ export interface OrganizationProfile {
   presidentName?: string;
   generalSecretaryName?: string;
   financeSecretaryName?: string;
+  updatedAt?: string;
+}
+
+export interface PaymentGatewayItem {
+  id: string;
+  gatewayName: string; // e.g. বিকাশ (bKash), নগদ (Nagad), রকেট (Rocket), উপায় (Upay), ইসলামী ব্যাংক বাংলাদেশ, etc.
+  gatewayType: 'mobile' | 'bank' | string;
+  accountNumber: string;
+  accountType: 'Personal' | 'Merchant' | 'Agent' | 'Savings' | 'Current' | string;
+  instructions?: string;
+  bankName?: string;
+  branchName?: string;
+  routingNumber?: string;
+  accountHolder?: string;
+  isActive: boolean;
+  orderIndex?: number;
+  qrCodeUrl?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface PaymentGatewayConfig {
@@ -113,6 +134,7 @@ export interface PaymentGatewayConfig {
   rocketNumber: string;
   rocketType: string;
   rocketInstructions: string;
+  gateways?: PaymentGatewayItem[];
 }
 
 export interface SupportReportItem {

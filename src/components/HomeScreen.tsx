@@ -301,6 +301,39 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         )}
       </section>
 
+      {/* Organization Introduction / Profile Description (Strictly dynamic) */}
+      {profile?.description && profile.description.trim() && (
+        <section className="bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 rounded-3xl p-5 sm:p-6 text-white border border-emerald-800/40 shadow-lg relative overflow-hidden">
+          <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-44 h-44 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-start gap-3.5 relative z-10">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0 mt-0.5">
+              <Sparkles className="w-5 h-5 text-emerald-300" />
+            </div>
+            <div className="space-y-1.5 flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                  <span>{profile.name || 'সিলেট মানবসেবা সংগঠন'} পরিচিতি ও লক্ষ্য</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    আমাদের অঙ্গীকার
+                  </span>
+                </h3>
+                {isAdmin && onNavigateToAdminTab && (
+                  <button
+                    onClick={() => onNavigateToAdminTab('profile')}
+                    className="text-[11px] font-bold text-amber-300 hover:text-amber-200 underline cursor-pointer"
+                  >
+                    সম্পাদন করুন
+                  </button>
+                )}
+              </div>
+              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-line">
+                {profile.description}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* =========================================================================
           SECTION 2: Donation & Aid Recipient Directory (Refined Layout)
           - Significantly larger recipient photo at the top

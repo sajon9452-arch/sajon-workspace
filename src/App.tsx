@@ -44,6 +44,8 @@ import {
   saveSupportMembers,
   loadPaymentSettings, 
   savePaymentSettings, 
+  loadPaymentGateways,
+  savePaymentGateways,
   loadManualTotalBalance, 
   saveManualTotalBalance,
   loadMonthlyExpense,
@@ -74,7 +76,9 @@ import {
   fetchNetBalanceFromSupabase,
   pullAllDataFromSupabase,
   syncFinancialsToSupabase,
-  pushAllDataToSupabase
+  pushAllDataToSupabase,
+  syncOrgProfileToSupabase,
+  syncPaymentGatewaysToSupabase
 } from './utils/supabaseClient';
 import { initRealTimeDataSync } from './utils/liveSync';
 
@@ -390,6 +394,28 @@ export default function App() {
           if (Array.isArray(cloudData.registrationQueue) && cloudData.registrationQueue.length > 0) {
             const mergedQueue = mergeRegistrationQueues(loadRegistrationQueue(), cloudData.registrationQueue);
             saveRegistrationQueue(mergedQueue);
+          }
+
+          // 13. Organization Profile (Dedicated Table & Cloud Sync)
+          if (Array.isArray(cloudData.organizationProfile) && cloudData.organizationProfile.length > 0) {
+            const liveProfile = cloudData.organizationProfile[0];
+            if (liveProfile && liveProfile.name) {
+              setProfile(liveProfile);
+              saveOrgProfile(liveProfile);
+            }
+          }
+
+          // 14. Payment Gateways (Dedicated Table & Cloud Sync)
+          if (Array.isArray(cloudData.paymentGateways) && cloudData.paymentGateways.length > 0) {
+            const liveGateways = cloudData.paymentGateways.filter((g: any) => g && g.id && !isIdPermanentlyDeleted(g.id));
+            if (liveGateways.length > 0) {
+              savePaymentGateways(liveGateways);
+              setPaymentConfig(prev => {
+                const updated = { ...prev, gateways: liveGateways };
+                savePaymentSettings(updated);
+                return updated;
+              });
+            }
           }
         }
       } catch (err) {
@@ -785,16 +811,20 @@ export default function App() {
   };
 
   // 6. Organization Profile & Payment Settings
-  const handleUpdateProfile = (newProfile: OrganizationProfile) => {
+  const handleUpdateProfile = async (newProfile: OrganizationProfile) => {
     setProfile(newProfile);
     saveOrgProfile(newProfile);
-    safeSyncToSupabase('settings', { id: 'pms_org_profile', key: 'profile', data: newProfile });
+    await syncOrgProfileToSupabase(newProfile);
   };
 
-  const handleUpdatePaymentConfig = (newConfig: PaymentGatewayConfig) => {
+  const handleUpdatePaymentConfig = async (newConfig: PaymentGatewayConfig) => {
     setPaymentConfig(newConfig);
     savePaymentSettings(newConfig);
-    safeSyncToSupabase('settings', { id: 'pms_payment_settings', key: 'payment_settings', data: newConfig });
+    if (newConfig.gateways && Array.isArray(newConfig.gateways)) {
+      savePaymentGateways(newConfig.gateways);
+      await syncPaymentGatewaysToSupabase(newConfig.gateways);
+    }
+    await safeSyncToSupabase('settings', { id: 'pms_payment_settings', key: 'payment_settings', data: newConfig });
   };
 
   // Strict Login/Registration Gate: When not authenticated, hide all main app content completely

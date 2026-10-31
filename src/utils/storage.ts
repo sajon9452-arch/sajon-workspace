@@ -11,7 +11,8 @@ import {
   OrganizationRule,
   PaymentGatewayConfig,
   AidDonationRecord,
-  ExtraContributionRecord
+  ExtraContributionRecord,
+  PaymentGatewayItem
 } from '../types';
 import { 
   INITIAL_ORG_PROFILE, 
@@ -26,7 +27,8 @@ import {
   INITIAL_ORGANIZATION_RULES, 
   INITIAL_SUPPORT_REPORTS, 
   INITIAL_SUPPORT_MEMBERS,
-  INITIAL_PAYMENT_CONFIG 
+  INITIAL_PAYMENT_CONFIG,
+  INITIAL_PAYMENT_GATEWAYS
 } from '../data/initialData';
 import { sortMembersOldestFirst } from './helpers';
 
@@ -44,6 +46,7 @@ const STORAGE_KEYS = {
   SUPPORT_REPORTS: 'pms_support_reports',
   SUPPORT_MEMBERS: 'pms_support_team_members',
   PAYMENT_SETTINGS: 'pms_payment_settings',
+  PAYMENT_GATEWAYS: 'pms_payment_gateways_list',
   MANUAL_TOTAL_BALANCE: 'pms_manual_total_balance',
   MONTHLY_EXPENSE: 'pms_monthly_expense',
   EXTRA_MONEY: 'pms_extra_money',
@@ -415,10 +418,44 @@ export function saveSupportMembers(members: SupportTeamMember[]) {
 }
 
 // 10. Payment Gateway Settings
+export function loadPaymentGateways(): PaymentGatewayItem[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.PAYMENT_GATEWAYS);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter(g => !isIdPermanentlyDeleted(g.id));
+      }
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return INITIAL_PAYMENT_GATEWAYS.filter(g => !isIdPermanentlyDeleted(g.id));
+}
+
+export function savePaymentGateways(gateways: PaymentGatewayItem[]) {
+  try {
+    const filtered = gateways.filter(g => !isIdPermanentlyDeleted(g.id));
+    localStorage.setItem(STORAGE_KEYS.PAYMENT_GATEWAYS, JSON.stringify(filtered));
+    notifyStorageChange(STORAGE_KEYS.PAYMENT_GATEWAYS, filtered);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 export function loadPaymentSettings(): PaymentGatewayConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.PAYMENT_SETTINGS);
-    if (raw) return { ...INITIAL_PAYMENT_CONFIG, ...JSON.parse(raw) };
+    const gateways = loadPaymentGateways();
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { 
+        ...INITIAL_PAYMENT_CONFIG, 
+        ...parsed,
+        gateways: (parsed.gateways && Array.isArray(parsed.gateways) && parsed.gateways.length > 0) ? parsed.gateways : gateways
+      };
+    }
+    return { ...INITIAL_PAYMENT_CONFIG, gateways };
   } catch (e) {
     console.error(e);
   }
@@ -428,6 +465,9 @@ export function loadPaymentSettings(): PaymentGatewayConfig {
 export function savePaymentSettings(settings: PaymentGatewayConfig) {
   try {
     localStorage.setItem(STORAGE_KEYS.PAYMENT_SETTINGS, JSON.stringify(settings));
+    if (settings.gateways && Array.isArray(settings.gateways)) {
+      savePaymentGateways(settings.gateways);
+    }
     notifyStorageChange(STORAGE_KEYS.PAYMENT_SETTINGS, settings);
   } catch (e) {
     console.error(e);

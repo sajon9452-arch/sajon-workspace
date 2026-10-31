@@ -125,6 +125,8 @@ export const APP_SUPABASE_TABLES: AppTableDefinition[] = [
   { id: 'security_alerts', key: 'securityAlerts', label: 'সিকিউরিটি অ্যালার্ট', englishLabel: 'Security Alerts', category: 'security', description: 'ডিভাইস বাইন্ডিং ও সন্দেহজনক লগইন সতর্কবার্তা' },
   { id: 'settings', key: 'settings', label: 'অ্যাপ সেটিংস ও প্রোফাইল', englishLabel: 'Settings & Profile', category: 'system', description: 'সংগঠনের প্রোফাইল, লোগো, পেমেন্ট নম্বর ও ব্যালেন্স' },
   { id: 'registration_queue', key: 'registrationQueue', label: 'নিবন্ধন অনুমোদন কিউ', englishLabel: 'Registration Queue', category: 'security', description: 'অনলাইন সদস্য নিবন্ধন আবেদন ও অনুমোদন অপেক্ষমান তালিকা (মূল সদস্য তালিকা থেকে সম্পূর্ণ পৃথক)' },
+  { id: 'organization_profile', key: 'organizationProfile', label: 'সংগঠনের প্রোফাইল', englishLabel: 'Organization Profile', category: 'core', description: 'সংগঠনের নাম, স্লোগান, পূর্ণাঙ্গ পরিচিতি, প্রতিষ্ঠা ও লোগো প্রোফাইল' },
+  { id: 'payment_gateways', key: 'paymentGateways', label: 'পেমেন্ট গেটওয়ে নম্বর', englishLabel: 'Payment Gateways', category: 'finance', description: 'বিকাশ, নগদ, রকেট ও ব্যাংক একাউন্ট নম্বর পরিচালনা' },
   { id: 'app_collections', key: 'appCollections', label: 'কলেকশন ব্যাকআপ স্টোর', englishLabel: 'Universal Document Store', category: 'system', description: 'সকল ডেটার সার্বজনীন জেসন ব্যাকআপ নিরাপত্তা' }
 ];
 
@@ -145,6 +147,8 @@ export const TABLE_CANDIDATES_MAP: Record<string, string[]> = {
   userAccounts: ['user_accounts', 'userAccounts'],
   securityAlerts: ['security_alerts', 'securityAlerts'],
   registrationQueue: ['registration_queue', 'registrationQueue'],
+  organizationProfile: ['organization_profile', 'organizationProfile'],
+  paymentGateways: ['payment_gateways', 'paymentGateways'],
   settings: ['settings'],
   appCollections: ['app_collections', 'appCollections']
 };
@@ -454,6 +458,74 @@ CREATE TABLE IF NOT EXISTS public.registration_queue (
   data JSONB
 );
 
+-- 18. Organization Profile (সংগঠনের প্রোফাইল)
+CREATE TABLE IF NOT EXISTS public.organization_profile (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  tagline TEXT,
+  description TEXT,
+  established_date TEXT,
+  establishedDate TEXT,
+  established_year TEXT,
+  establishedYear TEXT,
+  address TEXT,
+  hotline TEXT,
+  emergency_contact TEXT,
+  emergencyContact TEXT,
+  phone TEXT,
+  email TEXT,
+  facebook_url TEXT,
+  facebookUrl TEXT,
+  youtube_url TEXT,
+  youtubeUrl TEXT,
+  logo_url TEXT,
+  logoUrl TEXT,
+  reg_number TEXT,
+  regNumber TEXT,
+  president_name TEXT,
+  presidentName TEXT,
+  general_secretary_name TEXT,
+  generalSecretaryName TEXT,
+  finance_secretary_name TEXT,
+  financeSecretaryName TEXT,
+  updated_at TEXT,
+  updatedAt TEXT,
+  data JSONB
+);
+
+-- 19. Payment Gateways (পেমেন্ট গেটওয়ে নম্বর ও ব্যাংক একাউন্ট)
+CREATE TABLE IF NOT EXISTS public.payment_gateways (
+  id TEXT PRIMARY KEY,
+  gateway_name TEXT,
+  gatewayName TEXT,
+  gateway_type TEXT,
+  gatewayType TEXT,
+  account_number TEXT,
+  accountNumber TEXT,
+  account_type TEXT,
+  accountType TEXT,
+  instructions TEXT,
+  bank_name TEXT,
+  bankName TEXT,
+  branch_name TEXT,
+  branchName TEXT,
+  routing_number TEXT,
+  routingNumber TEXT,
+  account_holder TEXT,
+  accountHolder TEXT,
+  is_active BOOLEAN DEFAULT true,
+  isActive BOOLEAN DEFAULT true,
+  order_index INTEGER DEFAULT 0,
+  orderIndex INTEGER DEFAULT 0,
+  qr_code_url TEXT,
+  qrCodeUrl TEXT,
+  created_at TEXT,
+  createdAt TEXT,
+  updated_at TEXT,
+  updatedAt TEXT,
+  data JSONB
+);
+
 -- ====================================================================
 -- Enable Row Level Security (RLS) & Allow Open App Access
 -- ====================================================================
@@ -466,7 +538,8 @@ BEGIN
       'app_collections', 'members', 'donors', 'funds', 'pending_payments', 'notices',
       'support_members', 'home_slides', 'aid_donations', 'extra_contributions',
       'humanitarian_activities', 'organization_rules', 'support_reports', 'settings',
-      'user_accounts', 'security_alerts', 'registration_queue'
+      'user_accounts', 'security_alerts', 'registration_queue', 'organization_profile',
+      'payment_gateways'
     ])
   LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
@@ -599,8 +672,32 @@ function prepareRecordForSupabase(record: any): any {
   if (record.isDeviceLocked !== undefined && record.is_device_locked === undefined) prepared.is_device_locked = record.isDeviceLocked;
   if (record.lastLoginAt && !record.last_login_at) prepared.last_login_at = record.lastLoginAt;
   if (record.lastLoginIp && !record.last_login_ip) prepared.last_login_ip = record.lastLoginIp;
-  if (record.lastLoginDevice && !record.last_login_device) prepared.last_login_device = record.lastLoginDevice;
   if (record.isSuspicious !== undefined && record.is_suspicious === undefined) prepared.is_suspicious = record.isSuspicious;
+
+  // Organization profile mappings
+  if (record.establishedDate && !record.established_date) prepared.established_date = record.establishedDate;
+  if (record.establishedYear && !record.established_year) prepared.established_year = record.establishedYear;
+  if (record.emergencyContact && !record.emergency_contact) prepared.emergency_contact = record.emergencyContact;
+  if (record.regNumber && !record.reg_number) prepared.reg_number = record.regNumber;
+  if (record.facebookUrl && !record.facebook_url) prepared.facebook_url = record.facebookUrl;
+  if (record.youtubeUrl && !record.youtube_url) prepared.youtube_url = record.youtubeUrl;
+  if (record.logoUrl && !record.logo_url) prepared.logo_url = record.logoUrl;
+  if (record.presidentName && !record.president_name) prepared.president_name = record.presidentName;
+  if (record.generalSecretaryName && !record.general_secretary_name) prepared.general_secretary_name = record.generalSecretaryName;
+  if (record.financeSecretaryName && !record.finance_secretary_name) prepared.finance_secretary_name = record.financeSecretaryName;
+
+  // Payment gateways mappings
+  if (record.gatewayName && !record.gateway_name) prepared.gateway_name = record.gatewayName;
+  if (record.gatewayType && !record.gateway_type) prepared.gateway_type = record.gatewayType;
+  if (record.accountNumber && !record.account_number) prepared.account_number = record.accountNumber;
+  if (record.accountType && !record.account_type) prepared.account_type = record.accountType;
+  if (record.bankName && !record.bank_name) prepared.bank_name = record.bankName;
+  if (record.branchName && !record.branch_name) prepared.branch_name = record.branchName;
+  if (record.routingNumber && !record.routing_number) prepared.routing_number = record.routingNumber;
+  if (record.accountHolder && !record.account_holder) prepared.account_holder = record.accountHolder;
+  if (record.isActive !== undefined && record.is_active === undefined) prepared.is_active = record.isActive;
+  if (record.qrCodeUrl && !record.qr_code_url) prepared.qr_code_url = record.qrCodeUrl;
+  if (record.updatedAt && !record.updated_at) prepared.updated_at = record.updatedAt;
 
   return prepared;
 }
@@ -749,6 +846,32 @@ export async function fetchSupabaseCollection<T>(collectionKey: string): Promise
           if (base.last_login_ip && !base.lastLoginIp) base.lastLoginIp = base.last_login_ip;
           if (base.last_login_device && !base.lastLoginDevice) base.lastLoginDevice = base.last_login_device;
           if (base.is_suspicious !== undefined && base.isSuspicious === undefined) base.isSuspicious = base.is_suspicious;
+
+          // Organization profile mappings
+          if (base.established_date && !base.establishedDate) base.establishedDate = base.established_date;
+          if (base.established_year && !base.establishedYear) base.establishedYear = base.established_year;
+          if (base.emergency_contact && !base.emergencyContact) base.emergencyContact = base.emergency_contact;
+          if (base.reg_number && !base.regNumber) base.regNumber = base.reg_number;
+          if (base.facebook_url && !base.facebookUrl) base.facebookUrl = base.facebook_url;
+          if (base.youtube_url && !base.youtubeUrl) base.youtubeUrl = base.youtube_url;
+          if (base.logo_url && !base.logoUrl) base.logoUrl = base.logo_url;
+          if (base.president_name && !base.presidentName) base.presidentName = base.president_name;
+          if (base.general_secretary_name && !base.generalSecretaryName) base.generalSecretaryName = base.general_secretary_name;
+          if (base.finance_secretary_name && !base.financeSecretaryName) base.financeSecretaryName = base.finance_secretary_name;
+
+          // Payment gateways mappings
+          if (base.gateway_name && !base.gatewayName) base.gatewayName = base.gateway_name;
+          if (base.gateway_type && !base.gatewayType) base.gatewayType = base.gateway_type;
+          if (base.account_number && !base.accountNumber) base.accountNumber = base.account_number;
+          if (base.account_type && !base.accountType) base.accountType = base.account_type;
+          if (base.bank_name && !base.bankName) base.bankName = base.bank_name;
+          if (base.branch_name && !base.branchName) base.branchName = base.branch_name;
+          if (base.routing_number && !base.routingNumber) base.routingNumber = base.routing_number;
+          if (base.account_holder && !base.accountHolder) base.accountHolder = base.account_holder;
+          if (base.is_active !== undefined && base.isActive === undefined) base.isActive = base.is_active;
+          if (base.order_index !== undefined && base.orderIndex === undefined) base.orderIndex = base.order_index;
+          if (base.qr_code_url && !base.qrCodeUrl) base.qrCodeUrl = base.qr_code_url;
+          if (base.updated_at && !base.updatedAt) base.updatedAt = base.updated_at;
 
           return base;
         });
@@ -918,6 +1041,130 @@ export async function fetchFinancialsFromSupabase(): Promise<{ monthlyExpense?: 
 }
 
 /**
+ * Organization Profile Sync & Fetch
+ */
+export async function syncOrgProfileToSupabase(profile: any): Promise<boolean> {
+  try {
+    const record = {
+      id: profile.id || 'org_main_profile',
+      ...profile,
+      updatedAt: new Date().toISOString()
+    };
+    const prepared = prepareRecordForSupabase(record);
+
+    // 1. Direct table
+    await supabase.from('organization_profile').upsert(prepared);
+
+    // 2. Settings table backup
+    await supabase.from('settings').upsert({
+      id: 'pms_org_profile',
+      key: 'profile',
+      data: record,
+      updated_at: new Date().toISOString()
+    });
+
+    // 3. App collections backup
+    await supabase.from('app_collections').upsert({
+      id: 'organization_profile',
+      data: [record],
+      updated_at: new Date().toISOString()
+    });
+
+    return true;
+  } catch (err) {
+    console.error('syncOrgProfileToSupabase error:', err);
+    return false;
+  }
+}
+
+export async function fetchOrgProfileFromSupabase(): Promise<any | null> {
+  try {
+    // 1. Check dedicated organization_profile table
+    const { data: orgData, error: orgErr } = await supabase
+      .from('organization_profile')
+      .select('*')
+      .limit(1);
+
+    if (!orgErr && Array.isArray(orgData) && orgData.length > 0) {
+      const item = orgData[0];
+      const base = (item && item.data && typeof item.data === 'object') ? { ...item.data, ...item } : { ...item };
+      if (base.established_date && !base.establishedDate) base.establishedDate = base.established_date;
+      if (base.established_year && !base.establishedYear) base.establishedYear = base.established_year;
+      if (base.emergency_contact && !base.emergencyContact) base.emergencyContact = base.emergency_contact;
+      if (base.reg_number && !base.regNumber) base.regNumber = base.reg_number;
+      if (base.facebook_url && !base.facebookUrl) base.facebookUrl = base.facebook_url;
+      if (base.youtube_url && !base.youtubeUrl) base.youtubeUrl = base.youtube_url;
+      if (base.logo_url && !base.logoUrl) base.logoUrl = base.logo_url;
+      if (base.president_name && !base.presidentName) base.presidentName = base.president_name;
+      if (base.general_secretary_name && !base.generalSecretaryName) base.generalSecretaryName = base.general_secretary_name;
+      if (base.finance_secretary_name && !base.financeSecretaryName) base.financeSecretaryName = base.finance_secretary_name;
+      return base;
+    }
+
+    // 2. Fallback to settings
+    const { data: sData, error: sErr } = await supabase
+      .from('settings')
+      .select('data')
+      .eq('id', 'pms_org_profile')
+      .single();
+
+    if (!sErr && sData && sData.data) {
+      return sData.data;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
+ * Payment Gateways Sync & Fetch
+ */
+export async function syncPaymentGatewaysToSupabase(gateways: any[]): Promise<boolean> {
+  try {
+    if (!Array.isArray(gateways)) return false;
+
+    // 1. Direct table
+    if (gateways.length > 0) {
+      const prepared = gateways.map(prepareRecordForSupabase);
+      await supabase.from('payment_gateways').upsert(prepared);
+    }
+
+    // 2. App collections backup
+    await supabase.from('app_collections').upsert({
+      id: 'payment_gateways',
+      data: gateways,
+      updated_at: new Date().toISOString()
+    });
+
+    // 3. Settings table
+    await supabase.from('settings').upsert({
+      id: 'pms_payment_gateways',
+      key: 'payment_gateways',
+      data: gateways,
+      updated_at: new Date().toISOString()
+    });
+
+    return true;
+  } catch (err) {
+    console.error('syncPaymentGatewaysToSupabase error:', err);
+    return false;
+  }
+}
+
+export async function fetchPaymentGatewaysFromSupabase(): Promise<any[] | null> {
+  try {
+    const list = await fetchSupabaseCollection<any>('paymentGateways');
+    if (Array.isArray(list) && list.length > 0) {
+      return list;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
  * Universal Push: Pushes all local datasets to Supabase in one operation
  */
 export async function pushAllDataToSupabase(snapshot: Record<string, any>): Promise<{
@@ -985,6 +1232,26 @@ export async function pullAllDataFromSupabase(): Promise<Record<string, any>> {
       }
     })
   );
+
+  // Profile from dedicated table or settings
+  try {
+    const cloudProfile = await fetchOrgProfileFromSupabase();
+    if (cloudProfile && cloudProfile.name) {
+      result['organizationProfile'] = [cloudProfile];
+    }
+  } catch {
+    // ignore
+  }
+
+  // Payment gateways
+  try {
+    const cloudGateways = await fetchPaymentGatewaysFromSupabase();
+    if (Array.isArray(cloudGateways) && cloudGateways.length > 0) {
+      result['paymentGateways'] = cloudGateways;
+    }
+  } catch {
+    // ignore
+  }
 
   // Settings & financials
   try {
