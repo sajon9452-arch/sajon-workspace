@@ -699,6 +699,11 @@ function prepareRecordForSupabase(record: any): any {
   if (record.qrCodeUrl && !record.qr_code_url) prepared.qr_code_url = record.qrCodeUrl;
   if (record.updatedAt && !record.updated_at) prepared.updated_at = record.updatedAt;
 
+  // Monthly expense mappings
+  if (record.expenseHandler && !record.expense_handler) prepared.expense_handler = record.expenseHandler;
+  if (record.itemPhotoUrl && !record.item_photo_url) prepared.item_photo_url = record.itemPhotoUrl;
+  if (record.expenseItem && !record.expense_item) prepared.expense_item = record.expenseItem;
+
   return prepared;
 }
 

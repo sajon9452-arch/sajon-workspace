@@ -71,6 +71,24 @@ export interface FundRecord {
   paymentMethod?: string;
   transactionId?: string;
   totalBalance?: number;
+  photoUrl?: string;
+  itemPhotoUrl?: string;
+  expenseItem?: string;
+  expenseHandler?: string;
+  createdAt?: string;
+}
+
+export interface ExpenseRecord {
+  id: string;
+  expenseHandler: string;
+  itemPhotoUrl?: string;
+  expenseItem: string;
+  amount: number;
+  date: string;
+  description?: string;
+  notes?: string;
+  category?: string;
+  createdAt?: string;
 }
 
 export interface Notice {

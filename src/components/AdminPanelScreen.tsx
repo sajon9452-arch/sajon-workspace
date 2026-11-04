@@ -95,7 +95,15 @@ import { autoSyncMembersToFunds } from '../utils/memberFundLinker';
 import { generateDirectSimPaidSms, generateDirectSimDueSms, triggerDirectSimSms } from '../utils/smsHelper';
 import { generateReceiptDataUrl } from '../utils/receiptGenerator';
 import { ReceiptPreviewModal } from './ReceiptPreviewModal';
-import { saveAdminPin, PMS_SYNC_EVENT, saveFunds, loadFunds, loadPaymentGateways, savePaymentGateways } from '../utils/storage';
+import { 
+  saveAdminPin, 
+  PMS_SYNC_EVENT, 
+  saveFunds, 
+  loadFunds, 
+  loadPaymentGateways, 
+  savePaymentGateways,
+  markIdAsPermanentlyDeleted
+} from '../utils/storage';
 import { INITIAL_PAYMENT_GATEWAYS } from '../data/initialData';
 import { BkashLogo, NagadLogo, RocketLogo } from './PaymentGatewaySection';
 import { 
@@ -144,7 +152,9 @@ interface AdminPanelScreenProps {
   onEditDonor?: (donor: BloodDonor) => Promise<void>;
   onDeleteDonor?: (id: string) => Promise<void>;
   funds?: FundRecord[];
+  onAddFundRecord?: (fund: Omit<FundRecord, 'id'>) => Promise<FundRecord>;
   onEditFundRecord?: (fund: FundRecord) => Promise<void>;
+  onDeleteFundRecord?: (id: string) => Promise<void>;
   onToggleFundStatus?: (id: string, newStatus: PaymentStatus) => Promise<void>;
   manualTotalBalance?: number | null;
   onUpdateManualTotalBalance?: (amount: number | null) => void;
@@ -191,7 +201,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onEditDonor,
   onDeleteDonor,
   funds = [],
+  onAddFundRecord,
   onEditFundRecord,
+  onDeleteFundRecord,
   onToggleFundStatus,
   manualTotalBalance = 0,
   onUpdateManualTotalBalance,
@@ -1997,7 +2009,18 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const [donationRocket, setDonationRocket] = useState('');
   const [donationAdminSearch, setDonationAdminSearch] = useState('');
 
+  // Dynamic Toggle inside Donation Record Form: 'donation' (নতুন অনুদান) vs 'expense' (মাসিক খরচ)
+  const [recordEntryType, setRecordEntryType] = useState<'donation' | 'expense'>('donation');
+  const [donationsSubTab, setDonationsSubTab] = useState<'donations' | 'expenses'>('donations');
+  const [expenseHandler, setExpenseHandler] = useState('মোঃ কামরুল হাসান (সভাপতি)');
+  const [expensePhotoUrl, setExpensePhotoUrl] = useState('');
+  const [expenseItem, setExpenseItem] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseDate, setExpenseDate] = useState('');
+  const [expenseNotes, setExpenseNotes] = useState('');
+
   const handleOpenAddDonation = () => {
+    setRecordEntryType(donationsSubTab === 'expenses' ? 'expense' : 'donation');
     setEditingDonation(null);
     setDonationRecipientName('');
     setDonationPhotoUrl('');
@@ -2009,10 +2032,19 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     setDonationBkash('');
     setDonationNagad('');
     setDonationRocket('');
+
+    // Reset expense states
+    setExpenseHandler('মোঃ কামরুল হাসান (সভাপতি)');
+    setExpensePhotoUrl('');
+    setExpenseItem('');
+    setExpenseAmount('');
+    setExpenseDate(new Date().toLocaleDateString('bn-BD'));
+    setExpenseNotes('');
     setIsDonationModalOpen(true);
   };
 
   const handleOpenEditDonation = (item: AidDonationRecord) => {
+    setRecordEntryType('donation');
     setEditingDonation(item);
     setDonationRecipientName(item.recipientName);
     setDonationPhotoUrl(item.photoUrl || '');
@@ -2039,8 +2071,78 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     }
   };
 
+  const handleExpensePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const compressed = await compressImageFile(file, { maxWidth: 600, maxHeight: 600, quality: 0.8 });
+        setExpensePhotoUrl(compressed);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
   const handleSaveDonation = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. If 'মাসিক খরচ' (Monthly Expense) is selected, save directly to funds/expense database table
+    if (recordEntryType === 'expense') {
+      const parsedAmt = parseFloat(expenseAmount);
+      const amt = isNaN(parsedAmt) ? 0 : parsedAmt;
+      const finalHandler = expenseHandler.trim() || 'দায়িত্বশীল খরচকারী';
+      const finalItem = expenseItem.trim() || 'সাধারণ প্রাতিষ্ঠানিক ব্যয়';
+      const finalDate = expenseDate.trim() || new Date().toLocaleDateString('bn-BD');
+      const finalNotes = expenseNotes.trim();
+
+      const newExpenseRecord: FundRecord = {
+        id: `exp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        memberName: finalHandler,
+        amount: amt,
+        status: 'Expense',
+        date: finalDate,
+        description: finalItem,
+        category: 'মাসিক খরচ',
+        type: 'expense',
+        notes: finalNotes,
+        photoUrl: expensePhotoUrl.trim() || undefined,
+        itemPhotoUrl: expensePhotoUrl.trim() || undefined,
+        expenseItem: finalItem,
+        expenseHandler: finalHandler,
+        createdAt: new Date().toISOString()
+      };
+
+      try {
+        if (onAddFundRecord) {
+          await onAddFundRecord(newExpenseRecord);
+        } else {
+          await safeSyncToSupabase('funds', newExpenseRecord);
+          const updatedFunds = [newExpenseRecord, ...funds.filter(f => f.id !== newExpenseRecord.id)];
+          saveFunds(updatedFunds);
+        }
+
+        // Keep monthlyExpense updated if positive amount provided
+        if (amt > 0 && onUpdateMonthlyExpense) {
+          const currentExp = typeof monthlyExpense === 'number' ? monthlyExpense : 0;
+          onUpdateMonthlyExpense(currentExp + amt);
+        }
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent(PMS_SYNC_EVENT));
+        }
+
+        setNoticeMsg('মাসিক খরচ রেকর্ড সফলভাবে তহবিল ও ব্যয় ডেটাবেসে সংরক্ষিত হয়েছে');
+        setIsDonationModalOpen(false);
+        setTimeout(() => setNoticeMsg(''), 3500);
+      } catch (err) {
+        console.error(err);
+        setNoticeMsg('মাসিক খরচ রেকর্ড সংরক্ষণে সমস্যা হয়েছে');
+        setTimeout(() => setNoticeMsg(''), 3500);
+      }
+      return;
+    }
+
+    // 2. If 'নতুন অনুদান' (New Donation) is selected, save into aid_donations table
     const finalRecipient = donationRecipientName.trim() || 'অনুল্লেখিত সাহায্যপ্রাপ্ত';
     const parsedAmt = parseFloat(donationAmount);
     const amt = isNaN(parsedAmt) ? 0 : parsedAmt;
@@ -2092,6 +2194,24 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       await onDeleteAidDonation(id);
       setNoticeMsg('অনুদান রেকর্ড মুছে ফেলা হয়েছে');
       setTimeout(() => setNoticeMsg(''), 3000);
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!window.confirm('আপনি কি নিশ্চিত যে এই মাসিক খরচ রেকর্ডটি স্থায়ীভাবে মুছে ফেলতে চান?')) return;
+    try {
+      if (onDeleteFundRecord) {
+        await onDeleteFundRecord(id);
+      } else {
+        markIdAsPermanentlyDeleted(id, 'funds');
+        const updated = funds.filter(f => f.id !== id);
+        saveFunds(updated);
+        await safeDeleteFromSupabase('funds', id);
+      }
+      setNoticeMsg('মাসিক খরচ রেকর্ড সফলভাবে মুছে ফেলা হয়েছে');
+      setTimeout(() => setNoticeMsg(''), 3000);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -6017,137 +6137,274 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         </div>
       )}
 
-      {/* 6. Aid & Donation Recipients Management Tab */}
-      {activeTab === 'donations' && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Heart className="w-5 h-5 text-rose-600" />
-                <span>অনুদান ও সাহায্য প্রাপ্তদের তালিকা ব্যবস্থাপনা</span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                সাহায্যপ্রাপ্তদের নাম, ছবি, ঠিকানা, দায়িত্বশীলের রেফারেন্স, টাকার পরিমাণ ও বিবরণ পরিচালনা করুন
-              </p>
+      {/* 6. Aid & Donation Recipients and Monthly Expenses Management Tab */}
+      {activeTab === 'donations' && (() => {
+        const expenseRecords = funds.filter(f => f.status === 'Expense' || f.type === 'expense' || f.category === 'মাসিক খরচ');
+        const filteredExpenses = expenseRecords.filter(exp => {
+          if (!donationAdminSearch.trim()) return true;
+          const q = donationAdminSearch.toLowerCase();
+          return (
+            (exp.memberName || '').toLowerCase().includes(q) ||
+            (exp.description || '').toLowerCase().includes(q) ||
+            (exp.notes || '').toLowerCase().includes(q)
+          );
+        });
+
+        const filteredAid = aidDonations.filter(d => {
+          if (!donationAdminSearch.trim()) return true;
+          const q = donationAdminSearch.toLowerCase();
+          return (
+            (d.recipientName || '').toLowerCase().includes(q) ||
+            (d.address || '').toLowerCase().includes(q) ||
+            (d.providerReference || '').toLowerCase().includes(q)
+          );
+        });
+
+        return (
+          <div className="space-y-4">
+            <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  {donationsSubTab === 'donations' ? (
+                    <>
+                      <Heart className="w-5 h-5 text-rose-600" />
+                      <span>অনুদান ও সাহায্য প্রাপ্তদের তালিকা ব্যবস্থাপনা</span>
+                    </>
+                  ) : (
+                    <>
+                      <Receipt className="w-5 h-5 text-amber-600" />
+                      <span>মাসিক খরচের হিসাব ও ভাউচার ব্যবস্থাপনা</span>
+                    </>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {donationsSubTab === 'donations'
+                    ? 'সাহায্যপ্রাপ্তদের নাম, ছবি, ঠিকানা, দায়িত্বশীলের রেফারেন্স, টাকার পরিমাণ ও বিবরণ পরিচালনা করুন'
+                    : 'প্রাতিষ্ঠানিক মাসিক ব্যয়ের খাত, খরচকারী, ভাউচার/রসিদ এবং খরচের বিবরণ পরিচালনা করুন'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOpenAddDonation}
+                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 whitespace-nowrap ${
+                  donationsSubTab === 'expenses'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-emerald-700 hover:bg-emerald-800'
+                }`}
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>
+                  {donationsSubTab === 'expenses'
+                    ? 'নতুন খরচ রেকর্ড যোগ করুন'
+                    : 'নতুন অনুদান রেকর্ড যোগ করুন'}
+                </span>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleOpenAddDonation}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 whitespace-nowrap"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>নতুন অনুদান রেকর্ড যোগ করুন</span>
-            </button>
-          </div>
 
-          {/* Search Bar */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={donationAdminSearch}
-              onChange={(e) => setDonationAdminSearch(e.target.value)}
-              placeholder="নাম, ঠিকানা বা রেফারেন্স দিয়ে খুঁজুন..."
-              className="w-full pl-9 pr-4 py-2.5 text-xs rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-            />
-          </div>
+            {/* Sub-Tabs Switcher & Search Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="inline-flex p-1 rounded-2xl bg-slate-100 border border-slate-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setDonationsSubTab('donations')}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    donationsSubTab === 'donations'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Heart className="w-3.5 h-3.5" />
+                  <span>সাহায্য ও অনুদান ({toBengaliNumber(aidDonations.length)})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDonationsSubTab('expenses')}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    donationsSubTab === 'expenses'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span>মাসিক খরচের রেকর্ড ({toBengaliNumber(expenseRecords.length)})</span>
+                </button>
+              </div>
 
-          {/* Donations List */}
-          {aidDonations.filter(d => {
-            if (!donationAdminSearch.trim()) return true;
-            const q = donationAdminSearch.toLowerCase();
-            return (
-              (d.recipientName || '').toLowerCase().includes(q) ||
-              (d.address || '').toLowerCase().includes(q) ||
-              (d.providerReference || '').toLowerCase().includes(q)
-            );
-          }).length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {aidDonations
-                .filter(d => {
-                  if (!donationAdminSearch.trim()) return true;
-                  const q = donationAdminSearch.toLowerCase();
-                  return (
-                    (d.recipientName || '').toLowerCase().includes(q) ||
-                    (d.address || '').toLowerCase().includes(q) ||
-                    (d.providerReference || '').toLowerCase().includes(q)
-                  );
-                })
-                .map((item) => (
-                  <div
-                    key={item.id}
-                    className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-3"
-                  >
-                    <div className="flex items-start gap-3.5">
-                      <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                        {item.photoUrl ? (
-                          <img src={item.photoUrl} alt={item.recipientName} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-emerald-600 bg-emerald-50">
-                            <Heart className="w-6 h-6" />
+              {/* Search Bar */}
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={donationAdminSearch}
+                  onChange={(e) => setDonationAdminSearch(e.target.value)}
+                  placeholder={
+                    donationsSubTab === 'donations'
+                      ? 'সাহায্যপ্রাপ্তের নাম, ঠিকানা বা রেফারেন্স দিয়ে খুঁজুন...'
+                      : 'খরচের খাত, খরচকারীর নাম বা বিবরণ দিয়ে খুঁজুন...'
+                  }
+                  className="w-full pl-9 pr-4 py-2.5 text-xs rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+            </div>
+
+            {/* View 1: Aid Donations List */}
+            {donationsSubTab === 'donations' && (
+              filteredAid.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredAid.map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-3"
+                    >
+                      <div className="flex items-start gap-3.5">
+                        <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                          {item.photoUrl ? (
+                            <img src={item.photoUrl} alt={item.recipientName} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-emerald-600 bg-emerald-50">
+                              <Heart className="w-6 h-6" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <h4 className="text-sm font-black text-slate-900 truncate">
+                              {item.recipientName}
+                            </h4>
+                            <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                              {formatBengaliCurrency(item.amount)}
+                            </span>
                           </div>
-                        )}
+                          <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                            <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
+                            <span className="truncate">{item.address}</span>
+                          </div>
+                          <div className="text-xs text-slate-600 font-medium mt-1">
+                            <span className="text-slate-400">রেফারেন্স: </span>
+                            <strong>{item.providerReference}</strong>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1">
-                          <h4 className="text-sm font-black text-slate-900 truncate">
-                            {item.recipientName}
-                          </h4>
-                          <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                            {formatBengaliCurrency(item.amount)}
-                          </span>
+                      {item.description && (
+                        <p className="text-xs text-slate-600 line-clamp-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                          {item.description}
+                        </p>
+                      )}
+
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                        <span>{item.date}</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditDonation(item)}
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 transition cursor-pointer"
+                            title="সম্পাদনা"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDonation(item.id)}
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 transition cursor-pointer"
+                            title="মুছে ফেলুন"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
-                        <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                          <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
-                          <span className="truncate">{item.address}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-2">
+                  <Heart className="w-10 h-10 text-slate-300 mx-auto" />
+                  <h4 className="text-sm font-bold text-slate-700">কোনো অনুদান রেকর্ড পাওয়া যায়নি</h4>
+                  <p className="text-xs text-slate-400">নতুন সাহায্যপ্রাপ্তদের তথ্য যুক্ত করুন।</p>
+                </div>
+              )
+            )}
+
+            {/* View 2: Monthly Expenses List */}
+            {donationsSubTab === 'expenses' && (
+              filteredExpenses.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredExpenses.map((exp) => (
+                    <div
+                      key={exp.id}
+                      className="bg-white rounded-3xl p-5 border border-amber-200/90 shadow-xs hover:shadow-md transition flex flex-col justify-between space-y-3"
+                    >
+                      <div className="flex items-start gap-3.5">
+                        <div className="w-16 h-16 rounded-2xl overflow-hidden bg-amber-50 border border-amber-200 shrink-0">
+                          {exp.photoUrl || exp.itemPhotoUrl ? (
+                            <img src={exp.photoUrl || exp.itemPhotoUrl} alt={exp.description} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-amber-600">
+                              <Receipt className="w-6 h-6" />
+                            </div>
+                          )}
                         </div>
-                        <div className="text-xs text-slate-600 font-medium mt-1">
-                          <span className="text-slate-400">রেফারেন্স: </span>
-                          <strong>{item.providerReference}</strong>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <h4 className="text-sm font-black text-slate-900 truncate">
+                              {exp.description || exp.expenseItem || 'মাসিক খরচ'}
+                            </h4>
+                            <span className="text-xs font-black text-rose-700 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
+                              {formatBengaliCurrency(exp.amount)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-600 font-medium mt-1">
+                            <span className="text-slate-400">খরচকারী: </span>
+                            <strong className="text-slate-800">{exp.memberName || exp.expenseHandler || 'প্রতিনিধি'}</strong>
+                          </div>
+                          <div className="text-xs text-amber-800 font-semibold mt-0.5 flex items-center gap-1">
+                            <span className="text-[10px] px-2 py-0.2 rounded-md bg-amber-100 text-amber-900 font-bold">
+                              মাসিক খরচ
+                            </span>
+                            <span className="text-slate-400">•</span>
+                            <span className="text-slate-500">{exp.date}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {exp.notes && (
+                        <p className="text-xs text-slate-600 line-clamp-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                          {exp.notes}
+                        </p>
+                      )}
+
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                        <span className="font-mono text-[11px] text-slate-400">ID: {exp.id.slice(0, 10)}</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteExpense(exp.id)}
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 transition cursor-pointer"
+                            title="মুছে ফেলুন"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     </div>
-
-                    {item.description && (
-                      <p className="text-xs text-slate-600 line-clamp-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
-                        {item.description}
-                      </p>
-                    )}
-
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-                      <span>{item.date}</span>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditDonation(item)}
-                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 transition cursor-pointer"
-                          title="সম্পাদনা"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDonation(item.id)}
-                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 transition cursor-pointer"
-                          title="মুছে ফেলুন"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          ) : (
-            <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-2">
-              <Heart className="w-10 h-10 text-slate-300 mx-auto" />
-              <h4 className="text-sm font-bold text-slate-700">কোনো অনুদান রেকর্ড পাওয়া যায়নি</h4>
-              <p className="text-xs text-slate-400">নতুন সাহায্যপ্রাপ্তদের তথ্য যুক্ত করুন।</p>
-            </div>
-          )}
-        </div>
-      )}
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-2">
+                  <Receipt className="w-10 h-10 text-slate-300 mx-auto" />
+                  <h4 className="text-sm font-bold text-slate-700">কোনো মাসিক খরচ রেকর্ড পাওয়া যায়নি</h4>
+                  <p className="text-xs text-slate-400">
+                    "নতুন খরচ রেকর্ড যোগ করুন" বাটনে ক্লিক করে মাসিক প্রাতিষ্ঠানিক ব্যয়ের হিসাব যুক্ত করুন।
+                  </p>
+                </div>
+              )
+            )}
+          </div>
+        );
+      })()}
 
       {/* 7. Extra Contributions Management Tab */}
       {activeTab === 'contributions' && (
@@ -7470,181 +7727,414 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
         </div>
       )}
 
-      {/* Modal 2: Add / Edit Aid Donation Record Modal */}
+      {/* Modal 2: Add / Edit Aid Donation Record & Monthly Expense Modal */}
       {isDonationModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-4">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Heart className="w-5 h-5 text-rose-600" />
-                <span>{editingDonation ? 'অনুদান রেকর্ড সম্পাদনা' : 'নতুন অনুদান রেকর্ড যুক্ত করুন'}</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsDonationModalOpen(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-8 space-y-4 text-slate-800">
+            {/* 1. Modal Header & Top-Corner Toggle Switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                {recordEntryType === 'donation' ? (
+                  <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200 shadow-2xs">
+                    <Heart className="w-5 h-5 text-rose-600" />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200 shadow-2xs">
+                    <Receipt className="w-5 h-5 text-amber-600" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
+                    {editingDonation 
+                      ? 'অনুদান রেকর্ড সম্পাদনা' 
+                      : (recordEntryType === 'donation' ? 'নতুন অনুদান রেকর্ড যুক্ত করুন' : 'মাসিক খরচ রেকর্ড যুক্ত করুন')}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {recordEntryType === 'donation' 
+                      ? 'সাহায্যপ্রাপ্তদের তালিকা ও আর্থিক সহায়তা বিতরণ' 
+                      : 'প্রাতিষ্ঠানিক ব্যয়ের খাত ও খরচের হিসাব সংরক্ষণ'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Requirement 1: Toggle/Select Buttons at the Top Corner */}
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                {!editingDonation && (
+                  <div className="inline-flex p-1 rounded-2xl bg-slate-100 border border-slate-200/90 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => setRecordEntryType('donation')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer select-none ${
+                        recordEntryType === 'donation'
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      }`}
+                    >
+                      <Heart className="w-3.5 h-3.5" />
+                      <span>নতুন অনুদান</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRecordEntryType('expense')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer select-none ${
+                        recordEntryType === 'expense'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      }`}
+                    >
+                      <Receipt className="w-3.5 h-3.5" />
+                      <span>মাসিক খরচ</span>
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsDonationModalOpen(false)}
+                  className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                  title="বন্ধ করুন"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
+            {/* 2. Conditional Form Fields Based on Selection */}
             <form onSubmit={handleSaveDonation} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  সাহায্যপ্রাপ্তের নাম
-                </label>
-                <input
-                  type="text"
-                  value={donationRecipientName}
-                  onChange={(e) => setDonationRecipientName(e.target.value)}
-                  placeholder="যেমন: রহিমা বেগম (অসহায় বিধবা)"
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
-              </div>
-
-              {/* Photo Upload or URL */}
-              <div className="space-y-2">
-                <label className="block font-bold text-slate-700">সাহায্যপ্রাপ্তের ছবি (ঐচ্ছিক)</label>
-                <div className="flex items-center gap-3">
-                  {donationPhotoUrl ? (
-                    <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-emerald-400 shrink-0">
-                      <img src={donationPhotoUrl} alt="প্রিভিউ" className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => setDonationPhotoUrl('')}
-                        className="absolute top-0 right-0 p-0.5 bg-rose-600 text-white rounded-bl"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
-                      <Heart className="w-6 h-6" />
-                    </div>
-                  )}
-                  <div className="flex-1 space-y-1.5">
-                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition text-xs">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>গ্যালারি থেকে ছবি আপলোড</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleDonationPhotoFile}
-                        className="hidden"
-                      />
+              {recordEntryType === 'expense' ? (
+                /* ========================================================
+                   FIELDS FOR: মাসিক খরচ (Monthly Expense Tracking)
+                   ======================================================== */
+                <div className="space-y-3.5">
+                  {/* 1. খরচকারীর নাম (Expense Handler's Name) */}
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      খরচকারীর নাম (কার মাধ্যমে ব্যয় হয়েছে) <span className="text-rose-500">*</span>
                     </label>
                     <input
-                      type="url"
-                      value={donationPhotoUrl}
-                      onChange={(e) => setDonationPhotoUrl(e.target.value)}
-                      placeholder="অথবা ছবির সরাসরি লিঙ্ক (URL)"
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs"
+                      type="text"
+                      required
+                      value={expenseHandler}
+                      onChange={(e) => setExpenseHandler(e.target.value)}
+                      placeholder="যেমন: মোঃ কামরুল হাসান (সভাপতি)"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-bold text-slate-800"
                     />
+                    {/* Quick Official Designation Tags */}
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      <span className="text-[10px] text-slate-400 font-semibold">কুইক সিলেক্ট:</span>
+                      {['সভাপতি', 'সাধারণ সম্পাদক', 'অর্থ বিষয়ক সম্পাদক', 'সাংগঠনিক সম্পাদক', 'অফিস সহকারী'].map(title => (
+                        <button
+                          key={title}
+                          type="button"
+                          onClick={() => setExpenseHandler(prev => {
+                            if (!prev) return `প্রতিনিধি (${title})`;
+                            if (prev.includes('(')) {
+                              return `${prev.split('(')[0].trim()} (${title})`;
+                            }
+                            return `${prev.trim()} (${title})`;
+                          })}
+                          className="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 text-[10px] font-bold border border-amber-200/80 cursor-pointer"
+                        >
+                          {title}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    বিতরণকৃত টাকার পরিমাণ (৳)
-                  </label>
-                  <input
-                    type="number"
-                    value={donationAmount}
-                    onChange={(e) => setDonationAmount(e.target.value)}
-                    placeholder="যেমন: 15000"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">তারিখ</label>
-                  <input
-                    type="text"
-                    value={donationDate}
-                    onChange={(e) => setDonationDate(e.target.value)}
-                    placeholder="যেমন: ১২ মার্চ ২০২৬"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                  />
-                </div>
-              </div>
+                  {/* 2. খরচকৃত জিনিসের ছবি (Item/Expense Photo) */}
+                  <div className="space-y-2">
+                    <label className="block font-bold text-slate-700">
+                      খরচকৃত জিনিসের ছবি বা ভাউচার রসিদ (ঐচ্ছিক)
+                    </label>
+                    <div className="flex items-center gap-3">
+                      {expensePhotoUrl ? (
+                        <div className="relative w-16 h-16 rounded-xl overflow-hidden border-2 border-amber-400 shrink-0 shadow-xs">
+                          <img src={expensePhotoUrl} alt="খরচের ছবি" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setExpensePhotoUrl('')}
+                            className="absolute top-0 right-0 p-1 bg-rose-600 text-white rounded-bl cursor-pointer hover:bg-rose-700"
+                            title="ছবি মুছুন"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                          <Receipt className="w-6 h-6 text-amber-500/60" />
+                        </div>
+                      )}
+                      <div className="flex-1 space-y-1.5">
+                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 font-bold cursor-pointer transition text-xs shadow-2xs">
+                          <Upload className="w-3.5 h-3.5 text-amber-700" />
+                          <span>রসিদ / জিনিসের ছবি আপলোড</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleExpensePhotoFile}
+                            className="hidden"
+                          />
+                        </label>
+                        <input
+                          type="url"
+                          value={expensePhotoUrl}
+                          onChange={(e) => setExpensePhotoUrl(e.target.value)}
+                          placeholder="অথবা ছবির সরাসরি লিঙ্ক (URL)"
+                          className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  ঠিকানা
-                </label>
-                <input
-                  type="text"
-                  value={donationAddress}
-                  onChange={(e) => setDonationAddress(e.target.value)}
-                  placeholder="যেমন: পতেঙ্গা কাঠগড় বাজার এলাকা, চট্টগ্রাম"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  কার মাধ্যমে দেওয়া হয়েছে (দায়িত্বশীলের নাম ও পদবি)
-                </label>
-                <input
-                  type="text"
-                  value={donationProviderRef}
-                  onChange={(e) => setDonationProviderRef(e.target.value)}
-                  placeholder="যেমন: মোঃ কামরুল হাসান (সভাপতি)"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">বিস্তারিত বিবরণ বা নোট</label>
-                <textarea
-                  rows={2}
-                  value={donationDescription}
-                  onChange={(e) => setDonationDescription(e.target.value)}
-                  placeholder="চিকিৎসা খরচ, খাদ্য সামগ্রী বা সহায়তার বিস্তারিত..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
-                />
-              </div>
-
-              {/* Personal Voluntary Payment Numbers */}
-              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
-                <div className="font-bold text-amber-900 text-xs">
-                  ব্যক্তিগত সহায়তা গ্রহণের নম্বর (ঐচ্ছিক)
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {/* 3. খরচের খাত বা জিনিসের নাম (Expense Item/Category Name) */}
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">বিকাশ নম্বর</label>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      খরচের খাত বা জিনিসের নাম <span className="text-rose-500">*</span>
+                    </label>
                     <input
                       type="text"
-                      value={donationBkash}
-                      onChange={(e) => setDonationBkash(e.target.value)}
-                      placeholder="01886122678"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                      required
+                      value={expenseItem}
+                      onChange={(e) => setExpenseItem(e.target.value)}
+                      placeholder="যেমন: অফিস ভাড়া / জরুরি খাদ্য সামগ্রী ক্রয় / ব্যানার প্রিন্টিং"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-bold text-slate-900"
                     />
+                    {/* Category Suggestion Badges */}
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      <span className="text-[10px] text-slate-400 font-semibold">খাত বাছাই:</span>
+                      {['অফিস ভাড়া', 'খাদ্য সামগ্রী ক্রয়', 'মেডিক্যাল সহায়তা', 'ব্যানার ও প্রিন্টিং', 'যাতায়াত ও পরিবহন', 'জরুরি ত্রাণ প্যাকেজ', 'আপ্যায়ন ও চা-নাস্তা'].map(cat => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setExpenseItem(cat)}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                            expenseItem === cat
+                              ? 'bg-amber-600 text-white border-amber-600'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">নগদ নম্বর</label>
-                    <input
-                      type="text"
-                      value={donationNagad}
-                      onChange={(e) => setDonationNagad(e.target.value)}
-                      placeholder="01711000000"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
-                    />
+
+                  {/* 4. টাকার পরিমাণ ও তারিখ (Amount & Date) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        টাকার পরিমাণ (৳) <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">৳</span>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          step="any"
+                          value={expenseAmount}
+                          onChange={(e) => setExpenseAmount(e.target.value)}
+                          placeholder="যেমন: 3500"
+                          className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 font-mono font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        খরচের তারিখ <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={expenseDate}
+                        onChange={(e) => setExpenseDate(e.target.value)}
+                        placeholder="যেমন: ১২ মার্চ ২০২৬"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                      />
+                    </div>
                   </div>
+
+                  {/* 5. বিস্তারিত বিবরণ বা নোট (Detailed Description/Note) */}
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">রকেট নম্বর</label>
-                    <input
-                      type="text"
-                      value={donationRocket}
-                      onChange={(e) => setDonationRocket(e.target.value)}
-                      placeholder="01886122678-5"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                    <label className="block font-bold text-slate-700 mb-1">
+                      বিস্তারিত বিবরণ বা নোট
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={expenseNotes}
+                      onChange={(e) => setExpenseNotes(e.target.value)}
+                      placeholder="কেন এবং কীভাবে ব্যয় করা হয়েছে তার বিবরণ, বিল/ভাউচার নম্বর বা প্রয়োজনীয় রেফারেন্স..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20 leading-relaxed"
                     />
                   </div>
                 </div>
-              </div>
+              ) : (
+                /* ========================================================
+                   FIELDS FOR: নতুন অনুদান (New Aid Donation)
+                   ======================================================== */
+                <div className="space-y-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      সাহায্যপ্রাপ্তের নাম <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={donationRecipientName}
+                      onChange={(e) => setDonationRecipientName(e.target.value)}
+                      placeholder="যেমন: রহিমা বেগম (অসহায় বিধবা)"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
 
+                  {/* Photo Upload or URL */}
+                  <div className="space-y-2">
+                    <label className="block font-bold text-slate-700">সাহায্যপ্রাপ্তের ছবি (ঐচ্ছিক)</label>
+                    <div className="flex items-center gap-3">
+                      {donationPhotoUrl ? (
+                        <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-emerald-400 shrink-0">
+                          <img src={donationPhotoUrl} alt="প্রিভিউ" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setDonationPhotoUrl('')}
+                            className="absolute top-0 right-0 p-0.5 bg-rose-600 text-white rounded-bl cursor-pointer hover:bg-rose-700"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                          <Heart className="w-6 h-6 text-rose-500/60" />
+                        </div>
+                      )}
+                      <div className="flex-1 space-y-1.5">
+                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition text-xs">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>গ্যালারি থেকে ছবি আপলোড</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleDonationPhotoFile}
+                            className="hidden"
+                          />
+                        </label>
+                        <input
+                          type="url"
+                          value={donationPhotoUrl}
+                          onChange={(e) => setDonationPhotoUrl(e.target.value)}
+                          placeholder="অথবা ছবির সরাসরি লিঙ্ক (URL)"
+                          className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        বিতরণকৃত টাকার পরিমাণ (৳) <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        value={donationAmount}
+                        onChange={(e) => setDonationAmount(e.target.value)}
+                        placeholder="যেমন: 15000"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">তারিখ <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        required
+                        value={donationDate}
+                        onChange={(e) => setDonationDate(e.target.value)}
+                        placeholder="যেমন: ১২ মার্চ ২০২৬"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      ঠিকানা
+                    </label>
+                    <input
+                      type="text"
+                      value={donationAddress}
+                      onChange={(e) => setDonationAddress(e.target.value)}
+                      placeholder="যেমন: পতেঙ্গা কাঠগড় বাজার এলাকা, চট্টগ্রাম"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      কার মাধ্যমে দেওয়া হয়েছে (দায়িত্বশীলের নাম ও পদবি)
+                    </label>
+                    <input
+                      type="text"
+                      value={donationProviderRef}
+                      onChange={(e) => setDonationProviderRef(e.target.value)}
+                      placeholder="যেমন: মোঃ কামরুল হাসান (সভাপতি)"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">বিস্তারিত বিবরণ বা নোট</label>
+                    <textarea
+                      rows={2}
+                      value={donationDescription}
+                      onChange={(e) => setDonationDescription(e.target.value)}
+                      placeholder="চিকিৎসা খরচ, খাদ্য সামগ্রী বা সহায়তার বিস্তারিত..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                    />
+                  </div>
+
+                  {/* Personal Voluntary Payment Numbers */}
+                  <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                    <div className="font-bold text-amber-900 text-xs">
+                      ব্যক্তিগত সহায়তা গ্রহণের নম্বর (ঐচ্ছিক)
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 mb-0.5">বিকাশ নম্বর</label>
+                        <input
+                          type="text"
+                          value={donationBkash}
+                          onChange={(e) => setDonationBkash(e.target.value)}
+                          placeholder="01886122678"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 mb-0.5">নগদ নম্বর</label>
+                        <input
+                          type="text"
+                          value={donationNagad}
+                          onChange={(e) => setDonationNagad(e.target.value)}
+                          placeholder="01711000000"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 mb-0.5">রকেট নম্বর</label>
+                        <input
+                          type="text"
+                          value={donationRocket}
+                          onChange={(e) => setDonationRocket(e.target.value)}
+                          placeholder="01886122678-5"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-xs bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal Actions */}
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -7655,10 +8145,18 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow transition cursor-pointer active:scale-95 flex items-center gap-1.5"
+                  className={`px-5 py-2 rounded-xl text-white font-bold shadow transition cursor-pointer active:scale-95 flex items-center gap-1.5 ${
+                    recordEntryType === 'expense'
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-emerald-700 hover:bg-emerald-800'
+                  }`}
                 >
                   <Save className="w-4 h-4" />
-                  <span>{editingDonation ? 'আপডেট করুন' : 'অনুদান রেকর্ড সংরক্ষণ'}</span>
+                  <span>
+                    {recordEntryType === 'expense'
+                      ? 'মাসিক খরচ সংরক্ষণ করুন'
+                      : (editingDonation ? 'আপডেট করুন' : 'অনুদান রেকর্ড সংরক্ষণ')}
+                  </span>
                 </button>
               </div>
             </form>

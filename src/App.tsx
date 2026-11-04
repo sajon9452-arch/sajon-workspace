@@ -986,7 +986,9 @@ export default function App() {
             onEditDonor={handleEditDonor}
             onDeleteDonor={handleDeleteDonor}
             funds={funds}
+            onAddFundRecord={handleAddFund}
             onEditFundRecord={handleEditFund}
+            onDeleteFundRecord={handleDeleteFund}
             onToggleFundStatus={handleToggleFundStatus}
             manualTotalBalance={manualTotalBalance}
             onUpdateManualTotalBalance={handleUpdateManualTotalBalance}
