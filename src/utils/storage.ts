@@ -12,7 +12,8 @@ import {
   PaymentGatewayConfig,
   AidDonationRecord,
   ExtraContributionRecord,
-  PaymentGatewayItem
+  PaymentGatewayItem,
+  MonthlyExpenseRecord
 } from '../types';
 import { 
   INITIAL_ORG_PROFILE, 
@@ -49,6 +50,7 @@ const STORAGE_KEYS = {
   PAYMENT_GATEWAYS: 'pms_payment_gateways_list',
   MANUAL_TOTAL_BALANCE: 'pms_manual_total_balance',
   MONTHLY_EXPENSE: 'pms_monthly_expense',
+  MONTHLY_EXPENSES_LIST: 'pms_monthly_expenses_table_records',
   EXTRA_MONEY: 'pms_extra_money',
   ADMIN_PIN: 'pms_admin_pin',
   REGISTRATION_QUEUE: 'pms_registration_queue',
@@ -521,6 +523,32 @@ export function saveMonthlyExpense(amount: number) {
     notifyStorageChange(STORAGE_KEYS.MONTHLY_EXPENSE, amount);
   } catch (e) {
     console.error(e);
+  }
+}
+
+// 12b. Dedicated 18th Table Records: Monthly Expenses (মাসিক খরচের রেকর্ড)
+export function loadMonthlyExpenses(): MonthlyExpenseRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.MONTHLY_EXPENSES_LIST);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(item => item && item.id && !isIdPermanentlyDeleted(item.id));
+      }
+    }
+  } catch (e) {
+    console.error('loadMonthlyExpenses error:', e);
+  }
+  return [];
+}
+
+export function saveMonthlyExpenses(expenses: MonthlyExpenseRecord[]) {
+  try {
+    const clean = expenses.filter(item => item && item.id && !isIdPermanentlyDeleted(item.id));
+    localStorage.setItem(STORAGE_KEYS.MONTHLY_EXPENSES_LIST, JSON.stringify(clean));
+    notifyStorageChange(STORAGE_KEYS.MONTHLY_EXPENSES_LIST, clean);
+  } catch (e) {
+    console.error('saveMonthlyExpenses error:', e);
   }
 }
 

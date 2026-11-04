@@ -15,7 +15,8 @@ import {
   PaymentStatus,
   UserAccount,
   AidDonationRecord,
-  ExtraContributionRecord
+  ExtraContributionRecord,
+  MonthlyExpenseRecord
 } from './types';
 import { 
   loadOrgProfile, 
@@ -50,6 +51,8 @@ import {
   saveManualTotalBalance,
   loadMonthlyExpense,
   saveMonthlyExpense,
+  loadMonthlyExpenses,
+  saveMonthlyExpenses,
   loadExtraMoney,
   saveExtraMoney,
   PMS_SYNC_EVENT,
@@ -78,7 +81,9 @@ import {
   syncFinancialsToSupabase,
   pushAllDataToSupabase,
   syncOrgProfileToSupabase,
-  syncPaymentGatewaysToSupabase
+  syncPaymentGatewaysToSupabase,
+  syncMonthlyExpenseToSupabase,
+  deleteMonthlyExpenseFromSupabase
 } from './utils/supabaseClient';
 import { initRealTimeDataSync } from './utils/liveSync';
 
@@ -139,6 +144,7 @@ export default function App() {
   const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(() => loadPaymentSettings());
   const [manualTotalBalance, setManualTotalBalance] = useState<number | null>(() => loadManualTotalBalance());
   const [monthlyExpense, setMonthlyExpense] = useState<number>(() => loadMonthlyExpense());
+  const [monthlyExpenses, setMonthlyExpenses] = useState<MonthlyExpenseRecord[]>(() => loadMonthlyExpenses());
   const [extraMoney, setExtraMoney] = useState<number>(() => loadExtraMoney());
   const [adminActiveTab, setAdminActiveTab] = useState<string>('members');
 
@@ -266,6 +272,7 @@ export default function App() {
       setFunds(loadFunds());
       setManualTotalBalance(loadManualTotalBalance());
       setMonthlyExpense(loadMonthlyExpense());
+      setMonthlyExpenses(loadMonthlyExpenses());
       setExtraMoney(loadExtraMoney());
       setSupportMembers(loadSupportMembers());
       setHomeSlides(loadHomeSlides());
@@ -415,6 +422,15 @@ export default function App() {
                 savePaymentSettings(updated);
                 return updated;
               });
+            }
+          }
+
+          // 15. Monthly Expenses (Dedicated 18th Supabase Table: monthly_expenses)
+          if (Array.isArray(cloudData.monthlyExpenses) && cloudData.monthlyExpenses.length > 0) {
+            const liveExpenses = cloudData.monthlyExpenses.filter((e: any) => e && e.id && !isIdPermanentlyDeleted(e.id));
+            if (liveExpenses.length > 0) {
+              setMonthlyExpenses(liveExpenses);
+              saveMonthlyExpenses(liveExpenses);
             }
           }
         }
@@ -810,6 +826,46 @@ export default function App() {
     await safeDeleteFromSupabase('organizationRules', id);
   };
 
+  // 5.5 Monthly Expenses Handlers (Dedicated 18th Supabase Table: monthly_expenses)
+  const handleAddMonthlyExpense = async (newExp: Omit<MonthlyExpenseRecord, 'id'>): Promise<MonthlyExpenseRecord> => {
+    const id = `exp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const record: MonthlyExpenseRecord = {
+      ...newExp,
+      id,
+      createdAt: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      expense_handler_name: newExp.expenseHandlerName,
+      item_name: newExp.itemName,
+      image_url: newExp.imageUrl
+    };
+    const updated = [record, ...monthlyExpenses];
+    setMonthlyExpenses(updated);
+    saveMonthlyExpenses(updated);
+
+    // Keep monthly expense total balance updated
+    const newTotal = updated.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    setMonthlyExpense(newTotal);
+    saveMonthlyExpense(newTotal);
+
+    await syncMonthlyExpenseToSupabase(record);
+    syncFinancialsToSupabase({ monthlyExpense: newTotal });
+    return record;
+  };
+
+  const handleDeleteMonthlyExpense = async (id: string): Promise<void> => {
+    markIdAsPermanentlyDeleted(id, 'monthlyExpenses');
+    const updated = monthlyExpenses.filter(e => e.id !== id);
+    setMonthlyExpenses(updated);
+    saveMonthlyExpenses(updated);
+
+    const newTotal = updated.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    setMonthlyExpense(newTotal);
+    saveMonthlyExpense(newTotal);
+
+    await deleteMonthlyExpenseFromSupabase(id);
+    syncFinancialsToSupabase({ monthlyExpense: newTotal });
+  };
+
   // 6. Organization Profile & Payment Settings
   const handleUpdateProfile = async (newProfile: OrganizationProfile) => {
     setProfile(newProfile);
@@ -994,6 +1050,9 @@ export default function App() {
             onUpdateManualTotalBalance={handleUpdateManualTotalBalance}
             monthlyExpense={monthlyExpense}
             onUpdateMonthlyExpense={handleUpdateMonthlyExpense}
+            monthlyExpenses={monthlyExpenses}
+            onAddMonthlyExpense={handleAddMonthlyExpense}
+            onDeleteMonthlyExpense={handleDeleteMonthlyExpense}
             extraMoney={extraMoney}
             onUpdateExtraMoney={handleUpdateExtraMoney}
             homeSlides={homeSlides}

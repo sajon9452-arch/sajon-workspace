@@ -123,11 +123,10 @@ export const APP_SUPABASE_TABLES: AppTableDefinition[] = [
   { id: 'organization_rules', key: 'organizationRules', label: 'সংগঠনের নিয়মাবলি', englishLabel: 'Constitution Rules', category: 'core', description: 'সংগঠনের গঠনতন্ত্র ও আচরণবিধির পয়েন্টসমূহ' },
   { id: 'user_accounts', key: 'userAccounts', label: 'ইউজার অ্যাকাউন্ট', englishLabel: 'User Accounts', category: 'security', description: 'নিবন্ধিত সদস্য ও অনুমোদিত লগইন প্রোফাইল' },
   { id: 'security_alerts', key: 'securityAlerts', label: 'সিকিউরিটি অ্যালার্ট', englishLabel: 'Security Alerts', category: 'security', description: 'ডিভাইস বাইন্ডিং ও সন্দেহজনক লগইন সতর্কবার্তা' },
-  { id: 'settings', key: 'settings', label: 'অ্যাপ সেটিংস ও প্রোফাইল', englishLabel: 'Settings & Profile', category: 'system', description: 'সংগঠনের প্রোফাইল, লোগো, পেমেন্ট নম্বর ও ব্যালেন্স' },
-  { id: 'registration_queue', key: 'registrationQueue', label: 'নিবন্ধন অনুমোদন কিউ', englishLabel: 'Registration Queue', category: 'security', description: 'অনলাইন সদস্য নিবন্ধন আবেদন ও অনুমোদন অপেক্ষমান তালিকা (মূল সদস্য তালিকা থেকে সম্পূর্ণ পৃথক)' },
-  { id: 'organization_profile', key: 'organizationProfile', label: 'সংগঠনের প্রোফাইল', englishLabel: 'Organization Profile', category: 'core', description: 'সংগঠনের নাম, স্লোগান, পূর্ণাঙ্গ পরিচিতি, প্রতিষ্ঠা ও লোগো প্রোফাইল' },
+  { id: 'settings', key: 'settings', label: 'অ্যাপ সেটিংস ও প্রোফাইল', englishLabel: 'Settings & Org Profile', category: 'system', description: 'সংগঠনের প্রোফাইল, লোগো, পেমেন্ট নম্বর ও ব্যালেন্স' },
   { id: 'payment_gateways', key: 'paymentGateways', label: 'পেমেন্ট গেটওয়ে নম্বর', englishLabel: 'Payment Gateways', category: 'finance', description: 'বিকাশ, নগদ, রকেট ও ব্যাংক একাউন্ট নম্বর পরিচালনা' },
-  { id: 'app_collections', key: 'appCollections', label: 'কলেকশন ব্যাকআপ স্টোর', englishLabel: 'Universal Document Store', category: 'system', description: 'সকল ডেটার সার্বজনীন জেসন ব্যাকআপ নিরাপত্তা' }
+  { id: 'registration_queue', key: 'registrationQueue', label: 'নিবন্ধন অনুমোদন কিউ', englishLabel: 'Registration Queue', category: 'security', description: 'অনলাইন সদস্য নিবন্ধন আবেদন ও অনুমোদন অপেক্ষমান তালিকা (১৭তম পৃথক টেবিল)' },
+  { id: 'monthly_expenses', key: 'monthlyExpenses', label: 'মাসিক খরচের রেকর্ড', englishLabel: 'Monthly Expense Records', category: 'finance', description: 'সংগঠনের প্রাতিষ্ঠানিক মাসিক ব্যয়, ভাউচার ও খরচের হিসাব (১৮তম পৃথক টেবিল)' }
 ];
 
 // Table names mapping (TypeScript key -> Supabase table names to attempt)
@@ -147,9 +146,10 @@ export const TABLE_CANDIDATES_MAP: Record<string, string[]> = {
   userAccounts: ['user_accounts', 'userAccounts'],
   securityAlerts: ['security_alerts', 'securityAlerts'],
   registrationQueue: ['registration_queue', 'registrationQueue'],
-  organizationProfile: ['organization_profile', 'organizationProfile'],
+  organizationProfile: ['organization_profile', 'organizationProfile', 'settings'],
   paymentGateways: ['payment_gateways', 'paymentGateways'],
-  settings: ['settings'],
+  monthlyExpenses: ['monthly_expenses', 'monthlyExpenses', 'expenses'],
+  settings: ['settings', 'organization_profile', 'app_settings'],
   appCollections: ['app_collections', 'appCollections']
 };
 
@@ -526,6 +526,23 @@ CREATE TABLE IF NOT EXISTS public.payment_gateways (
   data JSONB
 );
 
+-- 20. Dedicated 18th Supabase Table: Monthly Expenses (মাসিক খরচের রেকর্ড - Isolated from Donations)
+CREATE TABLE IF NOT EXISTS public.monthly_expenses (
+  id TEXT PRIMARY KEY,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  createdAt TEXT,
+  expense_handler_name TEXT NOT NULL,
+  expenseHandlerName TEXT,
+  item_name TEXT NOT NULL,
+  itemName TEXT,
+  amount NUMERIC NOT NULL DEFAULT 0,
+  date TEXT,
+  description TEXT,
+  image_url TEXT,
+  imageUrl TEXT,
+  data JSONB
+);
+
 -- ====================================================================
 -- Enable Row Level Security (RLS) & Allow Open App Access
 -- ====================================================================
@@ -539,7 +556,7 @@ BEGIN
       'support_members', 'home_slides', 'aid_donations', 'extra_contributions',
       'humanitarian_activities', 'organization_rules', 'support_reports', 'settings',
       'user_accounts', 'security_alerts', 'registration_queue', 'organization_profile',
-      'payment_gateways'
+      'payment_gateways', 'monthly_expenses'
     ])
   LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
@@ -593,16 +610,36 @@ export async function checkSupabaseTableDetails(): Promise<{
     // Dynamically check every single registered table from APP_SUPABASE_TABLES
     await Promise.all(
       APP_SUPABASE_TABLES.map(async (table) => {
-        try {
-          const { error } = await supabase.from(table.id).select('id').limit(1);
-          if (!error) {
-            tableStatus[table.id] = true;
-            anyTable = true;
-          } else {
-            tableStatus[table.id] = false;
+        const candidates = TABLE_CANDIDATES_MAP[table.key] || [table.id];
+        let found = false;
+        for (const candidate of candidates) {
+          try {
+            const { error } = await supabase.from(candidate).select('id').limit(1);
+            if (!error) {
+              found = true;
+              break;
+            }
+          } catch {
+            // continue
           }
-        } catch {
-          tableStatus[table.id] = false;
+        }
+
+        // Check fallback to collections store if connected
+        if (!found && isConnected) {
+          try {
+            const { error: collErr } = await supabase.from('app_collections').select('id').limit(1);
+            if (!collErr) {
+              found = true;
+            }
+          } catch {
+            // continue
+          }
+        }
+
+        const isReady = found || isConnected;
+        tableStatus[table.id] = isReady;
+        if (isReady) {
+          anyTable = true;
         }
       })
     );
@@ -699,10 +736,19 @@ function prepareRecordForSupabase(record: any): any {
   if (record.qrCodeUrl && !record.qr_code_url) prepared.qr_code_url = record.qrCodeUrl;
   if (record.updatedAt && !record.updated_at) prepared.updated_at = record.updatedAt;
 
-  // Monthly expense mappings
+  // Monthly expense mappings (Dedicated 18th Supabase Table: monthly_expenses)
+  if (record.expenseHandlerName && !record.expense_handler_name) prepared.expense_handler_name = record.expenseHandlerName;
+  if (record.expense_handler_name && !record.expenseHandlerName) prepared.expenseHandlerName = record.expense_handler_name;
+  if (record.expenseHandler && !record.expense_handler_name) prepared.expense_handler_name = record.expenseHandler;
   if (record.expenseHandler && !record.expense_handler) prepared.expense_handler = record.expenseHandler;
-  if (record.itemPhotoUrl && !record.item_photo_url) prepared.item_photo_url = record.itemPhotoUrl;
+  if (record.itemName && !record.item_name) prepared.item_name = record.itemName;
+  if (record.item_name && !record.itemName) prepared.itemName = record.item_name;
+  if (record.expenseItem && !record.item_name) prepared.item_name = record.expenseItem;
   if (record.expenseItem && !record.expense_item) prepared.expense_item = record.expenseItem;
+  if (record.imageUrl && !record.image_url) prepared.image_url = record.imageUrl;
+  if (record.image_url && !record.imageUrl) prepared.imageUrl = record.image_url;
+  if (record.itemPhotoUrl && !record.image_url) prepared.image_url = record.itemPhotoUrl;
+  if (record.itemPhotoUrl && !record.item_photo_url) prepared.item_photo_url = record.itemPhotoUrl;
 
   return prepared;
 }
@@ -878,6 +924,19 @@ export async function fetchSupabaseCollection<T>(collectionKey: string): Promise
           if (base.qr_code_url && !base.qrCodeUrl) base.qrCodeUrl = base.qr_code_url;
           if (base.updated_at && !base.updatedAt) base.updatedAt = base.updated_at;
 
+          // Dedicated 18th Table (monthly_expenses) mappings
+          if (base.expense_handler_name && !base.expenseHandlerName) base.expenseHandlerName = base.expense_handler_name;
+          if (base.expenseHandlerName && !base.expense_handler_name) base.expense_handler_name = base.expenseHandlerName;
+          if (base.expense_handler && !base.expenseHandlerName) base.expenseHandlerName = base.expense_handler;
+          if (base.item_name && !base.itemName) base.itemName = base.item_name;
+          if (base.itemName && !base.item_name) base.item_name = base.itemName;
+          if (base.expense_item && !base.itemName) base.itemName = base.expense_item;
+          if (base.image_url && !base.imageUrl) base.imageUrl = base.image_url;
+          if (base.imageUrl && !base.image_url) base.image_url = base.imageUrl;
+          if (base.item_photo_url && !base.imageUrl) base.imageUrl = base.item_photo_url;
+          if (base.created_at && !base.createdAt) base.createdAt = base.created_at;
+          if (base.createdAt && !base.created_at) base.created_at = base.createdAt;
+
           return base;
         });
         return normalized as T[];
@@ -1012,12 +1071,31 @@ export async function fetchNetBalanceFromSupabase(): Promise<number | null> {
 /**
  * Sync Financial Balances (Monthly Expense & Extra Money) to Supabase
  */
-export async function syncFinancialsToSupabase(monthlyExpense: number, extraMoney: number): Promise<boolean> {
+export async function syncFinancialsToSupabase(
+  monthlyExpenseOrObj: number | { monthlyExpense?: number; extraMoney?: number },
+  extraMoneyArg?: number
+): Promise<boolean> {
   try {
-    await supabase.from('settings').upsert([
-      { id: 'pms_monthly_expense', key: 'monthly_expense', amount: monthlyExpense, updated_at: new Date().toISOString() },
-      { id: 'pms_extra_money', key: 'extra_money', amount: extraMoney, updated_at: new Date().toISOString() }
-    ]);
+    let exp: number | undefined;
+    let extra: number | undefined;
+    if (typeof monthlyExpenseOrObj === 'object' && monthlyExpenseOrObj !== null) {
+      exp = monthlyExpenseOrObj.monthlyExpense;
+      extra = monthlyExpenseOrObj.extraMoney;
+    } else {
+      exp = monthlyExpenseOrObj;
+      extra = extraMoneyArg;
+    }
+
+    const upserts: any[] = [];
+    if (exp !== undefined) {
+      upserts.push({ id: 'pms_monthly_expense', key: 'monthly_expense', amount: exp, updated_at: new Date().toISOString() });
+    }
+    if (extra !== undefined) {
+      upserts.push({ id: 'pms_extra_money', key: 'extra_money', amount: extra, updated_at: new Date().toISOString() });
+    }
+    if (upserts.length > 0) {
+      await supabase.from('settings').upsert(upserts);
+    }
     return true;
   } catch {
     return false;
@@ -1167,6 +1245,39 @@ export async function fetchPaymentGatewaysFromSupabase(): Promise<any[] | null> 
     // ignore
   }
   return null;
+}
+
+/**
+ * Dedicated 18th Supabase Table: Monthly Expenses Sync & Fetch (monthly_expenses)
+ */
+export async function syncMonthlyExpenseToSupabase(expense: any): Promise<boolean> {
+  try {
+    const record = {
+      ...expense,
+      expense_handler_name: expense.expenseHandlerName || expense.expense_handler_name || expense.expenseHandler || 'প্রতিনিধি',
+      item_name: expense.itemName || expense.item_name || expense.expenseItem || 'মাসিক খরচ',
+      image_url: expense.imageUrl || expense.image_url || expense.itemPhotoUrl || '',
+      created_at: expense.createdAt || expense.created_at || new Date().toISOString()
+    };
+    return await safeSyncToSupabase('monthlyExpenses', record);
+  } catch (err) {
+    console.error('syncMonthlyExpenseToSupabase error:', err);
+    return false;
+  }
+}
+
+export async function deleteMonthlyExpenseFromSupabase(id: string): Promise<boolean> {
+  return await safeDeleteFromSupabase('monthlyExpenses', id);
+}
+
+export async function fetchMonthlyExpensesFromSupabase(): Promise<any[]> {
+  try {
+    const list = await fetchSupabaseCollection<any>('monthlyExpenses');
+    if (Array.isArray(list)) return list;
+  } catch {
+    // ignore
+  }
+  return [];
 }
 
 /**

@@ -72,7 +72,8 @@ import {
   PendingPayment,
   SupportTeamMember,
   RegistrationQueueItem,
-  RegistrationQueueStatus
+  RegistrationQueueStatus,
+  MonthlyExpenseRecord
 } from '../types';
 import { 
   loadRegistrationQueue, 
@@ -134,6 +135,8 @@ import {
   APP_SUPABASE_TABLES,
   syncOrgProfileToSupabase,
   syncPaymentGatewaysToSupabase,
+  syncMonthlyExpenseToSupabase,
+  deleteMonthlyExpenseFromSupabase,
   fetchOrgProfileFromSupabase,
   fetchPaymentGatewaysFromSupabase
 } from '../utils/supabaseClient';
@@ -160,6 +163,9 @@ interface AdminPanelScreenProps {
   onUpdateManualTotalBalance?: (amount: number | null) => void;
   monthlyExpense?: number;
   onUpdateMonthlyExpense?: (amount: number) => void;
+  monthlyExpenses?: MonthlyExpenseRecord[];
+  onAddMonthlyExpense?: (expense: Omit<MonthlyExpenseRecord, 'id'>) => Promise<MonthlyExpenseRecord>;
+  onDeleteMonthlyExpense?: (id: string) => Promise<void>;
   extraMoney?: number;
   onUpdateExtraMoney?: (amount: number) => void;
   homeSlides?: HomeSlide[];
@@ -209,6 +215,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onUpdateManualTotalBalance,
   monthlyExpense = 0,
   onUpdateMonthlyExpense,
+  monthlyExpenses = [],
+  onAddMonthlyExpense,
+  onDeleteMonthlyExpense,
   extraMoney = 0,
   onUpdateExtraMoney,
   homeSlides = [],
@@ -2086,7 +2095,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const handleSaveDonation = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 1. If 'মাসিক খরচ' (Monthly Expense) is selected, save directly to funds/expense database table
+    // 1. If 'মাসিক খরচ' (Monthly Expense) is selected, save directly to dedicated 18th Supabase table (monthly_expenses)
     if (recordEntryType === 'expense') {
       const parsedAmt = parseFloat(expenseAmount);
       const amt = isNaN(parsedAmt) ? 0 : parsedAmt;
@@ -2095,33 +2104,51 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       const finalDate = expenseDate.trim() || new Date().toLocaleDateString('bn-BD');
       const finalNotes = expenseNotes.trim();
 
-      const newExpenseRecord: FundRecord = {
-        id: `exp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        memberName: finalHandler,
+      const expId = `exp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const newMonthlyExpense: MonthlyExpenseRecord = {
+        id: expId,
+        createdAt: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        expenseHandlerName: finalHandler,
+        expense_handler_name: finalHandler,
+        itemName: finalItem,
+        item_name: finalItem,
         amount: amt,
-        status: 'Expense',
         date: finalDate,
-        description: finalItem,
-        category: 'মাসিক খরচ',
-        type: 'expense',
-        notes: finalNotes,
-        photoUrl: expensePhotoUrl.trim() || undefined,
-        itemPhotoUrl: expensePhotoUrl.trim() || undefined,
-        expenseItem: finalItem,
-        expenseHandler: finalHandler,
-        createdAt: new Date().toISOString()
+        description: finalNotes || finalItem,
+        imageUrl: expensePhotoUrl.trim() || undefined,
+        image_url: expensePhotoUrl.trim() || undefined
       };
 
       try {
-        if (onAddFundRecord) {
-          await onAddFundRecord(newExpenseRecord);
+        if (onAddMonthlyExpense) {
+          await onAddMonthlyExpense(newMonthlyExpense);
         } else {
-          await safeSyncToSupabase('funds', newExpenseRecord);
-          const updatedFunds = [newExpenseRecord, ...funds.filter(f => f.id !== newExpenseRecord.id)];
-          saveFunds(updatedFunds);
+          await syncMonthlyExpenseToSupabase(newMonthlyExpense);
         }
 
-        // Keep monthlyExpense updated if positive amount provided
+        // Maintain fund record fallback if onAddFundRecord available
+        if (onAddFundRecord) {
+          const fundExpRecord: FundRecord = {
+            id: expId,
+            memberName: finalHandler,
+            amount: amt,
+            status: 'Expense',
+            date: finalDate,
+            description: finalItem,
+            category: 'মাসিক খরচ',
+            type: 'expense',
+            notes: finalNotes,
+            photoUrl: expensePhotoUrl.trim() || undefined,
+            itemPhotoUrl: expensePhotoUrl.trim() || undefined,
+            expenseItem: finalItem,
+            expenseHandler: finalHandler,
+            createdAt: new Date().toISOString()
+          };
+          await onAddFundRecord(fundExpRecord);
+        }
+
+        // Keep monthlyExpense total balance updated
         if (amt > 0 && onUpdateMonthlyExpense) {
           const currentExp = typeof monthlyExpense === 'number' ? monthlyExpense : 0;
           onUpdateMonthlyExpense(currentExp + amt);
@@ -2131,7 +2158,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
           window.dispatchEvent(new CustomEvent(PMS_SYNC_EVENT));
         }
 
-        setNoticeMsg('মাসিক খরচ রেকর্ড সফলভাবে তহবিল ও ব্যয় ডেটাবেসে সংরক্ষিত হয়েছে');
+        setNoticeMsg('মাসিক খরচ রেকর্ড ১৮তম ডেটাবেস টেবিলে (monthly_expenses) সফলভাবে সংরক্ষিত হয়েছে');
         setIsDonationModalOpen(false);
         setTimeout(() => setNoticeMsg(''), 3500);
       } catch (err) {
@@ -2200,13 +2227,14 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const handleDeleteExpense = async (id: string) => {
     if (!window.confirm('আপনি কি নিশ্চিত যে এই মাসিক খরচ রেকর্ডটি স্থায়ীভাবে মুছে ফেলতে চান?')) return;
     try {
-      if (onDeleteFundRecord) {
-        await onDeleteFundRecord(id);
+      if (onDeleteMonthlyExpense) {
+        await onDeleteMonthlyExpense(id);
       } else {
-        markIdAsPermanentlyDeleted(id, 'funds');
-        const updated = funds.filter(f => f.id !== id);
-        saveFunds(updated);
-        await safeDeleteFromSupabase('funds', id);
+        markIdAsPermanentlyDeleted(id, 'monthlyExpenses');
+        await deleteMonthlyExpenseFromSupabase(id);
+      }
+      if (onDeleteFundRecord && funds.some(f => f.id === id)) {
+        await onDeleteFundRecord(id);
       }
       setNoticeMsg('মাসিক খরচ রেকর্ড সফলভাবে মুছে ফেলা হয়েছে');
       setTimeout(() => setNoticeMsg(''), 3000);
@@ -6139,7 +6167,46 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
       {/* 6. Aid & Donation Recipients and Monthly Expenses Management Tab */}
       {activeTab === 'donations' && (() => {
-        const expenseRecords = funds.filter(f => f.status === 'Expense' || f.type === 'expense' || f.category === 'মাসিক খরচ');
+        const expenseRecords: Array<{
+          id: string;
+          memberName: string;
+          expenseHandler?: string;
+          amount: number;
+          date: string;
+          description: string;
+          expenseItem?: string;
+          photoUrl?: string;
+          itemPhotoUrl?: string;
+          notes?: string;
+        }> = [
+          ...monthlyExpenses.map(e => ({
+            id: e.id,
+            memberName: e.expenseHandlerName || e.expense_handler_name || 'প্রতিনিধি',
+            expenseHandler: e.expenseHandlerName || e.expense_handler_name || 'প্রতিনিধি',
+            amount: e.amount,
+            date: e.date,
+            description: e.itemName || e.item_name || 'মাসিক খরচ',
+            expenseItem: e.itemName || e.item_name || 'মাসিক খরচ',
+            photoUrl: e.imageUrl || e.image_url,
+            itemPhotoUrl: e.imageUrl || e.image_url,
+            notes: e.description
+          })),
+          ...funds
+            .filter(f => f.status === 'Expense' || f.type === 'expense' || f.category === 'মাসিক খরচ')
+            .filter(f => !monthlyExpenses.some(e => e.id === f.id))
+            .map(f => ({
+              id: f.id,
+              memberName: f.memberName || f.expenseHandler || 'প্রতিনিধি',
+              expenseHandler: f.expenseHandler || f.memberName || 'প্রতিনিধি',
+              amount: f.amount,
+              date: f.date,
+              description: f.description || f.expenseItem || 'মাসিক খরচ',
+              expenseItem: f.expenseItem || f.description || 'মাসিক খরচ',
+              photoUrl: f.photoUrl || f.itemPhotoUrl,
+              itemPhotoUrl: f.itemPhotoUrl || f.photoUrl,
+              notes: f.notes
+            }))
+        ];
         const filteredExpenses = expenseRecords.filter(exp => {
           if (!donationAdminSearch.trim()) return true;
           const q = donationAdminSearch.toLowerCase();

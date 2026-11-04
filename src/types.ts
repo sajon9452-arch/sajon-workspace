@@ -342,3 +342,23 @@ export interface RegistrationQueueItem {
   approvedMemberId?: string;
   assignedUsername?: string;
 }
+
+/**
+ * Dedicated 18th Supabase Table Data Model: monthly_expenses
+ * Isolated from donations and general fund records.
+ * Columns: id, created_at, expense_handler_name, item_name, amount, date, description, image_url
+ */
+export interface MonthlyExpenseRecord {
+  id: string;
+  createdAt?: string;
+  created_at?: string;
+  expenseHandlerName: string;
+  expense_handler_name?: string;
+  itemName: string;
+  item_name?: string;
+  amount: number;
+  date: string;
+  description: string;
+  imageUrl?: string;
+  image_url?: string;
+}
