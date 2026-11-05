@@ -22,7 +22,7 @@ import {
   ShieldCheck,
   Lock
 } from 'lucide-react';
-import { FundRecord, Member, PaymentStatus, PaymentGatewayConfig, OrganizationProfile } from '../types';
+import { FundRecord, Member, PaymentStatus, PaymentGatewayConfig, OrganizationProfile, MonthlyExpenseRecord } from '../types';
 import { 
   toBengaliNumber, 
   formatBengaliCurrency, 
@@ -38,6 +38,7 @@ interface FundScreenProps {
   members: Member[];
   manualTotalBalance: number | null;
   monthlyExpense?: number;
+  monthlyExpenses?: MonthlyExpenseRecord[];
   extraMoney?: number;
   paymentConfig: PaymentGatewayConfig;
   profile?: OrganizationProfile;
@@ -50,6 +51,7 @@ export const FundScreen: React.FC<FundScreenProps> = ({
   members,
   manualTotalBalance,
   monthlyExpense = 0,
+  monthlyExpenses = [],
   extraMoney = 0,
   paymentConfig,
   profile,
@@ -566,6 +568,86 @@ export const FundScreen: React.FC<FundScreenProps> = ({
           <Wallet className="w-12 h-12 text-slate-300 mx-auto mb-2" />
           <p className="font-bold text-slate-700">কোনো চাঁদা রেকর্ড পাওয়া যায়নি</p>
           <p className="text-xs text-slate-400 mt-0.5">সদস্য তালিকা থেকে নতুন সদস্য যুক্ত হলে তা স্বয়ংক্রিয়ভাবে এখানে প্রদর্শিত হবে</p>
+        </div>
+      )}
+
+      {/* 3.5. Monthly Expense Records & Vouchers (Public Financial Transparency) */}
+      {monthlyExpenses && monthlyExpenses.length > 0 && (
+        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200 shadow-2xs">
+                <Receipt className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
+                  মাসিক প্রাতিষ্ঠানিক ব্যয়ের রেকর্ড
+                </h3>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  সংগঠনের সার্বিক পরিচালনা ব্যয় ও ভাউচারের উন্মুক্ত স্বচ্ছ বিবরণী
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 px-3 py-1 rounded-xl text-xs">
+              <span className="text-slate-600 font-medium">মোট ব্যয়: </span>
+              <strong className="text-rose-700 font-black">
+                {formatBengaliCurrency(monthlyExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0))}
+              </strong>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {monthlyExpenses.map((exp) => (
+              <div
+                key={exp.id}
+                className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 flex flex-col justify-between space-y-3"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-14 h-14 rounded-xl overflow-hidden bg-white border border-slate-200 shrink-0">
+                    {exp.imageUrl || exp.image_url ? (
+                      <img src={exp.imageUrl || exp.image_url} alt={exp.itemName || exp.item_name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-400">
+                        <Receipt className="w-5 h-5" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <h4 className="text-sm font-bold text-slate-900 truncate">
+                        {exp.itemName || exp.item_name}
+                      </h4>
+                      <span className="text-xs font-black text-rose-700 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200 shrink-0">
+                        {formatBengaliCurrency(exp.amount)}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-600 mt-1">
+                      <span className="text-slate-400">খরচকারী: </span>
+                      <strong className="text-slate-800">{exp.expenseHandlerName || exp.expense_handler_name || 'প্রতিনিধি'}</strong>
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                      <Calendar className="w-3 h-3 text-slate-400" />
+                      <span>{exp.date}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {exp.description && (
+                  <p className="text-xs text-slate-600 line-clamp-2 bg-white p-2 rounded-xl border border-slate-200/70">
+                    {exp.description}
+                  </p>
+                )}
+
+                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-400">
+                  <span className="font-mono">ID: {exp.id.slice(0, 10)}</span>
+                  <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    স্বচ্ছ প্রাতিষ্ঠানিক ব্যয়
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

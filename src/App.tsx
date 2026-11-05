@@ -852,6 +852,20 @@ export default function App() {
     return record;
   };
 
+  const handleEditMonthlyExpense = async (updatedExp: MonthlyExpenseRecord): Promise<void> => {
+    const updated = monthlyExpenses.map(e => e.id === updatedExp.id ? updatedExp : e);
+    setMonthlyExpenses(updated);
+    saveMonthlyExpenses(updated);
+
+    // Keep monthly expense total balance updated
+    const newTotal = updated.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    setMonthlyExpense(newTotal);
+    saveMonthlyExpense(newTotal);
+
+    await syncMonthlyExpenseToSupabase(updatedExp);
+    syncFinancialsToSupabase({ monthlyExpense: newTotal });
+  };
+
   const handleDeleteMonthlyExpense = async (id: string): Promise<void> => {
     markIdAsPermanentlyDeleted(id, 'monthlyExpenses');
     const updated = monthlyExpenses.filter(e => e.id !== id);
@@ -956,6 +970,7 @@ export default function App() {
             homeSlides={homeSlides}
             aidDonations={aidDonations}
             extraContributions={extraContributions}
+            monthlyExpenses={monthlyExpenses}
             organizationRules={organizationRules}
             isAdmin={effectiveIsAdminForScreens}
             onNavigateToAdminTab={(tab) => {
@@ -998,6 +1013,7 @@ export default function App() {
             members={members}
             manualTotalBalance={manualTotalBalance}
             monthlyExpense={monthlyExpense}
+            monthlyExpenses={monthlyExpenses}
             extraMoney={extraMoney}
             paymentConfig={paymentConfig}
             profile={profile}
@@ -1052,6 +1068,7 @@ export default function App() {
             onUpdateMonthlyExpense={handleUpdateMonthlyExpense}
             monthlyExpenses={monthlyExpenses}
             onAddMonthlyExpense={handleAddMonthlyExpense}
+            onEditMonthlyExpense={handleEditMonthlyExpense}
             onDeleteMonthlyExpense={handleDeleteMonthlyExpense}
             extraMoney={extraMoney}
             onUpdateExtraMoney={handleUpdateExtraMoney}

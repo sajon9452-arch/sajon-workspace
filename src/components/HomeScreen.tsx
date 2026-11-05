@@ -23,14 +23,16 @@ import {
   ExternalLink,
   Globe,
   Youtube,
-  Facebook
+  Facebook,
+  Receipt
 } from 'lucide-react';
 import { 
   OrganizationProfile, 
   HomeSlide, 
   AidDonationRecord, 
   ExtraContributionRecord,
-  OrganizationRule
+  OrganizationRule,
+  MonthlyExpenseRecord
 } from '../types';
 import { toBengaliNumber, formatBengaliCurrency, sanitizePhone } from '../utils/helpers';
 
@@ -39,9 +41,10 @@ interface HomeScreenProps {
   homeSlides: HomeSlide[];
   aidDonations: AidDonationRecord[];
   extraContributions: ExtraContributionRecord[];
+  monthlyExpenses?: MonthlyExpenseRecord[];
   organizationRules?: OrganizationRule[];
   isAdmin: boolean;
-  onNavigateToAdminTab?: (tab: 'slides' | 'donations' | 'contributions' | 'rules' | 'profile') => void;
+  onNavigateToAdminTab?: (tab: 'slides' | 'donations' | 'contributions' | 'rules' | 'profile' | 'funds') => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -49,6 +52,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   homeSlides = [],
   aidDonations = [],
   extraContributions = [],
+  monthlyExpenses = [],
   organizationRules = [],
   isAdmin,
   onNavigateToAdminTab
@@ -62,6 +66,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   // Search/Filter states
   const [donationSearch, setDonationSearch] = useState('');
   const [contributionSearch, setContributionSearch] = useState('');
+  const [expenseSearch, setExpenseSearch] = useState('');
 
   // Copy feedback state
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -155,9 +160,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     );
   });
 
+  // Filtered Monthly Expenses (Public View)
+  const filteredExpenses = (monthlyExpenses || []).filter(item => {
+    if (!expenseSearch.trim()) return true;
+    const q = expenseSearch.toLowerCase();
+    const handler = (item.expenseHandlerName || item.expense_handler_name || '').toLowerCase();
+    const itemName = (item.itemName || item.item_name || '').toLowerCase();
+    const desc = (item.description || '').toLowerCase();
+    const dt = (item.date || '').toLowerCase();
+    return handler.includes(q) || itemName.includes(q) || desc.includes(q) || dt.includes(q);
+  });
+
   // Calculate totals
   const totalAidDisbursed = aidDonations.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   const totalExtraReceived = extraContributions.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const totalMonthlyExpenses = (monthlyExpenses || []).reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
   // Active Organization Rules (sorted by pointNumber)
   const activeRules = [...organizationRules]
@@ -776,7 +793,185 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       )}
 
       {/* =========================================================================
-          SECTION 4: Organization Rules & Guidelines (Strict Conditional Visibility)
+          SECTION 4: Monthly Expense Records & Institutional Expenditures (Public Transparency)
+          - Strict Conditional Visibility: completely hidden if admin has added 0 expense records
+          - Read-only visibility for general users / public members
+          - Dynamic image zoom modal on voucher / item photos
+          ========================================================================= */}
+      {monthlyExpenses && monthlyExpenses.length > 0 && (
+        <section className="space-y-5">
+          {/* Section Header */}
+          <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="p-2.5 rounded-2xl bg-amber-100 text-amber-900">
+                  <Receipt className="w-5 h-5 text-amber-700" />
+                </div>
+                <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                  মাসিক খরচের রেকর্ড ও ভাউচার
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100 text-amber-900">
+                  {toBengaliNumber(monthlyExpenses.length)}টি ব্যয় রেকর্ড
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                সংগঠনের প্রাতিষ্ঠানিক পরিচালনা, রসিদ/ভাউচার এবং মাসিক সার্বিক খরচের উন্মুক্ত ও স্বচ্ছ বিবরণী
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap w-full sm:w-auto justify-start sm:justify-end">
+              <div className="bg-amber-50 border border-amber-200 px-3.5 py-1.5 rounded-2xl text-xs">
+                <span className="text-slate-600 font-medium">মোট ব্যয়: </span>
+                <strong className="text-rose-700 font-black">{formatBengaliCurrency(totalMonthlyExpenses)}</strong>
+              </div>
+
+              {isAdmin && onNavigateToAdminTab && (
+                <button
+                  onClick={() => onNavigateToAdminTab('donations')}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  <span>খরচ পরিচালনা ও সম্পাদনা</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Search Bar for Monthly Expenses */}
+          {monthlyExpenses.length > 2 && (
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={expenseSearch}
+                onChange={(e) => setExpenseSearch(e.target.value)}
+                placeholder="খরচের খাত, খরচকারী ব্যক্তি বা বিবরণ দিয়ে খুঁজুন..."
+                className="w-full pl-9 pr-4 py-2.5 text-xs sm:text-sm rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+              />
+            </div>
+          )}
+
+          {/* Multiple Expenses Cards Grid */}
+          {filteredExpenses.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5 sm:gap-6">
+              {filteredExpenses.map((item) => {
+                const img = item.imageUrl || item.image_url;
+                const handler = item.expenseHandlerName || item.expense_handler_name || 'সাংগঠনিক প্রতিনিধি';
+                const itemName = item.itemName || item.item_name || 'প্রাতিষ্ঠানিক ব্যয়';
+
+                return (
+                  <div
+                    key={item.id}
+                    className="bg-white rounded-3xl overflow-hidden border border-amber-200/90 shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col justify-between group"
+                  >
+                    {/* 1. Large Item / Voucher Photo at Top */}
+                    <div 
+                      className="relative w-full h-56 sm:h-64 md:h-72 bg-amber-50/50 overflow-hidden cursor-pointer"
+                      onClick={() => img && setZoomedImage({
+                        url: img,
+                        title: itemName,
+                        subtitle: `খরচকারী: ${handler} • পরিমাণ: ${formatBengaliCurrency(item.amount)}`
+                      })}
+                      title={img ? "ভাউচারের ছবি বড় করে দেখতে ক্লিক করুন" : undefined}
+                    >
+                      {img ? (
+                        <img
+                          src={img}
+                          alt={itemName}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-tr from-amber-50 to-orange-100/70 text-amber-800 p-4">
+                          <Receipt className="w-14 h-14 text-amber-500 mb-2" />
+                          <span className="text-xs font-bold text-amber-900">খরচকৃত জিনিস / ভাউচারের ছবি</span>
+                        </div>
+                      )}
+
+                      {/* Badges on Top Corners */}
+                      <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                        <span className="px-3 py-1 rounded-xl text-[11px] font-black bg-amber-600/90 backdrop-blur-md text-white shadow-md">
+                          মাসিক ব্যয়
+                        </span>
+                      </div>
+
+                      <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-md text-white px-2.5 py-1 rounded-xl text-[11px] font-semibold border border-white/10 shadow-md">
+                        <Calendar className="w-3 h-3 text-amber-300" />
+                        <span>{item.date}</span>
+                      </div>
+
+                      {img && (
+                        <div className="absolute bottom-2.5 right-2.5 bg-black/50 hover:bg-black/75 backdrop-blur-md text-white p-1.5 rounded-xl border border-white/20 transition opacity-80 group-hover:opacity-100">
+                          <Maximize2 className="w-3.5 h-3.5" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. Details Underneath the Large Photo */}
+                    <div className="p-5 sm:p-6 space-y-4 flex-1 flex flex-col justify-between">
+                      <div className="space-y-3">
+                        {/* Sector Name & Amount Row */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 block">খরচের খাত বা জিনিসের নাম</span>
+                            <h4 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                              {itemName}
+                            </h4>
+                          </div>
+
+                          {/* Amount Highlight */}
+                          <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-950 font-black text-base shrink-0 self-start sm:self-auto">
+                            <span className="text-[11px] text-rose-700 font-bold">ব্যয়:</span>
+                            <span>{formatBengaliCurrency(item.amount)}</span>
+                          </div>
+                        </div>
+
+                        {/* Expense Handler */}
+                        <div className="flex items-start gap-2 text-xs sm:text-sm text-slate-700 bg-amber-50/60 p-2.5 rounded-2xl border border-amber-200/80">
+                          <UserCheck className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="text-[10px] font-bold text-amber-700 block">খরচকারী / দায়িত্বপ্রাপ্ত ব্যক্তি</span>
+                            <span className="font-bold text-amber-950">{handler}</span>
+                          </div>
+                        </div>
+
+                        {/* Detailed Description / Notes */}
+                        {item.description && (
+                          <div className="space-y-1">
+                            <span className="text-[11px] font-bold text-slate-500">খরচের বিস্তারিত বিবরণ:</span>
+                            <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-normal bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+                              {item.description}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Card Footer: Institutional Verification Info */}
+                      <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                        <span className="font-mono text-[11px] text-slate-400">ID: {item.id.slice(0, 10)}</span>
+                        <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>অনুমোদিত ব্যয়</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-8 rounded-3xl bg-white border border-slate-200 text-center space-y-2">
+              <Receipt className="w-10 h-10 text-slate-300 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-700">কোনো খরচের রেকর্ড মেলেনি</h4>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                আপনার অনুসন্ধান অনুযায়ী কোনো রেকর্ড নেই।
+              </p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* =========================================================================
+          SECTION 5: Organization Rules & Guidelines (Strict Conditional Visibility)
           - Completely hidden if admin has added 0 rules
           - Only displayed when rules are explicitly added
           ========================================================================= */}

@@ -165,6 +165,7 @@ interface AdminPanelScreenProps {
   onUpdateMonthlyExpense?: (amount: number) => void;
   monthlyExpenses?: MonthlyExpenseRecord[];
   onAddMonthlyExpense?: (expense: Omit<MonthlyExpenseRecord, 'id'>) => Promise<MonthlyExpenseRecord>;
+  onEditMonthlyExpense?: (expense: MonthlyExpenseRecord) => Promise<void>;
   onDeleteMonthlyExpense?: (id: string) => Promise<void>;
   extraMoney?: number;
   onUpdateExtraMoney?: (amount: number) => void;
@@ -217,6 +218,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   onUpdateMonthlyExpense,
   monthlyExpenses = [],
   onAddMonthlyExpense,
+  onEditMonthlyExpense,
   onDeleteMonthlyExpense,
   extraMoney = 0,
   onUpdateExtraMoney,
@@ -2006,6 +2008,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   // ==========================================
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [editingDonation, setEditingDonation] = useState<AidDonationRecord | null>(null);
+  const [editingExpense, setEditingExpense] = useState<MonthlyExpenseRecord | null>(null);
   const [donationRecipientName, setDonationRecipientName] = useState('');
   const [donationPhotoUrl, setDonationPhotoUrl] = useState('');
   const [donationAddress, setDonationAddress] = useState('');
@@ -2031,6 +2034,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
   const handleOpenAddDonation = () => {
     setRecordEntryType(donationsSubTab === 'expenses' ? 'expense' : 'donation');
     setEditingDonation(null);
+    setEditingExpense(null);
     setDonationRecipientName('');
     setDonationPhotoUrl('');
     setDonationAddress('পতেঙ্গা, চট্টগ্রাম');
@@ -2049,6 +2053,30 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
     setExpenseAmount('');
     setExpenseDate(new Date().toLocaleDateString('bn-BD'));
     setExpenseNotes('');
+    setIsDonationModalOpen(true);
+  };
+
+  const handleOpenEditExpense = (item: any) => {
+    setRecordEntryType('expense');
+    setEditingDonation(null);
+    const expObj: MonthlyExpenseRecord = {
+      id: item.id,
+      createdAt: item.createdAt || item.created_at || new Date().toISOString(),
+      created_at: item.created_at || item.createdAt || new Date().toISOString(),
+      expenseHandlerName: item.expenseHandlerName || item.expense_handler_name || item.memberName || item.expenseHandler || 'মোঃ কামরুল হাসান (সভাপতি)',
+      itemName: item.itemName || item.item_name || item.description || item.expenseItem || 'মাসিক প্রাতিষ্ঠানিক ব্যয়',
+      amount: Number(item.amount) || 0,
+      date: item.date || new Date().toLocaleDateString('bn-BD'),
+      description: item.description || item.notes || '',
+      imageUrl: item.imageUrl || item.image_url || item.photoUrl || item.itemPhotoUrl || ''
+    };
+    setEditingExpense(expObj);
+    setExpenseHandler(expObj.expenseHandlerName);
+    setExpensePhotoUrl(expObj.imageUrl || '');
+    setExpenseItem(expObj.itemName);
+    setExpenseAmount(expObj.amount ? expObj.amount.toString() : '');
+    setExpenseDate(expObj.date || new Date().toLocaleDateString('bn-BD'));
+    setExpenseNotes(expObj.description || '');
     setIsDonationModalOpen(true);
   };
 
@@ -2104,11 +2132,11 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       const finalDate = expenseDate.trim() || new Date().toLocaleDateString('bn-BD');
       const finalNotes = expenseNotes.trim();
 
-      const expId = `exp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const newMonthlyExpense: MonthlyExpenseRecord = {
+      const expId = editingExpense ? editingExpense.id : `exp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const expenseRecordPayload: MonthlyExpenseRecord = {
         id: expId,
-        createdAt: new Date().toISOString(),
-        created_at: new Date().toISOString(),
+        createdAt: editingExpense?.createdAt || editingExpense?.created_at || new Date().toISOString(),
+        created_at: editingExpense?.created_at || editingExpense?.createdAt || new Date().toISOString(),
         expenseHandlerName: finalHandler,
         expense_handler_name: finalHandler,
         itemName: finalItem,
@@ -2121,49 +2149,55 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
       };
 
       try {
-        if (onAddMonthlyExpense) {
-          await onAddMonthlyExpense(newMonthlyExpense);
+        if (editingExpense) {
+          if (onEditMonthlyExpense) {
+            await onEditMonthlyExpense(expenseRecordPayload);
+          } else {
+            await syncMonthlyExpenseToSupabase(expenseRecordPayload);
+          }
+          setNoticeMsg('মাসিক খরচ রেকর্ড সফলভাবে আপডেট ও ১৮তম টেবিলে সংরক্ষিত হয়েছে');
         } else {
-          await syncMonthlyExpenseToSupabase(newMonthlyExpense);
+          if (onAddMonthlyExpense) {
+            await onAddMonthlyExpense(expenseRecordPayload);
+          } else {
+            await syncMonthlyExpenseToSupabase(expenseRecordPayload);
+          }
+          setNoticeMsg('মাসিক খরচ রেকর্ড ১৮তম ডেটাবেস টেবিলে (monthly_expenses) সফলভাবে সংরক্ষিত হয়েছে');
         }
 
-        // Maintain fund record fallback if onAddFundRecord available
-        if (onAddFundRecord) {
-          const fundExpRecord: FundRecord = {
-            id: expId,
-            memberName: finalHandler,
-            amount: amt,
-            status: 'Expense',
-            date: finalDate,
-            description: finalItem,
-            category: 'মাসিক খরচ',
-            type: 'expense',
-            notes: finalNotes,
-            photoUrl: expensePhotoUrl.trim() || undefined,
-            itemPhotoUrl: expensePhotoUrl.trim() || undefined,
-            expenseItem: finalItem,
-            expenseHandler: finalHandler,
-            createdAt: new Date().toISOString()
-          };
+        // Maintain fund record fallback if onEditFundRecord / onAddFundRecord available
+        const fundExpRecord: FundRecord = {
+          id: expId,
+          memberName: finalHandler,
+          amount: amt,
+          status: 'Expense',
+          date: finalDate,
+          description: finalItem,
+          category: 'মাসিক খরচ',
+          type: 'expense',
+          notes: finalNotes,
+          photoUrl: expensePhotoUrl.trim() || undefined,
+          itemPhotoUrl: expensePhotoUrl.trim() || undefined,
+          expenseItem: finalItem,
+          expenseHandler: finalHandler,
+          createdAt: new Date().toISOString()
+        };
+        if (editingExpense && onEditFundRecord && funds.some(f => f.id === expId)) {
+          await onEditFundRecord(fundExpRecord);
+        } else if (!editingExpense && onAddFundRecord) {
           await onAddFundRecord(fundExpRecord);
-        }
-
-        // Keep monthlyExpense total balance updated
-        if (amt > 0 && onUpdateMonthlyExpense) {
-          const currentExp = typeof monthlyExpense === 'number' ? monthlyExpense : 0;
-          onUpdateMonthlyExpense(currentExp + amt);
         }
 
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent(PMS_SYNC_EVENT));
         }
 
-        setNoticeMsg('মাসিক খরচ রেকর্ড ১৮তম ডেটাবেস টেবিলে (monthly_expenses) সফলভাবে সংরক্ষিত হয়েছে');
+        setEditingExpense(null);
         setIsDonationModalOpen(false);
         setTimeout(() => setNoticeMsg(''), 3500);
       } catch (err) {
         console.error(err);
-        setNoticeMsg('মাসিক খরচ রেকর্ড সংরক্ষণে সমস্যা হয়েছে');
+        setNoticeMsg('মাসিক খরচ সংরক্ষণে সমস্যা হয়েছে');
         setTimeout(() => setNoticeMsg(''), 3500);
       }
       return;
@@ -6448,6 +6482,14 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
+                            onClick={() => handleOpenEditExpense(exp)}
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-800 transition cursor-pointer"
+                            title="সম্পাদনা করুন"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleDeleteExpense(exp.id)}
                             className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 transition cursor-pointer"
                             title="মুছে ফেলুন"
@@ -7814,7 +7856,9 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                   <h3 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
                     {editingDonation 
                       ? 'অনুদান রেকর্ড সম্পাদনা' 
-                      : (recordEntryType === 'donation' ? 'নতুন অনুদান রেকর্ড যুক্ত করুন' : 'মাসিক খরচ রেকর্ড যুক্ত করুন')}
+                      : (editingExpense 
+                          ? 'মাসিক খরচ সম্পাদনা' 
+                          : (recordEntryType === 'donation' ? 'নতুন অনুদান রেকর্ড যুক্ত করুন' : 'মাসিক খরচ রেকর্ড যুক্ত করুন'))}
                   </h3>
                   <p className="text-[11px] text-slate-500 font-medium">
                     {recordEntryType === 'donation' 
@@ -7826,7 +7870,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
 
               {/* Requirement 1: Toggle/Select Buttons at the Top Corner */}
               <div className="flex items-center gap-2 self-end sm:self-auto">
-                {!editingDonation && (
+                {!editingDonation && !editingExpense && (
                   <div className="inline-flex p-1 rounded-2xl bg-slate-100 border border-slate-200/90 shadow-2xs">
                     <button
                       type="button"
@@ -8221,7 +8265,7 @@ export const AdminPanelScreen: React.FC<AdminPanelScreenProps> = ({
                   <Save className="w-4 h-4" />
                   <span>
                     {recordEntryType === 'expense'
-                      ? 'মাসিক খরচ সংরক্ষণ করুন'
+                      ? (editingExpense ? 'খরচ আপডেট ও সংরক্ষণ' : 'মাসিক খরচ সংরক্ষণ করুন')
                       : (editingDonation ? 'আপডেট করুন' : 'অনুদান রেকর্ড সংরক্ষণ')}
                   </span>
                 </button>
